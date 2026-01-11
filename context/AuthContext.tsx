@@ -7,10 +7,10 @@ export type UserRole =
   | "user" // Sócio Padrão
   | "admin_treino" // Admin 3 (Coach/Treinador)
   | "admin_geral" // Admin 1 (Diretoria)
-  | "admin_gestor" // Admin 2 (Presidência - gere outros admins)
+  | "admin_gestor" // Admin 2 (Presidência)
   | "master"; // Você (Super Admin)
 
-// Definição COMPLETA do usuário
+// Definição COMPLETA do usuário (Com os novos campos visuais)
 export interface User {
   nome: string;
   handle: string;
@@ -18,14 +18,18 @@ export interface User {
   turma: string;
   level: number;
   xp: number;
-  plano_badge: string;
   foto: string;
   instagram: string;
   bio: string;
   curso: string;
   seguidores: number;
   seguindo: number;
-  role: UserRole; // <--- NOVO CAMPO
+  role: UserRole;
+  
+  // --- NOVOS CAMPOS VISUAIS (Opcionais para não quebrar quem não tem) ---
+  plano?: string;      // Ex: "Tubarão Rei", "Lenda do Bar"
+  patente?: string;    // Ex: "Megalodon", "Barracuda"
+  plano_badge?: string; // Mantendo para compatibilidade antiga (VIP)
 }
 
 interface AuthContextType {
@@ -34,14 +38,13 @@ interface AuthContextType {
   updateUser: (data: Partial<User>) => void;
   login: (userData: User) => void;
   logout: () => void;
-  // Função para verificar se o usuário pode acessar algo
   checkPermission: (allowedRoles: UserRole[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Usuário inicial MOCKADO como MASTER para você testar o painel
+  // Usuário inicial MOCKADO (Atualizado com Patente e Plano)
   const [user, setUser] = useState<User | null>({
     nome: "Maria Eduarda",
     handle: "@duda_med",
@@ -49,14 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     turma: "T5",
     level: 7,
     xp: 620,
-    plano_badge: "VIP",
     foto: "https://i.pravatar.cc/300?u=maria",
     instagram: "@duda_medicina",
     bio: "Futura Doutora 🩺 | Shark Team 🦈",
     curso: "Medicina",
     seguidores: 154,
     seguindo: 89,
-    role: "master", // <--- TESTE AQUI: mude para 'user' ou 'admin_treino' para testar outros
+    role: "master",
+    
+    // NOVOS DADOS
+    plano: "Tubarão Rei",    // O novo sistema de planos
+    patente: "Megalodon",    // O novo sistema de patentes
+    plano_badge: "VIP"       // Legado
   });
 
   useEffect(() => {
@@ -91,10 +98,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Verifica se o usuário atual tem um dos cargos permitidos
   const checkPermission = (allowedRoles: UserRole[]) => {
     if (!user) return false;
-    if (user.role === "master") return true; // Master acessa tudo
+    if (user.role === "master") return true;
     return allowedRoles.includes(user.role);
   };
 
