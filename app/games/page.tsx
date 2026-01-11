@@ -1,12 +1,11 @@
 "use client";
-import type React from "react";
-import { useState } from "react";
+
+import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   Swords,
   Trophy,
   Star,
-  Users,
   Sparkles,
   Shield,
   Heart,
@@ -14,15 +13,44 @@ import {
   Brain,
   Flame,
   Crown,
+  XCircle,
+  Palette,
+  ChevronRight, // Adicionado para corrigir o erro
+  Info,
+  Users,
+  Gamepad2,
+  Edit2,
+  Save,
+  Search,
+  User,
+  History,
+  LogOut,
   Share2,
-  Dices,
-  RefreshCw,
+  Loader2,
+  Calendar,
+  ShoppingBag,
+  AlertTriangle,
+  ExternalLink,
+  Minimize2,
+  Maximize2,
 } from "lucide-react";
 import Link from "next/link";
+import { useToast } from "@/context/ToastContext";
+// IMPORTANTE: Instale rodando: npm install html2canvas
+import html2canvas from "html2canvas";
 
 // ============================================================================
-// TIPOS E INTERFACES
+// 1. TIPAGEM & ENGINE
 // ============================================================================
+
+type Expression = "normal" | "angry" | "pain" | "dead" | "happy";
+
+interface CustomColors {
+  skin: string;
+  hair: string;
+  armor: string;
+  accent: string;
+}
 
 interface HeroStats {
   inteligencia: number;
@@ -33,1156 +61,1819 @@ interface HeroStats {
   defesa: number;
 }
 
-interface Achievement {
+interface Move {
   id: string;
   name: string;
-  description: string;
-  xpReward: number;
+  type: "fisico" | "especial" | "suporte";
+  power: number;
+  accuracy: number;
+  staminaCost: number;
+  statScaling: keyof HeroStats;
   icon: string;
-  completed: boolean;
-  progress: number;
-  total: number;
+  color: string;
 }
 
-interface Opponent {
+interface Combatant {
   id: number;
   name: string;
-  turma: string;
+  avatarName: string;
   level: number;
-  avatar: string;
-  stats: HeroStats;
+  rankPosition: number;
+  totalPower: number;
+  profileImage: string;
+  avatarType: "warrior" | "zombie" | "skeleton" | "shadow" | "boss";
+  customColors?: CustomColors;
+  maxHp: number;
+  currentHp: number;
+  stats: { str: number; int: number; def: number; spd: number };
+  expression: Expression;
 }
 
-interface RankingEntry {
-  position: number;
-  name: string;
-  turma: string;
-  level: number;
-  wins: number;
-  avatar: string;
+interface BattleEffect {
+  id: string;
+  type: "damage" | "heal" | "miss" | "critical";
+  value: string | number;
+  x: string;
+  y: string;
 }
 
+interface BattleHistoryItem {
+  id: number;
+  opponentName: string;
+  opponentAvatar: string;
+  opponentProfileImage: string;
+  opponentLevel: number;
+  result: "victory" | "defeat";
+  date: string;
+  opponentId: number;
+}
+
+const STAT_CONFIG: Record<
+  keyof HeroStats,
+  {
+    label: string;
+    icon: any;
+    color: string;
+    hex: string;
+    source: string;
+    desc: string;
+    max: number;
+  }
+> = {
+  forca: {
+    label: "Força",
+    icon: Flame,
+    color: "text-red-500",
+    hex: "#ef4444",
+    source: "Gym",
+    desc: "Aumenta o dano físico.",
+    max: 100,
+  },
+  defesa: {
+    label: "Defesa",
+    icon: Shield,
+    color: "text-blue-500",
+    hex: "#3b82f6",
+    source: "Loja",
+    desc: "Reduz o dano recebido.",
+    max: 100,
+  },
+  inteligencia: {
+    label: "Inteligência",
+    icon: Brain,
+    color: "text-purple-500",
+    hex: "#a855f7",
+    source: "Eventos",
+    desc: "Aumenta dano especial.",
+    max: 100,
+  },
+  stamina: {
+    label: "Stamina",
+    icon: Zap,
+    color: "text-yellow-500",
+    hex: "#eab308",
+    source: "Esportes",
+    desc: "Energia para golpes.",
+    max: 200,
+  },
+  hp: {
+    label: "Vida",
+    icon: Heart,
+    color: "text-pink-500",
+    hex: "#ec4899",
+    source: "Nível",
+    desc: "Resistência em batalha.",
+    max: 500,
+  },
+  ataque: {
+    label: "Ataque",
+    icon: Swords,
+    color: "text-orange-500",
+    hex: "#f97316",
+    source: "Games",
+    desc: "Precisão e dano base.",
+    max: 100,
+  },
+};
+
+const SHARK_QUOTES = [
+  "O mar ficou vermelho hoje! 🩸",
+  "Aqui é Tubarão, o resto é isca! 🦈",
+  "Mordida fatal da Atlética! 🦷",
+  "Respeita a hierarquia do oceano! 🌊",
+];
+
 // ============================================================================
-// COMPONENTE PRINCIPAL - SHARK LEGENDS
+// 2. DADOS MOCKADOS
 // ============================================================================
 
-export default function SharkLegends() {
-  // Estados do Herói
-  const [hero, setHero] = useState({
-    name: "Tubarão K.N.",
-    turma: "T5",
-    level: 12,
-    xp: 2450,
-    xpToNext: 3000,
-    pointsToDistribute: 3,
-    totalWins: 47,
-    totalLosses: 18,
-    stats: {
-      inteligencia: 18,
-      forca: 24,
-      stamina: 20,
-      hp: 180,
-      ataque: 22,
-      defesa: 16,
-    } as HeroStats,
-  });
+const HERO_MOVES: Move[] = [
+  {
+    id: "m1",
+    name: "Investida",
+    type: "fisico",
+    power: 45,
+    accuracy: 95,
+    staminaCost: 10,
+    statScaling: "ataque",
+    icon: "🦈",
+    color: "bg-emerald-600",
+  },
+  {
+    id: "m2",
+    name: "Mordida",
+    type: "fisico",
+    power: 75,
+    accuracy: 85,
+    staminaCost: 25,
+    statScaling: "forca",
+    icon: "🦷",
+    color: "bg-red-600",
+  },
+  {
+    id: "m3",
+    name: "Tsunami",
+    type: "especial",
+    power: 60,
+    accuracy: 100,
+    staminaCost: 20,
+    statScaling: "inteligencia",
+    icon: "🌊",
+    color: "bg-blue-600",
+  },
+  {
+    id: "m4",
+    name: "Defesa",
+    type: "suporte",
+    power: 0,
+    accuracy: 100,
+    staminaCost: 15,
+    statScaling: "defesa",
+    icon: "🛡️",
+    color: "bg-zinc-600",
+  },
+];
 
-  // Estados de Batalha
-  const [dailyBattles, setDailyBattles] = useState(5);
-  const [selectedTab, setSelectedTab] = useState<
-    "battle" | "stats" | "ranking"
-  >("battle");
-  const [battleState, setBattleState] = useState<
-    "idle" | "selecting" | "rolling" | "result"
-  >("idle");
-  const [selectedAttribute, setSelectedAttribute] = useState<
-    keyof HeroStats | null
-  >(null);
-  const [opponent, setOpponent] = useState<Opponent | null>(null);
-  const [battleResult, setBattleResult] = useState<{
-    winner: "hero" | "opponent";
-    attribute: keyof HeroStats;
-    heroValue: number;
-    opponentValue: number;
-    xpGained: number;
-  } | null>(null);
-  const [diceRolling, setDiceRolling] = useState(false);
-  const [chosenByDice, setChosenByDice] = useState<"hero" | "opponent" | null>(
-    null
-  );
+const BATTLE_HISTORY_MOCK: BattleHistoryItem[] = [
+  {
+    id: 1,
+    opponentName: "ShadowBlade",
+    opponentAvatar: "shadow",
+    opponentProfileImage: "https://i.pravatar.cc/150?u=101",
+    opponentLevel: 14,
+    result: "victory",
+    date: "Hoje",
+    opponentId: 101,
+  },
+  {
+    id: 2,
+    opponentName: "BoneCrusher",
+    opponentAvatar: "skeleton",
+    opponentProfileImage: "https://i.pravatar.cc/150?u=102",
+    opponentLevel: 16,
+    result: "defeat",
+    date: "Hoje",
+    opponentId: 102,
+  },
+  {
+    id: 3,
+    opponentName: "Valkyrie",
+    opponentAvatar: "warrior",
+    opponentProfileImage: "https://i.pravatar.cc/150?u=103",
+    opponentLevel: 12,
+    result: "victory",
+    date: "Ontem",
+    opponentId: 103,
+  },
+];
 
-  // Conquistas do usuário (simulação)
-  const [achievements] = useState<Achievement[]>([
-    {
-      id: "eventos",
-      name: "Presença VIP",
-      description: "Participar de eventos",
-      xpReward: 50,
-      icon: "🎉",
-      completed: true,
-      progress: 8,
-      total: 10,
-    },
-    {
-      id: "compras",
-      name: "Colecionador",
-      description: "Comprar itens na loja",
-      xpReward: 30,
-      icon: "🛒",
-      completed: true,
-      progress: 15,
-      total: 20,
-    },
-    {
-      id: "gymrats",
-      name: "Atleta de Elite",
-      description: "Pontos no GymRats",
-      xpReward: 100,
-      icon: "💪",
-      completed: false,
-      progress: 750,
-      total: 1000,
-    },
-    {
-      id: "quiz",
-      name: "Cérebro Afiado",
-      description: "Acertar no Quiz",
-      xpReward: 40,
-      icon: "🧠",
-      completed: false,
-      progress: 0,
-      total: 50,
-    },
-    {
-      id: "acessos",
-      name: "Frequentador",
-      description: "Acessar o app diariamente",
-      xpReward: 20,
-      icon: "📱",
-      completed: true,
-      progress: 30,
-      total: 30,
-    },
-    {
-      id: "vitorias",
-      name: "Gladiador",
-      description: "Vencer batalhas",
-      xpReward: 80,
-      icon: "⚔️",
-      completed: false,
-      progress: 47,
-      total: 100,
-    },
-  ]);
+const EXISTING_NAMES = ["Admin", "God", "Root", "Tubarão", "Mestre"];
 
-  // Lista de oponentes disponíveis
-  const opponents: Opponent[] = [
+const GENERATE_OPPONENTS = (userRank: number): Combatant[] => {
+  const list: Combatant[] = [];
+  for (let i = userRank - 5; i <= userRank + 5; i++) {
+    if (i === userRank || i <= 0) continue;
+    const levelBase = 15 + (userRank - i);
+    list.push({
+      id: i,
+      name: `Rival #${i}`,
+      avatarName: i < userRank ? "Veterano" : "Calouro",
+      level: levelBase,
+      rankPosition: i,
+      totalPower: levelBase * 45,
+      avatarType: i % 3 === 0 ? "zombie" : i % 2 === 0 ? "skeleton" : "shadow",
+      profileImage: `https://i.pravatar.cc/150?u=${i}`,
+      maxHp: 200 + levelBase * 10,
+      currentHp: 200 + levelBase * 10,
+      stats: { str: 20, int: 20, def: 20, spd: 10 },
+      expression: "normal",
+    });
+  }
+  return list;
+};
+
+const RANKING_DATA = {
+  global: [
     {
-      id: 1,
-      name: "Medusa_T3",
-      turma: "T3",
-      level: 10,
-      avatar: "zombie",
-      stats: {
-        inteligencia: 16,
-        forca: 20,
-        stamina: 18,
-        hp: 160,
-        ataque: 19,
-        defesa: 14,
-      },
-    },
-    {
-      id: 2,
-      name: "DrBones_T8",
-      turma: "T8",
-      level: 14,
-      avatar: "skeleton",
-      stats: {
-        inteligencia: 22,
-        forca: 18,
-        stamina: 16,
-        hp: 140,
-        ataque: 17,
-        defesa: 20,
-      },
-    },
-    {
-      id: 3,
-      name: "Viking_T1",
-      turma: "T1",
-      level: 11,
-      avatar: "warrior",
-      stats: {
-        inteligencia: 14,
-        forca: 26,
-        stamina: 22,
-        hp: 200,
-        ataque: 24,
-        defesa: 12,
-      },
-    },
-    {
-      id: 4,
-      name: "Shadow_T5",
+      pos: 1,
+      aluno: "Ana Clara",
+      handle: "ana",
+      avatarName: "Valkyrie",
       turma: "T5",
-      level: 13,
-      avatar: "shadow",
-      stats: {
-        inteligencia: 20,
-        forca: 22,
-        stamina: 19,
-        hp: 170,
-        ataque: 21,
-        defesa: 18,
-      },
-    },
-  ];
-
-  // Ranking individual
-  const [ranking] = useState<RankingEntry[]>([
-    {
-      position: 1,
-      name: "Titan_T2",
-      turma: "T2",
-      level: 25,
       wins: 124,
-      avatar: "warrior",
+      avatarType: "warrior",
     },
     {
-      position: 2,
-      name: "Phoenix_T4",
+      pos: 2,
+      aluno: "João Pedro",
+      handle: "joao",
+      avatarName: "Shadow",
+      turma: "T7",
+      wins: 110,
+      avatarType: "shadow",
+    },
+    {
+      pos: 3,
+      aluno: "Lucas M.",
+      handle: "lucas",
+      avatarName: "Bones",
       turma: "T4",
-      level: 23,
-      wins: 112,
-      avatar: "shadow",
-    },
-    {
-      position: 3,
-      name: "Storm_T1",
-      turma: "T1",
-      level: 22,
       wins: 98,
-      avatar: "zombie",
+      avatarType: "skeleton",
     },
-    {
-      position: 4,
-      name: "Tubarão K.N.",
-      turma: "T5",
-      level: 12,
-      wins: 47,
-      avatar: "warrior",
-    },
-    {
-      position: 5,
-      name: "Thunder_T3",
-      turma: "T3",
-      level: 11,
-      wins: 42,
-      avatar: "skeleton",
-    },
-  ]);
+  ],
+  turmas: [
+    { pos: 1, nome: "Turma V", xp: 154000, logo: "/turma5.jpeg" },
+    { pos: 2, nome: "Turma VII", xp: 121000, logo: "/turma7.jpeg" },
+    { pos: 3, nome: "Turma IV", xp: 98000, logo: "/turma4.jpeg" },
+  ],
+  minha_turma: [
+    { pos: 1, aluno: "Você", handle: "me", xp: 4500, avatar: "warrior" },
+    { pos: 2, aluno: "Mariana S.", handle: "mari", xp: 4200, avatar: "zombie" },
+    { pos: 3, aluno: "Pedro H.", handle: "pedro", xp: 3900, avatar: "shadow" },
+  ],
+};
 
-  // Ranking por turmas
-  const [turmaRanking] = useState([
-    { position: 1, turma: "T2", totalWins: 856, members: 45, avgLevel: 18 },
-    { position: 2, turma: "T4", totalWins: 742, members: 42, avgLevel: 16 },
-    { position: 3, turma: "T5", totalWins: 698, members: 48, avgLevel: 15 },
-    { position: 4, turma: "T1", totalWins: 654, members: 40, avgLevel: 14 },
-    { position: 5, turma: "T3", totalWins: 589, members: 38, avgLevel: 13 },
-  ]);
+// ============================================================================
+// 3. COMPONENTE PRINCIPAL
+// ============================================================================
 
-  // Iniciar batalha - escolher oponente aleatório
-  const startBattle = () => {
-    if (dailyBattles <= 0) return;
-    const randomOpponent =
-      opponents[Math.floor(Math.random() * opponents.length)];
-    setOpponent(randomOpponent);
-    setBattleState("selecting");
-    setBattleResult(null);
-    setSelectedAttribute(null);
-    setChosenByDice(null);
+export default function SharkLegendsPage() {
+  const { addToast } = useToast();
+
+  // Estados Heroi
+  const [heroColors, setHeroColors] = useState<CustomColors>({
+    skin: "#d97706",
+    hair: "#78350f",
+    armor: "#047857",
+    accent: "#10b981",
+  });
+  const [heroName, setHeroName] = useState("Lendário");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(heroName);
+  const [heroStats] = useState<HeroStats>({
+    forca: 65,
+    inteligencia: 48,
+    stamina: 150,
+    hp: 300,
+    ataque: 55,
+    defesa: 42,
+  });
+  const totalPower = Object.values(heroStats).reduce((a, b) => a + b, 0);
+
+  // Estados UI
+  const [activeTab, setActiveTab] = useState<
+    "arena" | "stats" | "ranking" | "visual"
+  >("arena");
+  const [showOpponentList, setShowOpponentList] = useState(false);
+  const [rankingSubTab, setRankingSubTab] = useState<
+    "global" | "turmas" | "minha_turma"
+  >("global");
+
+  // Estados Batalha
+  const [battleState, setBattleState] = useState<
+    "idle" | "combat" | "victory" | "defeat"
+  >("idle");
+  const [hero, setHero] = useState<Combatant | null>(null);
+  const [enemy, setEnemy] = useState<Combatant | null>(null);
+  const [battleLog, setBattleLog] = useState<string[]>([]);
+  const [floatingEffects, setFloatingEffects] = useState<BattleEffect[]>([]);
+  const [turn, setTurn] = useState<"player" | "enemy">("player");
+  const [dailyBattles, setDailyBattles] = useState(5);
+  const [visualExpression, setVisualExpression] =
+    useState<Expression>("normal");
+
+  // Estado Share
+  const [isSharing, setIsSharing] = useState(false);
+
+  // Refs
+  const battleLogRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const enemyRef = useRef<HTMLDivElement>(null);
+  const resultCardRef = useRef<HTMLDivElement>(null); // REF PARA O PRINT
+
+  useEffect(() => {
+    if (battleLogRef.current)
+      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+  }, [battleLog]);
+
+  useEffect(() => {
+    if (activeTab === "visual") {
+      const interval = setInterval(() => {
+        const exps: Expression[] = ["normal", "happy", "angry", "normal"];
+        setVisualExpression(exps[Math.floor(Math.random() * exps.length)]);
+      }, 1500);
+      return () => clearInterval(interval);
+    } else {
+      setVisualExpression("normal");
+    }
+  }, [activeTab]);
+
+  const calculateRadarPolygon = () => {
+    const statsKeys: (keyof HeroStats)[] = [
+      "forca",
+      "inteligencia",
+      "defesa",
+      "stamina",
+      "hp",
+      "ataque",
+    ];
+    const points = statsKeys.map((key, i) => {
+      const angle = i * 60;
+      const rad = (angle * Math.PI) / 180;
+      const value = heroStats[key];
+      const max = STAT_CONFIG[key].max || 100;
+      const normalized = Math.min(value / max, 1);
+      const radius = normalized * 40;
+      const x = 50 + radius * Math.sin(rad);
+      const y = 50 - radius * Math.cos(rad);
+      return `${x},${y}`;
+    });
+    return points.join(" ");
   };
 
-  // Selecionar atributo para batalha
-  const selectAttribute = (attr: keyof HeroStats) => {
-    setSelectedAttribute(attr);
+  const handleSaveName = () => {
+    if (EXISTING_NAMES.includes(tempName)) {
+      addToast("Nome já existe!", "error");
+      return;
+    }
+    if (tempName.length < 3) {
+      addToast("Muito curto!", "error");
+      return;
+    }
+    setHeroName(tempName);
+    setIsEditingName(false);
+    addToast("Nome atualizado!", "success");
   };
 
-  // Confirmar batalha e rolar dado
-  const confirmBattle = () => {
-    if (!selectedAttribute || !opponent) return;
+  const startBattle = (selectedOpponent: Combatant) => {
+    if (dailyBattles <= 0) {
+      addToast("Sem energia!", "error");
+      return;
+    }
+    setDailyBattles((prev) => prev - 1);
+    setShowOpponentList(false);
 
-    setBattleState("rolling");
-    setDiceRolling(true);
+    setHero({
+      id: 0,
+      name: "Você",
+      avatarName: heroName,
+      level: 15,
+      avatarType: "warrior",
+      customColors: heroColors,
+      maxHp: heroStats.hp,
+      currentHp: heroStats.hp,
+      profileImage: "https://github.com/shadcn.png", // MOCK IMG
+      stats: {
+        str: heroStats.forca,
+        int: heroStats.inteligencia,
+        def: heroStats.defesa,
+        spd: 10,
+      },
+      expression: "normal",
+      rankPosition: 42,
+      totalPower: totalPower,
+    });
+    setEnemy(selectedOpponent);
+    setBattleState("combat");
+    setBattleLog([`BATALHA: Você vs ${selectedOpponent.name}!`]);
+    setTurn("player");
+  };
 
-    // Simular rolagem do dado
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const spawnEffect = (
+    type: "damage" | "miss" | "critical" | "heal",
+    value: string | number,
+    target: "hero" | "enemy"
+  ) => {
+    const id = Math.random().toString();
+    const x = target === "hero" ? "25%" : "75%";
+    const y = target === "hero" ? "50%" : "20%";
+    setFloatingEffects((prev) => [...prev, { id, type, value, x, y }]);
+    setTimeout(
+      () => setFloatingEffects((prev) => prev.filter((e) => e.id !== id)),
+      2000
+    );
+  };
+
+  const handleAttack = async (move: Move) => {
+    if (turn !== "player" || !hero || !enemy) return;
+    setHero((prev) => (prev ? { ...prev, expression: "angry" } : null));
+    if (heroRef.current) heroRef.current.classList.add("animate-lung-right");
+
+    const hitChance = Math.random() * 100;
+    if (hitChance > move.accuracy) {
+      await wait(500);
+      spawnEffect("miss", "MISS", "enemy");
+      setBattleLog((prev) => [...prev, `Errou o ataque!`]);
+    } else {
+      let isCrit = Math.random() < 0.15;
+      let damage = Math.floor(
+        move.power * (isCrit ? 1.5 : 1) +
+          hero.stats.str * 0.5 -
+          enemy.stats.def * 0.3
+      );
+      damage = Math.max(5, damage);
+      await wait(500);
+      setEnemy((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentHp: Math.max(0, prev.currentHp - damage),
+              expression: "pain",
+            }
+          : null
+      );
+      spawnEffect(isCrit ? "critical" : "damage", damage, "enemy");
+      setBattleLog((prev) => [
+        ...prev,
+        `Causou ${damage}${isCrit ? " (CRÍTICO!)" : ""}`,
+      ]);
+      if (enemy.currentHp - damage <= 0) {
+        setTimeout(() => {
+          setEnemy((prev) => (prev ? { ...prev, expression: "dead" } : null));
+          setBattleState("victory");
+        }, 1000);
+        return;
+      }
+    }
     setTimeout(() => {
-      // Dado decide qual atributo será usado (50/50 entre herói e oponente)
-      const useHeroAttribute = Math.random() > 0.5;
-      setChosenByDice(useHeroAttribute ? "hero" : "opponent");
+      if (heroRef.current)
+        heroRef.current.classList.remove("animate-lung-right");
+      setHero((prev) => (prev ? { ...prev, expression: "normal" } : null));
+      setEnemy((prev) => (prev ? { ...prev, expression: "normal" } : null));
+      setTurn("enemy");
+      handleEnemyTurn();
+    }, 1000);
+  };
 
-      // Se o dado escolher oponente, usar atributo aleatório do oponente
-      const finalAttribute = useHeroAttribute
-        ? selectedAttribute
-        : (Object.keys(opponent.stats) as (keyof HeroStats)[])[
-            Math.floor(Math.random() * 6)
-          ];
+  const handleEnemyTurn = async () => {
+    if (!hero || !enemy) return;
+    await wait(1000);
+    setEnemy((prev) => (prev ? { ...prev, expression: "angry" } : null));
+    if (enemyRef.current) enemyRef.current.classList.add("animate-lung-left");
+    let damage = Math.floor(20 + Math.random() * 10);
+    const isHit = Math.random() > 0.1;
+    if (!isHit) {
+      spawnEffect("miss", "MISS", "hero");
+      setBattleLog((prev) => [...prev, `${enemy.name} errou!`]);
+    } else {
+      setHero((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentHp: Math.max(0, prev.currentHp - damage),
+              expression: "pain",
+            }
+          : null
+      );
+      spawnEffect("damage", damage, "hero");
+      setBattleLog((prev) => [...prev, `Sofreu ${damage} dano.`]);
+      if (hero.currentHp - damage <= 0) {
+        setTimeout(() => {
+          setHero((prev) => (prev ? { ...prev, expression: "dead" } : null));
+          setBattleState("defeat");
+        }, 1000);
+        return;
+      }
+    }
+    setTimeout(() => {
+      if (enemyRef.current)
+        enemyRef.current.classList.remove("animate-lung-left");
+      setHero((prev) => (prev ? { ...prev, expression: "normal" } : null));
+      setEnemy((prev) => (prev ? { ...prev, expression: "normal" } : null));
+      setTurn("player");
+    }, 1000);
+  };
 
-      const heroValue = hero.stats[finalAttribute];
-      const opponentValue = opponent.stats[finalAttribute];
+  // --- COMPARTILHAMENTO COM FOTO REAL (CORS Habilitado) ---
+  const handleShare = async () => {
+    if (!resultCardRef.current) return;
+    setIsSharing(true);
 
-      const winner = heroValue >= opponentValue ? "hero" : "opponent";
-      const xpGained = winner === "hero" ? 80 + opponent.level * 5 : 10;
-
-      setDiceRolling(false);
-      setBattleState("result");
-      setBattleResult({
-        winner,
-        attribute: finalAttribute,
-        heroValue,
-        opponentValue,
-        xpGained,
+    try {
+      // Captura o card ignorando os botões
+      const canvas = await html2canvas(resultCardRef.current, {
+        useCORS: true, // Permite carregar fotos de perfil externas
+        backgroundColor: null,
+        scale: 2, // Melhor qualidade
+        ignoreElements: (element) =>
+          element.hasAttribute("data-html2canvas-ignore"),
       });
 
-      // Atualizar stats
-      setDailyBattles((prev) => prev - 1);
-      if (winner === "hero") {
-        setHero((prev) => ({
-          ...prev,
-          xp: prev.xp + xpGained,
-          totalWins: prev.totalWins + 1,
-        }));
-      } else {
-        setHero((prev) => ({
-          ...prev,
-          xp: prev.xp + xpGained,
-          totalLosses: prev.totalLosses + 1,
-        }));
-      }
-    }, 2000);
-  };
+      // Converte para Blob (Imagem)
+      canvas.toBlob(async (blob) => {
+        if (!blob) throw new Error("Erro ao gerar imagem.");
 
-  // Distribuir ponto de atributo
-  const distributePoint = (stat: keyof HeroStats) => {
-    if (hero.pointsToDistribute <= 0) return;
-    setHero((prev) => ({
-      ...prev,
-      pointsToDistribute: prev.pointsToDistribute - 1,
-      stats: {
-        ...prev.stats,
-        [stat]: prev.stats[stat] + (stat === "hp" ? 10 : 1),
-      },
-    }));
-  };
+        const file = new File([blob], "shark-battle.png", {
+          type: "image/png",
+        });
+        const text = `🦈 O Tubarão ${hero?.name} amassou na arena da AAAKN! Vem ver quem é o rei do mar!`;
+        const url = window.location.href;
 
-  // Resetar batalha
-  const resetBattle = () => {
-    setBattleState("idle");
-    setOpponent(null);
-    setBattleResult(null);
-    setSelectedAttribute(null);
-    setChosenByDice(null);
-  };
+        // Tenta compartilhar nativamente (Mobile)
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: "Batalha Shark Legends",
+            text: text,
+            files: [file],
+            url: url,
+          });
+          addToast("Compartilhado com sucesso!", "success");
+        } else {
+          // Fallback PC: Baixa a imagem e copia o texto
+          const link = document.createElement("a");
+          link.href = canvas.toDataURL("image/png");
+          link.download = "shark-battle-result.png";
+          link.click();
 
-  // Compartilhar vitória
-  const shareVictory = () => {
-    const text = encodeURIComponent(
-      `⚔️ SHARK LEGENDS - AAAKN\n\n🏆 Acabei de vencer uma batalha!\n👤 Level: ${hero.level}\n🎯 Vitórias: ${hero.totalWins}\n\nVenha me desafiar! 🦈`
-    );
-    window.open(`https://wa.me/?text=${text}`, "_blank");
-  };
-
-  // Calcular progresso de XP
-  const xpProgress = (hero.xp / hero.xpToNext) * 100;
-
-  // Labels dos atributos
-  const statLabels: Record<
-    keyof HeroStats,
-    { label: string; icon: React.ReactNode; color: string }
-  > = {
-    inteligencia: {
-      label: "INT",
-      icon: <Brain size={14} />,
-      color: "bg-purple-500",
-    },
-    forca: { label: "FOR", icon: <Flame size={14} />, color: "bg-red-500" },
-    stamina: { label: "STA", icon: <Zap size={14} />, color: "bg-yellow-500" },
-    hp: { label: "HP", icon: <Heart size={14} />, color: "bg-pink-500" },
-    ataque: {
-      label: "ATK",
-      icon: <Swords size={14} />,
-      color: "bg-orange-500",
-    },
-    defesa: { label: "DEF", icon: <Shield size={14} />, color: "bg-blue-500" },
+          await navigator.clipboard.writeText(`${text}\n${url}`);
+          addToast("Imagem baixada e texto copiado!", "success");
+        }
+      }, "image/png");
+    } catch (err) {
+      console.error("Erro ao compartilhar:", err);
+      addToast("Erro ao compartilhar. Tente novamente.", "error");
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white pb-24 font-mono">
+    <div className="min-h-screen bg-black text-white font-mono pb-24 selection:bg-emerald-500">
       {/* HEADER */}
-      <header className="bg-gradient-to-b from-emerald-950 to-black p-4 sticky top-0 z-20 border-b border-emerald-900/50">
-        <div className="flex items-center justify-between mb-4">
-          <Link
-            href="/menu"
-            className="p-2 bg-black/50 rounded-lg border border-emerald-900/50"
-          >
-            <ArrowLeft size={20} className="text-emerald-400" />
-          </Link>
-          <div className="text-center">
-            <h1 className="text-xl font-black text-emerald-400 tracking-wider uppercase">
-              Shark Legends
-            </h1>
-            <p className="text-[10px] text-emerald-600 tracking-widest">
-              PIXEL HEROES ARENA
-            </p>
-          </div>
-          <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-lg border border-emerald-900/50">
-            <Swords size={14} className="text-emerald-400" />
-            <span className="text-sm font-bold text-emerald-400">
-              {dailyBattles}/5
-            </span>
-          </div>
-        </div>
-
-        {/* Hero Card Mini */}
-        <div className="bg-black/50 rounded-xl p-3 border border-emerald-900/30">
-          <div className="flex items-center gap-3">
-            {/* Avatar Pixel */}
-            <div className="relative">
-              <PixelAvatar type="warrior" size="small" />
-              <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1.5 rounded">
-                {hero.level}
-              </div>
-            </div>
-            <div className="flex-1">
-              <h2 className="font-bold text-white text-sm">{hero.name}</h2>
-              <p className="text-[10px] text-emerald-500">
-                {hero.turma} • {hero.totalWins}W / {hero.totalLosses}L
-              </p>
-              {/* XP Bar */}
-              <div className="mt-1">
-                <div className="flex justify-between text-[8px] text-zinc-500 mb-0.5">
-                  <span>XP</span>
-                  <span>
-                    {hero.xp}/{hero.xpToNext}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
-                    style={{ width: `${xpProgress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-            {hero.pointsToDistribute > 0 && (
-              <div className="bg-yellow-500 text-black text-[10px] font-black px-2 py-1 rounded animate-pulse">
-                +{hero.pointsToDistribute} PTS
-              </div>
-            )}
-          </div>
+      <header className="p-4 bg-zinc-900 border-b border-zinc-800 sticky top-0 z-30 flex justify-between items-center shadow-lg">
+        <Link
+          href="/menu"
+          className="bg-black p-2 rounded-full border border-zinc-700"
+        >
+          <ArrowLeft size={20} />
+        </Link>
+        <h1 className="text-emerald-500 font-black uppercase tracking-widest text-lg flex items-center gap-2">
+          <Gamepad2 size={24} /> Shark RPG
+        </h1>
+        <div className="bg-black px-3 py-1 rounded-full border border-emerald-900 text-xs font-bold text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+          {dailyBattles}/5 Lutas
         </div>
       </header>
 
       {/* TABS */}
-      <div className="flex border-b border-zinc-900 bg-zinc-950 sticky top-[180px] z-10">
-        {[
-          { id: "battle", label: "Arena", icon: <Swords size={16} /> },
-          { id: "stats", label: "Stats", icon: <Sparkles size={16} /> },
-          { id: "ranking", label: "Ranking", icon: <Trophy size={16} /> },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setSelectedTab(tab.id as typeof selectedTab)}
-            className={`flex-1 py-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider transition-all ${
-              selectedTab === tab.id
-                ? "text-emerald-400 border-b-2 border-emerald-400 bg-emerald-950/30"
-                : "text-zinc-600 hover:text-zinc-400"
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {battleState === "idle" && !showOpponentList && (
+        <div className="flex border-b border-zinc-800 bg-black sticky top-[68px] z-20 overflow-x-auto shadow-md">
+          {[
+            { id: "arena", icon: <Swords size={16} />, label: "Arena" },
+            { id: "visual", icon: <Palette size={16} />, label: "Visual" },
+            { id: "stats", icon: <Sparkles size={16} />, label: "Stats" },
+            { id: "ranking", icon: <Trophy size={16} />, label: "Ranking" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 min-w-[80px] py-4 flex flex-col items-center gap-1 text-[10px] font-bold uppercase transition ${
+                activeTab === tab.id
+                  ? "text-emerald-400 border-b-2 border-emerald-400 bg-zinc-900"
+                  : "text-zinc-500"
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* CONTEÚDO */}
       <main className="p-4">
-        {/* TAB: ARENA DE BATALHA */}
-        {selectedTab === "battle" && (
-          <div className="space-y-4">
-            {/* Estado: Idle - Aguardando início */}
-            {battleState === "idle" && (
-              <>
-                {/* Arena Preview */}
-                <div className="bg-gradient-to-b from-zinc-900 to-black rounded-2xl p-6 border border-zinc-800 relative overflow-hidden">
-                  <div className="absolute inset-0 opacity-10">
-                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSIjMGZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPjwvc3ZnPg==')] bg-repeat" />
-                  </div>
-
-                  <div className="relative flex flex-col items-center">
-                    <PixelAvatar type="warrior" size="large" />
-                    <h3 className="mt-4 text-lg font-black text-white">
-                      {hero.name}
-                    </h3>
-                    <p className="text-emerald-500 text-sm">
-                      Level {hero.level} • {hero.turma}
-                    </p>
-
-                    <div className="mt-4 grid grid-cols-3 gap-2 w-full max-w-xs">
-                      {(Object.keys(hero.stats) as (keyof HeroStats)[]).map(
-                        (stat) => (
-                          <div
-                            key={stat}
-                            className="bg-black/50 rounded-lg p-2 text-center border border-zinc-800"
-                          >
-                            <div
-                              className={`w-6 h-6 rounded mx-auto mb-1 flex items-center justify-center ${statLabels[stat].color}`}
-                            >
-                              {statLabels[stat].icon}
-                            </div>
-                            <p className="text-[10px] text-zinc-500 uppercase">
-                              {statLabels[stat].label}
-                            </p>
-                            <p className="text-sm font-bold text-white">
-                              {hero.stats[stat]}
-                            </p>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
+        {/* --- 1. ARENA --- */}
+        {activeTab === "arena" &&
+          !showOpponentList &&
+          battleState === "idle" && (
+            <div className="flex flex-col items-center space-y-8 animate-in fade-in zoom-in duration-300">
+              <div className="relative group text-center mt-6">
+                <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full group-hover:bg-emerald-500/30 transition"></div>
+                <div className="relative z-10 transform scale-150 transition group-hover:scale-[1.6] mb-6 mx-auto w-fit">
+                  <PixelAvatar
+                    type="warrior"
+                    customColors={heroColors}
+                    expression="normal"
+                  />
                 </div>
+                <h2 className="text-2xl font-black text-white uppercase italic mt-12 drop-shadow-lg">
+                  {heroName}
+                </h2>
+                <p className="text-emerald-500 text-xs font-bold uppercase tracking-widest">
+                  Nível 15 • Poder: {totalPower}
+                </p>
+              </div>
 
-                {/* Botão de Batalha */}
-                <button
-                  onClick={startBattle}
-                  disabled={dailyBattles <= 0}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 disabled:from-zinc-800 disabled:to-zinc-700 text-white font-black py-4 rounded-xl uppercase tracking-widest text-lg shadow-lg shadow-emerald-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
-                >
-                  <Swords size={24} />
-                  {dailyBattles > 0
-                    ? "Encontrar Oponente"
-                    : "Batalhas Esgotadas"}
-                </button>
+              <button
+                onClick={() => setShowOpponentList(true)}
+                disabled={dailyBattles <= 0}
+                className="w-full max-w-xs bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black uppercase py-5 rounded-2xl text-xl shadow-[0_0_30px_rgba(220,38,38,0.4)] transition-all active:scale-95 flex items-center justify-center gap-3 border-b-4 border-red-800 active:border-b-0 active:translate-y-1"
+              >
+                <Swords size={24} className="animate-pulse" />{" "}
+                {dailyBattles > 0 ? "Batalhar" : "Sem Energia"}
+              </button>
 
-                {dailyBattles <= 0 && (
-                  <p className="text-center text-zinc-500 text-xs">
-                    Volte amanhã para mais batalhas!
-                  </p>
-                )}
-
-                {/* Conquistas que dão XP */}
-                <div className="mt-6">
-                  <h3 className="text-sm font-bold text-zinc-400 mb-3 flex items-center gap-2">
-                    <Star size={16} className="text-yellow-500" />
-                    Ganhe XP com Conquistas
-                  </h3>
-                  <div className="space-y-2">
-                    {achievements.map((achievement) => (
-                      <div
-                        key={achievement.id}
-                        className={`bg-zinc-900 rounded-xl p-3 border ${
-                          achievement.completed
-                            ? "border-emerald-900/50"
-                            : "border-zinc-800"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="text-2xl">{achievement.icon}</div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-bold text-white">
-                                {achievement.name}
-                              </h4>
-                              <span className="text-emerald-400 text-xs font-bold">
-                                +{achievement.xpReward} XP
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-zinc-500">
-                              {achievement.description}
-                            </p>
-                            <div className="mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full transition-all ${
-                                  achievement.completed
-                                    ? "bg-emerald-500"
-                                    : "bg-zinc-600"
-                                }`}
-                                style={{
-                                  width: `${
-                                    (achievement.progress / achievement.total) *
-                                    100
-                                  }%`,
-                                }}
-                              />
-                            </div>
-                            <p className="text-[9px] text-zinc-600 mt-0.5">
-                              {achievement.progress}/{achievement.total}
-                            </p>
+              {/* HISTÓRICO */}
+              <div className="w-full max-w-sm mt-4">
+                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <History size={14} /> Últimas Batalhas
+                </h3>
+                <div className="space-y-3">
+                  {BATTLE_HISTORY_MOCK.map((fight) => (
+                    <div
+                      key={fight.id}
+                      className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center justify-between shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex -space-x-3">
+                          <Link
+                            href={`/perfil/${fight.opponentId}`}
+                            className="w-10 h-10 rounded-full border-2 border-zinc-800 overflow-hidden relative z-10 hover:scale-110 transition hover:z-20"
+                          >
+                            <img
+                              src={fight.opponentProfileImage}
+                              className="w-full h-full object-cover"
+                            />
+                          </Link>
+                          <div className="w-10 h-10 rounded-full border-2 border-zinc-800 bg-zinc-950 flex items-center justify-center relative z-0 overflow-hidden">
+                            <PixelAvatar
+                              type={fight.opponentAvatar as any}
+                              size="tiny"
+                              className="scale-75 mt-1"
+                            />
                           </div>
                         </div>
+                        <div>
+                          <Link
+                            href={`/perfil/${fight.opponentId}`}
+                            className="text-xs font-bold text-white hover:text-emerald-400 hover:underline"
+                          >
+                            {fight.opponentName}
+                          </Link>
+                          <p className="text-[10px] text-zinc-500">
+                            Nível {fight.opponentLevel} • {fight.date}
+                          </p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Estado: Selecionando atributo */}
-            {battleState === "selecting" && opponent && (
-              <div className="space-y-4">
-                {/* VS Display */}
-                <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-                  <div className="flex items-center justify-around">
-                    <div className="text-center">
-                      <PixelAvatar type="warrior" size="medium" />
-                      <p className="mt-2 text-sm font-bold text-white">
-                        {hero.name}
-                      </p>
-                      <p className="text-[10px] text-emerald-500">
-                        Lv.{hero.level}
-                      </p>
-                    </div>
-                    <div className="text-3xl font-black text-red-500 animate-pulse">
-                      VS
-                    </div>
-                    <div className="text-center">
-                      <PixelAvatar
-                        type={opponent.avatar as any}
-                        size="medium"
-                      />
-                      <p className="mt-2 text-sm font-bold text-white">
-                        {opponent.name}
-                      </p>
-                      <p className="text-[10px] text-zinc-500">
-                        Lv.{opponent.level}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Seleção de Atributo */}
-                <div className="bg-zinc-950 rounded-2xl p-4 border border-zinc-800">
-                  <h3 className="text-center text-sm font-bold text-zinc-400 mb-4">
-                    <Dices className="inline mr-2" size={16} />
-                    Escolha seu atributo de batalha
-                  </h3>
-                  <p className="text-center text-[10px] text-zinc-600 mb-4">
-                    O dado decidirá se seu atributo ou o do oponente será usado!
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.keys(hero.stats) as (keyof HeroStats)[]).map(
-                      (stat) => (
-                        <button
-                          key={stat}
-                          onClick={() => selectAttribute(stat)}
-                          className={`p-3 rounded-xl border-2 transition-all ${
-                            selectedAttribute === stat
-                              ? "border-emerald-500 bg-emerald-950/50"
-                              : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center ${statLabels[stat].color}`}
-                            >
-                              {statLabels[stat].icon}
-                            </div>
-                            <div className="text-left">
-                              <p className="text-xs font-bold text-white uppercase">
-                                {statLabels[stat].label}
-                              </p>
-                              <p className="text-lg font-black text-emerald-400">
-                                {hero.stats[stat]}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                {/* Botões de Ação */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={resetBattle}
-                    className="flex-1 bg-zinc-800 text-zinc-400 font-bold py-3 rounded-xl"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={confirmBattle}
-                    disabled={!selectedAttribute}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-black py-3 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2"
-                  >
-                    <Dices size={18} />
-                    Rolar Dado
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Estado: Rolando dado */}
-            {battleState === "rolling" && opponent && (
-              <div className="space-y-4">
-                <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 text-center">
-                  <div className="flex items-center justify-around mb-6">
-                    <div className="text-center">
-                      <PixelAvatar type="warrior" size="medium" />
-                      <p className="mt-2 text-sm font-bold text-white">
-                        {hero.name}
-                      </p>
-                    </div>
-                    <div
-                      className={`text-5xl ${
-                        diceRolling ? "animate-spin" : ""
-                      }`}
-                    >
-                      🎲
-                    </div>
-                    <div className="text-center">
-                      <PixelAvatar
-                        type={opponent.avatar as any}
-                        size="medium"
-                      />
-                      <p className="mt-2 text-sm font-bold text-white">
-                        {opponent.name}
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="text-emerald-400 font-bold animate-pulse">
-                    Rolando o dado...
-                  </p>
-                  <p className="text-zinc-500 text-xs mt-2">
-                    Decidindo qual atributo será usado na batalha
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Estado: Resultado */}
-            {battleState === "result" && opponent && battleResult && (
-              <div className="space-y-4">
-                {/* Resultado Principal */}
-                <div
-                  className={`rounded-2xl p-6 border-2 text-center ${
-                    battleResult.winner === "hero"
-                      ? "bg-gradient-to-b from-emerald-950 to-black border-emerald-500"
-                      : "bg-gradient-to-b from-red-950 to-black border-red-500"
-                  }`}
-                >
-                  <div className="text-6xl mb-4">
-                    {battleResult.winner === "hero" ? "🏆" : "💀"}
-                  </div>
-                  <h2
-                    className={`text-2xl font-black uppercase tracking-wider ${
-                      battleResult.winner === "hero"
-                        ? "text-emerald-400"
-                        : "text-red-400"
-                    }`}
-                  >
-                    {battleResult.winner === "hero" ? "Vitória!" : "Derrota!"}
-                  </h2>
-
-                  <div className="mt-4 bg-black/50 rounded-xl p-4">
-                    <p className="text-zinc-400 text-xs mb-2">
-                      Dado escolheu:{" "}
-                      <span className="text-white font-bold">
-                        {chosenByDice === "hero"
-                          ? "Seu atributo"
-                          : "Atributo do oponente"}
-                      </span>
-                    </p>
-                    <p className="text-zinc-400 text-xs mb-3">
-                      Atributo usado:{" "}
-                      <span
-                        className={`font-bold ${
-                          statLabels[battleResult.attribute].color
-                        } bg-clip-text`}
+                      <div
+                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                          fight.result === "victory"
+                            ? "bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                            : "bg-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]"
+                        }`}
                       >
-                        {statLabels[battleResult.attribute].label}
-                      </span>
-                    </p>
-
-                    <div className="flex items-center justify-around">
-                      <div>
-                        <p className="text-xs text-zinc-500">Você</p>
-                        <p
-                          className={`text-2xl font-black ${
-                            battleResult.winner === "hero"
-                              ? "text-emerald-400"
-                              : "text-zinc-400"
-                          }`}
-                        >
-                          {battleResult.heroValue}
-                        </p>
+                        {fight.result === "victory" ? "Vitória" : "Derrota"}
                       </div>
-                      <div className="text-zinc-600">vs</div>
-                      <div>
-                        <p className="text-xs text-zinc-500">Oponente</p>
-                        <p
-                          className={`text-2xl font-black ${
-                            battleResult.winner === "opponent"
-                              ? "text-red-400"
-                              : "text-zinc-400"
-                          }`}
-                        >
-                          {battleResult.opponentValue}
-                        </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+        {/* --- 1.1 MATCHMAKING --- */}
+        {showOpponentList && (
+          <div className="animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center gap-2 mb-4">
+              <button
+                onClick={() => setShowOpponentList(false)}
+                className="p-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 text-white"
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <h2 className="font-bold text-lg text-white">
+                Escolha seu Oponente
+              </h2>
+            </div>
+            <div className="space-y-3 pb-4">
+              {GENERATE_OPPONENTS(42).map((opp) => (
+                <div
+                  key={opp.id}
+                  className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-center justify-between hover:border-emerald-500/50 transition cursor-pointer"
+                  onClick={() => startBattle(opp)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div className="absolute -top-2 -left-2 bg-zinc-800 text-[9px] px-1.5 rounded font-bold border border-zinc-700 text-white z-20">
+                        #{opp.rankPosition}
+                      </div>
+                      <div className="flex -space-x-2">
+                        <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-900 overflow-hidden z-10">
+                          <img
+                            src={opp.profileImage}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-zinc-950 border-2 border-zinc-900 overflow-hidden flex items-center justify-center relative">
+                          <PixelAvatar
+                            type={opp.avatarType}
+                            size="tiny"
+                            className="scale-90 mt-2"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-sm">
+                        {opp.name}
+                      </h3>
+                      <div className="flex items-center gap-3 text-[10px] text-zinc-400">
+                        <span className="flex items-center gap-1 text-yellow-500 font-bold">
+                          <Zap size={10} /> {opp.totalPower}
+                        </span>
+                        <span>Lv.{opp.level}</span>
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-4 flex items-center justify-center gap-2 text-yellow-400">
-                    <Star size={18} />
-                    <span className="font-bold">
-                      +{battleResult.xpGained} XP
-                    </span>
-                  </div>
-                </div>
-
-                {/* Botões */}
-                <div className="flex gap-3">
-                  {battleResult.winner === "hero" && (
-                    <button
-                      onClick={shareVictory}
-                      className="flex-1 bg-[#25D366] text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                    >
-                      <Share2 size={18} />
-                      Compartilhar
-                    </button>
-                  )}
-                  <button
-                    onClick={resetBattle}
-                    className="flex-1 bg-zinc-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                  >
-                    <RefreshCw size={18} />
-                    {dailyBattles > 0 ? "Nova Batalha" : "Voltar"}
+                  <button className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-black uppercase hover:bg-emerald-500 shadow-lg">
+                    Lutar
                   </button>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         )}
 
-        {/* TAB: STATS E DISTRIBUIÇÃO */}
-        {selectedTab === "stats" && (
-          <div className="space-y-4">
-            {/* Avatar Grande */}
-            <div className="bg-gradient-to-b from-zinc-900 to-black rounded-2xl p-6 border border-zinc-800 text-center">
-              <PixelAvatar type="warrior" size="large" />
-              <h3 className="mt-4 text-xl font-black text-white">
-                {hero.name}
-              </h3>
-              <p className="text-emerald-500">
-                Level {hero.level} • {hero.turma}
-              </p>
+        {/* --- TELA DE BATALHA --- */}
+        {battleState !== "idle" && (
+          <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+            <div
+              className="flex-1 relative bg-cover bg-center overflow-hidden animate-battle-bg"
+              style={{ backgroundImage: `url('/battle-forest.png')` }}
+            >
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"></div>
+              {floatingEffects.map((effect) => (
+                <div
+                  key={effect.id}
+                  className={`absolute z-50 font-black animate-float-up pointer-events-none text-shadow-lg ${
+                    effect.type === "damage"
+                      ? "text-red-500 text-3xl"
+                      : effect.type === "miss"
+                      ? "text-zinc-400 text-2xl"
+                      : effect.type === "critical"
+                      ? "text-yellow-400 text-4xl"
+                      : "text-emerald-400 text-2xl"
+                  }`}
+                  style={{ left: effect.x, top: effect.y }}
+                >
+                  {effect.type === "critical" ? "CRIT!" : ""}
+                  {effect.value}
+                </div>
+              ))}
 
-              {hero.pointsToDistribute > 0 && (
-                <div className="mt-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-2">
-                  <p className="text-yellow-400 text-sm font-bold">
-                    {hero.pointsToDistribute} pontos para distribuir!
-                  </p>
+              {/* INIMIGO HUD */}
+              {enemy && (
+                <div className="absolute top-[5%] right-[5%] flex flex-col items-center w-40 animate-in slide-in-from-right duration-500 z-30 gap-2">
+                  <div className="bg-black/80 backdrop-blur-md p-2 rounded-lg border border-red-900/50 w-full shadow-lg">
+                    <div className="flex justify-between w-full mb-1">
+                      <span className="font-bold text-white text-xs drop-shadow-md">
+                        {enemy.name}
+                      </span>
+                      <span className="text-[10px] text-red-400 font-bold">
+                        Lv.{enemy.level}
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-600 relative">
+                      <div
+                        className="h-full bg-red-500 transition-all duration-300"
+                        style={{
+                          width: `${(enemy.currentHp / enemy.maxHp) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
+                    <div className="text-[9px] text-right text-white font-bold mt-0.5">
+                      {enemy.currentHp}/{enemy.maxHp}
+                    </div>
+                  </div>
+                  <div
+                    ref={enemyRef}
+                    className="transform scale-110 transition-transform duration-300 relative z-10"
+                  >
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-4 bg-black/50 blur-sm rounded-[100%]"></div>
+                    <PixelAvatar
+                      type={enemy.avatarType}
+                      expression={enemy.expression}
+                      size="medium"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* HEROI HUD (CORRIGIDO PARA CIMA) */}
+              {hero && (
+                <div className="absolute bottom-[2%] left-[5%] w-40 animate-in slide-in-from-left duration-500 z-30 flex flex-col items-center gap-4">
+                  {/* HUD (Order: 1) */}
+                  <div className="bg-black/80 backdrop-blur-md p-3 rounded-xl border border-emerald-900 shadow-xl w-full">
+                    <div className="flex justify-between w-full mb-1">
+                      <span className="font-bold text-white text-sm">
+                        {hero.avatarName}
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-bold">
+                        Lv.{hero.level}
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-zinc-900 rounded-full overflow-hidden border border-zinc-600 mb-1 relative">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-300"
+                        style={{
+                          width: `${(hero.currentHp / hero.maxHp) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
+                    <div className="text-[10px] text-right text-white font-bold">
+                      {hero.currentHp}/{hero.maxHp} HP
+                    </div>
+                  </div>
+                  {/* AVATAR (Order: 2) */}
+                  <div
+                    ref={heroRef}
+                    className="transform scale-125 transition-transform duration-300 relative z-10"
+                  >
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-black/50 blur-sm rounded-[100%]"></div>
+                    <PixelAvatar
+                      type="warrior"
+                      customColors={heroColors}
+                      expression={hero.expression}
+                      size="medium"
+                    />
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Estatísticas Detalhadas */}
-            <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-              <h3 className="text-sm font-bold text-zinc-400 mb-4 flex items-center gap-2">
-                <Sparkles size={16} className="text-emerald-400" />
-                Atributos do Herói
-              </h3>
-
-              <div className="space-y-4">
-                {(Object.keys(hero.stats) as (keyof HeroStats)[]).map(
-                  (stat) => (
-                    <div key={stat}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-6 h-6 rounded flex items-center justify-center ${statLabels[stat].color}`}
-                          >
-                            {statLabels[stat].icon}
-                          </div>
-                          <span className="text-sm font-bold text-white uppercase">
-                            {stat}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-black text-emerald-400">
-                            {hero.stats[stat]}
-                          </span>
-                          {hero.pointsToDistribute > 0 && (
-                            <button
-                              onClick={() => distributePoint(stat)}
-                              className="w-6 h-6 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-bold text-xs"
-                            >
-                              +
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${statLabels[stat].color} transition-all duration-500`}
-                          style={{
-                            width: `${Math.min(
-                              (hero.stats[stat] / (stat === "hp" ? 300 : 50)) *
-                                100,
-                              100
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )
-                )}
+            {/* UI Controle */}
+            <div className="bg-zinc-950 border-t-4 border-zinc-800 p-4 pb-8 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.8)] relative z-50">
+              <button
+                onClick={() => {
+                  setBattleState("idle");
+                  setShowOpponentList(false);
+                }}
+                className="absolute -top-10 right-4 bg-zinc-800 text-zinc-300 text-xs font-bold px-3 py-1.5 rounded-full border border-zinc-600 hover:bg-red-900 hover:text-white transition flex items-center gap-1"
+              >
+                <LogOut size={12} /> Fugir
+              </button>
+              <div
+                ref={battleLogRef}
+                className="h-16 overflow-y-auto mb-4 font-mono text-xs text-emerald-400 space-y-1 bg-black/50 p-2 rounded border border-zinc-800/50"
+              >
+                {battleLog.map((log, i) => (
+                  <div key={i}>
+                    {">"} {log}
+                  </div>
+                ))}
               </div>
+              {battleState === "combat" && (
+                <div className="grid grid-cols-2 gap-3 relative">
+                  {turn !== "player" && (
+                    <div className="absolute inset-0 bg-black/60 z-20 flex items-center justify-center rounded-xl backdrop-blur-[1px]">
+                      <span className="text-white font-black uppercase text-sm animate-pulse">
+                        Vez do Oponente...
+                      </span>
+                    </div>
+                  )}
+                  {HERO_MOVES.map((move) => (
+                    <button
+                      key={move.id}
+                      onClick={() => handleAttack(move)}
+                      disabled={turn !== "player"}
+                      className={`${move.color} text-white p-3 rounded-xl border-b-4 border-black/30 active:border-b-0 active:translate-y-1 transition flex flex-col justify-center relative overflow-hidden group shadow-md disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className="flex justify-between items-center w-full relative z-10">
+                        <span className="font-black uppercase text-sm">
+                          {move.name}
+                        </span>
+                        <span className="text-xl">{move.icon}</span>
+                      </div>
+                      <span className="text-[9px] opacity-80 relative z-10 self-start mt-1 bg-black/20 px-1.5 py-0.5 rounded font-bold">
+                        STA: {move.staminaCost}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(battleState === "victory" || battleState === "defeat") && (
+                <button
+                  onClick={() => {
+                    setBattleState("idle");
+                    setShowOpponentList(false);
+                  }}
+                  className={`w-full py-4 ${
+                    battleState === "victory" ? "bg-emerald-600" : "bg-red-600"
+                  } text-white font-black uppercase text-xl rounded-xl border-b-8 border-black/30 animate-pulse flex items-center justify-center gap-3`}
+                >
+                  {battleState === "victory" ? (
+                    <>
+                      <Trophy /> VITÓRIA! (Continuar)
+                    </>
+                  ) : (
+                    <>
+                      <XCircle /> DERROTA... (Voltar)
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
-            {/* Histórico de Batalhas */}
-            <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-              <h3 className="text-sm font-bold text-zinc-400 mb-3 flex items-center gap-2">
-                <Swords size={16} className="text-emerald-400" />
-                Histórico de Batalhas
+            {/* MODAL DE RESULTADO (CARD "INSTAGRAMÁVEL" PARA PRINT) */}
+            {(battleState === "victory" || battleState === "defeat") && (
+              <div className="absolute inset-0 z-[10000] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-300 overflow-y-auto">
+                {/* WRAPPER DO CARD (REFERÊNCIA PARA O PRINT) */}
+                <div
+                  ref={resultCardRef}
+                  className="w-full max-w-sm bg-gradient-to-b from-zinc-900 to-black rounded-[2rem] border-2 border-zinc-800 overflow-hidden shadow-2xl relative"
+                >
+                  {/* Background Logo AAAKN */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
+                    <img
+                      src="/logo.png"
+                      className="w-2/3 h-2/3 object-contain grayscale"
+                    />
+                  </div>
+
+                  {/* Confetes se vitória */}
+                  {battleState === "victory" && (
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/confetti.png')] opacity-20 animate-pulse"></div>
+                  )}
+
+                  <div className="p-6 text-center space-y-6 relative z-10">
+                    <h2
+                      className={`text-4xl font-black uppercase italic tracking-tighter ${
+                        battleState === "victory"
+                          ? "text-emerald-500 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                          : "text-red-500"
+                      }`}
+                    >
+                      {battleState === "victory" ? "VENCEDOR!" : "DERROTA..."}
+                    </h2>
+
+                    {/* AREA VS */}
+                    <div className="flex justify-center items-center gap-4">
+                      {/* Jogador (Esquerda) */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`w-16 h-16 rounded-full border-4 overflow-hidden mb-2 relative ${
+                            battleState === "victory"
+                              ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                              : "border-zinc-700 grayscale"
+                          }`}
+                        >
+                          <img
+                            src={hero?.profileImage}
+                            className="w-full h-full object-cover"
+                            crossOrigin="anonymous"
+                          />
+                          <div className="absolute bottom-0 right-0 transform translate-x-1/4 translate-y-1/4 scale-50">
+                            <PixelAvatar
+                              type="warrior"
+                              customColors={heroColors}
+                              expression={
+                                battleState === "victory" ? "happy" : "dead"
+                              }
+                              size="tiny"
+                            />
+                          </div>
+                        </div>
+                        <span className="font-bold text-white text-xs">
+                          {hero?.name}
+                        </span>
+                      </div>
+
+                      <div className="text-2xl font-black text-zinc-600 italic">
+                        VS
+                      </div>
+
+                      {/* Inimigo (Direita) */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`w-16 h-16 rounded-full border-4 overflow-hidden mb-2 relative ${
+                            battleState === "defeat"
+                              ? "border-red-500 shadow-[0_0_20px_rgba(220,38,38,0.5)]"
+                              : "border-zinc-700 grayscale"
+                          }`}
+                        >
+                          <img
+                            src={enemy?.profileImage}
+                            className="w-full h-full object-cover"
+                            crossOrigin="anonymous"
+                          />
+                          <div className="absolute bottom-0 right-0 transform translate-x-1/4 translate-y-1/4 scale-50">
+                            <PixelAvatar
+                              type={enemy?.avatarType as any}
+                              expression={
+                                battleState === "victory" ? "dead" : "happy"
+                              }
+                              size="tiny"
+                            />
+                          </div>
+                        </div>
+                        <span className="font-bold text-white text-xs">
+                          {enemy?.name}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                      <p className="text-zinc-400 text-xs italic">
+                        "
+                        {
+                          SHARK_QUOTES[
+                            Math.floor(Math.random() * SHARK_QUOTES.length)
+                          ]
+                        }
+                        "
+                      </p>
+                      <div className="mt-2 flex justify-center gap-2">
+                        <span className="text-[10px] font-bold bg-zinc-900 px-2 py-1 rounded text-zinc-500 border border-zinc-800">
+                          AAAKN
+                        </span>
+                        <span className="text-[10px] font-bold bg-zinc-900 px-2 py-1 rounded text-zinc-500 border border-zinc-800">
+                          SharkRPG
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className="grid grid-cols-2 gap-3"
+                      data-html2canvas-ignore
+                    >
+                      <button
+                        onClick={() => {
+                          setBattleState("idle");
+                          setShowOpponentList(false);
+                        }}
+                        className="py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold uppercase text-xs hover:bg-zinc-800"
+                      >
+                        Voltar
+                      </button>
+                      <button
+                        onClick={handleShare}
+                        className="py-3 rounded-xl bg-emerald-600 text-white font-bold uppercase text-xs hover:bg-emerald-500 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
+                      >
+                        {isSharing ? (
+                          <Loader2 className="animate-spin" size={14} />
+                        ) : (
+                          <>
+                            <Share2 size={14} /> Compartilhar
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ... (Resto das abas) ... */}
+        {/* --- 2. CUSTOMIZAÇÃO VISUAL --- */}
+        {activeTab === "visual" && (
+          <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
+            <div className="bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col justify-center items-center bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] relative overflow-hidden h-72">
+              <div className="transform scale-[2.2] translate-y-4 relative z-10">
+                <PixelAvatar
+                  type="warrior"
+                  customColors={heroColors}
+                  expression={visualExpression}
+                  size="large"
+                />
+              </div>
+            </div>
+            <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-black p-2 rounded-lg border border-zinc-700">
+                  <User size={16} className="text-emerald-500" />
+                </div>
+                {isEditingName ? (
+                  <input
+                    type="text"
+                    className="bg-black border border-emerald-500 rounded px-2 py-1 text-sm text-white focus:outline-none w-32"
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    autoFocus
+                  />
+                ) : (
+                  <div>
+                    <p className="text-xs text-zinc-500 uppercase font-bold">
+                      Nome de Guerra
+                    </p>
+                    <p className="text-white font-bold">{heroName}</p>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={
+                  isEditingName ? handleSaveName : () => setIsEditingName(true)
+                }
+                className="p-2 bg-emerald-600 rounded-lg text-white hover:bg-emerald-500"
+              >
+                {isEditingName ? <Save size={16} /> : <Edit2 size={16} />}
+              </button>
+            </div>
+            <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-6">
+              <h3 className="font-bold text-white flex items-center gap-2 text-lg">
+                <Palette size={20} className="text-emerald-500" /> Oficina do
+                Herói
               </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-emerald-950/50 rounded-xl p-3 text-center border border-emerald-900/50">
-                  <p className="text-2xl font-black text-emerald-400">
-                    {hero.totalWins}
-                  </p>
-                  <p className="text-xs text-emerald-600">Vitórias</p>
+              {Object.entries({
+                skin: "Pele",
+                hair: "Cabelo",
+                armor: "Armadura",
+                accent: "Detalhe",
+              }).map(([key, label]) => (
+                <div key={key}>
+                  <label className="text-xs text-zinc-400 uppercase font-bold mb-3 block flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>{" "}
+                    {label}
+                  </label>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {[
+                      "#ef4444",
+                      "#f97316",
+                      "#eab308",
+                      "#84cc16",
+                      "#10b981",
+                      "#06b6d4",
+                      "#3b82f6",
+                      "#8b5cf6",
+                      "#d946ef",
+                      "#f43f5e",
+                      "#71717a",
+                      "#d97706",
+                      "#78350f",
+                      "#047857",
+                      "#18181b",
+                      "#ffffff",
+                    ].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() =>
+                          setHeroColors((prev) => ({ ...prev, [key]: color }))
+                        }
+                        className={`w-10 h-10 rounded-full border-4 shrink-0 transition transform hover:scale-110 shadow-sm ${
+                          heroColors[key as keyof CustomColors] === color
+                            ? "border-white scale-110 shadow-lg"
+                            : "border-zinc-800"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="bg-red-950/50 rounded-xl p-3 text-center border border-red-900/50">
-                  <p className="text-2xl font-black text-red-400">
-                    {hero.totalLosses}
-                  </p>
-                  <p className="text-xs text-red-600">Derrotas</p>
-                </div>
-              </div>
-              <div className="mt-3 text-center">
-                <p className="text-zinc-500 text-xs">Taxa de Vitória</p>
-                <p className="text-lg font-bold text-white">
-                  {(
-                    (hero.totalWins / (hero.totalWins + hero.totalLosses)) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </p>
-              </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* TAB: RANKING */}
-        {selectedTab === "ranking" && (
-          <div className="space-y-4">
-            {/* Ranking Individual */}
-            <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-              <h3 className="text-sm font-bold text-zinc-400 mb-4 flex items-center gap-2">
-                <Crown size={16} className="text-yellow-500" />
-                Ranking Individual
-              </h3>
-
-              <div className="space-y-2">
-                {ranking.map((entry, index) => (
-                  <div
-                    key={entry.position}
-                    className={`flex items-center gap-3 p-3 rounded-xl ${
-                      entry.name === hero.name
-                        ? "bg-emerald-950/50 border border-emerald-900/50"
-                        : "bg-zinc-950"
-                    }`}
+        {/* --- 3. STATS (HEXAGON 2.0) --- */}
+        {activeTab === "stats" && (
+          <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
+            <div className="bg-black border border-emerald-500/50 p-8 rounded-[2rem] text-center shadow-[0_0_40px_rgba(16,185,129,0.15)] relative overflow-hidden">
+              <div className="absolute inset-0 bg-emerald-500/5 animate-pulse"></div>
+              <p className="text-emerald-500 font-black uppercase tracking-[0.2em] text-xs mb-2 relative z-10">
+                Poder Total
+              </p>
+              <h2 className="text-7xl font-black text-white drop-shadow-[0_0_15px_rgba(16,185,129,0.8)] relative z-10 tracking-tighter">
+                {totalPower}
+              </h2>
+            </div>
+            <div className="flex justify-center py-8 relative">
+              <div className="absolute inset-0 bg-emerald-500/5 blur-3xl rounded-full"></div>
+              <div className="relative w-80 h-80">
+                <svg
+                  viewBox="0 0 100 100"
+                  className="w-full h-full overflow-visible drop-shadow-2xl"
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="#27272a"
+                    strokeWidth="0.5"
+                    strokeDasharray="2,2"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="25"
+                    fill="none"
+                    stroke="#27272a"
+                    strokeWidth="0.5"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="10"
+                    fill="#10b981"
+                    fillOpacity="0.1"
+                    stroke="none"
+                  />
+                  {[0, 60, 120, 180, 240, 300].map((angle) => {
+                    const rad = (angle * Math.PI) / 180;
+                    const x2 = 50 + 45 * Math.sin(rad);
+                    const y2 = 50 - 45 * Math.cos(rad);
+                    return (
+                      <line
+                        key={angle}
+                        x1="50"
+                        y1="50"
+                        x2={x2}
+                        y2={y2}
+                        stroke="#3f3f46"
+                        strokeWidth="0.5"
+                      />
+                    );
+                  })}
+                  <polygon
+                    points={calculateRadarPolygon()}
+                    fill="rgba(16, 185, 129, 0.2)"
+                    stroke="#10b981"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                    filter="url(#glow)"
+                    className="animate-pulse-slow"
+                  />
+                  <text
+                    x="50"
+                    y="8"
+                    textAnchor="middle"
+                    fill="#ef4444"
+                    fontSize="5"
+                    fontWeight="900"
                   >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${
-                        index === 0
-                          ? "bg-yellow-500 text-black"
-                          : index === 1
-                          ? "bg-zinc-400 text-black"
-                          : index === 2
-                          ? "bg-orange-600 text-white"
-                          : "bg-zinc-800 text-zinc-400"
-                      }`}
-                    >
-                      {entry.position}
-                    </div>
-                    <PixelAvatar type={entry.avatar as any} size="tiny" />
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-white">
-                        {entry.name}
-                      </p>
-                      <p className="text-[10px] text-zinc-500">
-                        {entry.turma} • Lv.{entry.level}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-400">
-                        {entry.wins}
-                      </p>
-                      <p className="text-[10px] text-zinc-600">vitórias</p>
-                    </div>
-                  </div>
-                ))}
+                    FORÇA
+                  </text>
+                  <text
+                    x="50"
+                    y="14"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.forca.max}
+                  </text>
+                  <text
+                    x="98"
+                    y="30"
+                    textAnchor="middle"
+                    fill="#a855f7"
+                    fontSize="5"
+                    fontWeight="900"
+                  >
+                    INT
+                  </text>
+                  <text
+                    x="98"
+                    y="36"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.inteligencia.max}
+                  </text>
+                  <text
+                    x="98"
+                    y="75"
+                    textAnchor="middle"
+                    fill="#3b82f6"
+                    fontSize="5"
+                    fontWeight="900"
+                  >
+                    DEF
+                  </text>
+                  <text
+                    x="98"
+                    y="81"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.defesa.max}
+                  </text>
+                  <text
+                    x="50"
+                    y="98"
+                    textAnchor="middle"
+                    fill="#eab308"
+                    fontSize="5"
+                    fontWeight="900"
+                  >
+                    STA
+                  </text>
+                  <text
+                    x="50"
+                    y="104"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.stamina.max}
+                  </text>
+                  <text
+                    x="2"
+                    y="75"
+                    textAnchor="middle"
+                    fill="#ec4899"
+                    fontSize="5"
+                    fontWeight="900"
+                  >
+                    HP
+                  </text>
+                  <text
+                    x="2"
+                    y="81"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.hp.max}
+                  </text>
+                  <text
+                    x="2"
+                    y="30"
+                    textAnchor="middle"
+                    fill="#f97316"
+                    fontSize="5"
+                    fontWeight="900"
+                  >
+                    ATK
+                  </text>
+                  <text
+                    x="2"
+                    y="36"
+                    textAnchor="middle"
+                    fill="#71717a"
+                    fontSize="3"
+                    fontWeight="bold"
+                  >
+                    /{STAT_CONFIG.ataque.max}
+                  </text>
+                  <defs>
+                    <filter id="glow">
+                      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                      <feMerge>
+                        <feMergeNode in="coloredBlur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+                </svg>
               </div>
             </div>
-
-            {/* Ranking por Turmas */}
-            <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-              <h3 className="text-sm font-bold text-zinc-400 mb-4 flex items-center gap-2">
-                <Users size={16} className="text-emerald-400" />
-                Ranking por Turmas
-              </h3>
-
-              <div className="space-y-2">
-                {turmaRanking.map((entry, index) => (
-                  <div
-                    key={entry.turma}
-                    className={`flex items-center gap-3 p-3 rounded-xl ${
-                      entry.turma === hero.turma
-                        ? "bg-emerald-950/50 border border-emerald-900/50"
-                        : "bg-zinc-950"
-                    }`}
-                  >
+            <div className="grid grid-cols-1 gap-4">
+              {(Object.entries(heroStats) as [keyof HeroStats, number][]).map(
+                ([key, value]) => {
+                  const conf = STAT_CONFIG[key];
+                  return (
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${
-                        index === 0
-                          ? "bg-yellow-500 text-black"
-                          : index === 1
-                          ? "bg-zinc-400 text-black"
-                          : index === 2
-                          ? "bg-orange-600 text-white"
-                          : "bg-zinc-800 text-zinc-400"
+                      key={key}
+                      className="bg-zinc-900/80 p-4 rounded-2xl border border-zinc-800 relative overflow-hidden group hover:border-zinc-600 transition shadow-lg"
+                    >
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div
+                          className={`p-3 rounded-xl bg-black border border-zinc-800 shadow-md ${conf.color}`}
+                        >
+                          <conf.icon size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center mb-1">
+                            <h3 className="font-black text-white text-lg uppercase">
+                              {conf.label}
+                            </h3>
+                            <div className="text-right">
+                              <span
+                                className={`text-2xl font-black ${conf.color} drop-shadow-md`}
+                              >
+                                {value}
+                              </span>
+                              <span className="text-[10px] text-zinc-600 font-bold block">
+                                /{conf.max}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 font-medium mb-2">
+                            {conf.desc}
+                          </p>
+                          <div className="inline-flex items-center gap-1 bg-zinc-950 px-2 py-1 rounded text-[9px] text-zinc-500 uppercase border border-zinc-800">
+                            <Search size={10} /> Origem:{" "}
+                            <span className="text-white font-bold">
+                              {conf.source}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- 4. RANKING --- */}
+        {activeTab === "ranking" && (
+          <div className="space-y-4 animate-in slide-in-from-right-8 duration-300">
+            <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+              <button
+                onClick={() => setRankingSubTab("global")}
+                className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-lg transition ${
+                  rankingSubTab === "global"
+                    ? "bg-zinc-800 text-white shadow"
+                    : "text-zinc-500"
+                }`}
+              >
+                Global
+              </button>
+              <button
+                onClick={() => setRankingSubTab("turmas")}
+                className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-lg transition ${
+                  rankingSubTab === "turmas"
+                    ? "bg-zinc-800 text-white shadow"
+                    : "text-zinc-500"
+                }`}
+              >
+                Turmas
+              </button>
+              <button
+                onClick={() => setRankingSubTab("minha_turma")}
+                className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-lg transition ${
+                  rankingSubTab === "minha_turma"
+                    ? "bg-zinc-800 text-white shadow"
+                    : "text-zinc-500"
+                }`}
+              >
+                Minha Sala
+              </button>
+            </div>
+            <div className="bg-zinc-900 rounded-2xl p-2 border border-zinc-800">
+              {rankingSubTab === "global" &&
+                RANKING_DATA.global.map((u) => (
+                  <Link
+                    href={`/perfil/${u.handle}`}
+                    key={u.pos}
+                    className="flex items-center gap-3 p-3 hover:bg-zinc-950 rounded-xl transition group border-b border-zinc-800/50 last:border-0"
+                  >
+                    <span
+                      className={`font-black w-6 text-center text-lg ${
+                        u.pos === 1
+                          ? "text-yellow-500"
+                          : u.pos === 2
+                          ? "text-zinc-400"
+                          : u.pos === 3
+                          ? "text-orange-700"
+                          : "text-zinc-600"
                       }`}
                     >
-                      {entry.position}
-                    </div>
-                    <div className="w-10 h-10 bg-emerald-900/50 rounded-lg flex items-center justify-center text-lg font-black text-emerald-400">
-                      {entry.turma}
+                      #{u.pos}
+                    </span>
+                    <div className="relative w-12 h-12 shrink-0 bg-zinc-800 rounded-lg flex items-center justify-center border border-zinc-700 overflow-hidden">
+                      <PixelAvatar type={u.avatarType as any} size="tiny" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-white">
-                        Turma {entry.turma}
+                      <p className="text-sm font-bold text-white group-hover:text-emerald-400 transition">
+                        {u.aluno}
                       </p>
-                      <p className="text-[10px] text-zinc-500">
-                        {entry.members} membros • Média Lv.{entry.avgLevel}
+                      <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider text-emerald-600">
+                        "{u.avatarName}"
                       </p>
+                      <p className="text-[10px] text-zinc-600">{u.turma}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-400">
-                        {entry.totalWins}
-                      </p>
-                      <p className="text-[10px] text-zinc-600">vitórias</p>
+                      <span className="block font-black text-emerald-500 text-lg">
+                        {u.wins}
+                      </span>
+                      <span className="text-[8px] text-zinc-600 uppercase font-bold">
+                        Vitórias
+                      </span>
                     </div>
+                    <ChevronRight size={16} className="text-zinc-700" />
+                  </Link>
+                ))}
+              {rankingSubTab === "turmas" &&
+                RANKING_DATA.turmas.map((t) => (
+                  <div
+                    key={t.pos}
+                    className="flex items-center gap-4 p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-950 rounded-xl transition"
+                  >
+                    <span className="font-black text-zinc-600 w-6 text-lg">
+                      #{t.pos}
+                    </span>
+                    <div className="w-12 h-12 rounded-full bg-black border-2 border-zinc-700 overflow-hidden shadow-lg">
+                      <img
+                        src={t.logo}
+                        className="w-full h-full object-cover"
+                        onError={(e) =>
+                          (e.currentTarget.style.display = "none")
+                        }
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-bold text-white text-base block">
+                        {t.nome}
+                      </span>
+                      <div className="w-full h-1.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-600"
+                          style={{ width: `${(t.xp / 200000) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono text-zinc-400 font-bold">
+                      {t.xp / 1000}k XP
+                    </span>
                   </div>
                 ))}
-              </div>
+              {rankingSubTab === "minha_turma" &&
+                RANKING_DATA.minha_turma.map((u) => (
+                  <Link
+                    href={`/perfil/${u.handle}`}
+                    key={u.pos}
+                    className={`flex items-center gap-3 p-3 rounded-xl mb-1 ${
+                      u.pos === 1
+                        ? "bg-emerald-900/20 border border-emerald-500/20"
+                        : "hover:bg-zinc-950"
+                    }`}
+                  >
+                    <span className="font-black text-zinc-500 w-6">
+                      #{u.pos}
+                    </span>
+                    <div className="relative w-10 h-10 shrink-0">
+                      <PixelAvatar type={u.avatar as any} size="tiny" />
+                    </div>
+                    <div className="flex-1 font-bold text-sm text-white">
+                      {u.aluno}
+                    </div>
+                    <span className="text-xs font-bold text-emerald-500">
+                      {u.xp} XP
+                    </span>
+                  </Link>
+                ))}
             </div>
           </div>
         )}
       </main>
+
+      {/* CSS PARA ANIMAÇÕES */}
+      <style jsx global>{`
+        .pixel-avatar {
+          image-rendering: pixelated;
+        }
+        .animate-float-up {
+          animation: floatUp 2s ease-out forwards;
+        }
+        @keyframes floatUp {
+          0% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(-40px) scale(1.5);
+            opacity: 0;
+          }
+        }
+        .animate-lung-right {
+          animation: lungRight 0.3s ease-out;
+        }
+        @keyframes lungRight {
+          0% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(40px);
+          }
+          100% {
+            transform: translateX(0);
+          }
+        }
+        .animate-lung-left {
+          animation: lungLeft 0.3s ease-out;
+        }
+        @keyframes lungLeft {
+          0% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(-40px);
+          }
+          100% {
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes battlePan {
+          0% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+          100% {
+            background-position: 0% 50%;
+          }
+        }
+        .animate-battle-bg {
+          animation: battlePan 20s ease infinite;
+          background-size: 120% 120%;
+        }
+        .animate-pulse-slow {
+          animation: pulseSlow 3s infinite;
+        }
+        @keyframes pulseSlow {
+          0% {
+            opacity: 0.6;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0.6;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
 // ============================================================================
-// COMPONENTE: PIXEL AVATAR
+// 4. COMPONENTE AVATAR (MANTIDO E TESTADO)
 // ============================================================================
 
 function PixelAvatar({
   type,
   size = "medium",
+  className = "",
+  expression = "normal",
+  customColors,
 }: {
-  type: "warrior" | "zombie" | "skeleton" | "shadow";
+  type: "warrior" | "zombie" | "skeleton" | "shadow" | "boss";
   size?: "tiny" | "small" | "medium" | "large";
+  className?: string;
+  expression?: Expression;
+  customColors?: CustomColors;
 }) {
   const sizeClasses = {
     tiny: "w-8 h-10",
     small: "w-12 h-16",
-    medium: "w-20 h-28",
-    large: "w-28 h-40",
+    medium: "w-24 h-32",
+    large: "w-32 h-44",
   };
-
-  const avatarStyles = {
+  const defaultStyles = {
     warrior: {
-      skin: "bg-amber-600",
-      hair: "bg-amber-900",
-      armor: "bg-emerald-700",
-      accent: "bg-emerald-500",
+      skin: "#d97706",
+      armor: "#047857",
+      hair: "#78350f",
+      accent: "#10b981",
     },
     zombie: {
-      skin: "bg-green-600",
-      hair: "bg-green-900",
-      armor: "bg-zinc-700",
-      accent: "bg-red-500",
+      skin: "#16a34a",
+      armor: "#3f3f46",
+      hair: "#14532d",
+      accent: "#ef4444",
     },
     skeleton: {
-      skin: "bg-zinc-200",
-      hair: "bg-transparent",
-      armor: "bg-zinc-600",
-      accent: "bg-zinc-400",
+      skin: "#e4e4e7",
+      armor: "#52525b",
+      hair: "transparent",
+      accent: "#a1a1aa",
     },
     shadow: {
-      skin: "bg-purple-900",
-      hair: "bg-purple-950",
-      armor: "bg-zinc-900",
-      accent: "bg-purple-500",
+      skin: "#581c87",
+      armor: "#18181b",
+      hair: "#3b0764",
+      accent: "#a855f7",
     },
+    boss: {
+      skin: "#991b1b",
+      armor: "#7f1d1d",
+      hair: "#000000",
+      accent: "#ef4444",
+    },
+  }[type] || {
+    skin: "#d97706",
+    armor: "#047857",
+    hair: "#78350f",
+    accent: "#10b981",
   };
 
-  const style = avatarStyles[type];
-
-  if (size === "tiny") {
-    return (
-      <div className={`${sizeClasses[size]} relative`}>
-        <div
-          className={`w-full h-full ${style.armor} rounded-sm border-b-2 border-r-2 border-black/30`}
-        >
-          <div
-            className={`w-3/4 h-1/3 ${style.skin} mx-auto -mt-1 rounded-sm`}
-          />
-        </div>
-      </div>
-    );
-  }
+  const colors = customColors || defaultStyles;
 
   return (
-    <div className={`${sizeClasses[size]} relative pixel-avatar`}>
-      {/* Corpo */}
+    <div className={`${sizeClasses[size]} relative pixel-avatar ${className}`}>
       <div
-        className={`w-full h-full ${style.armor} rounded-sm border-b-4 border-r-4 border-black/30 flex flex-col items-center relative overflow-hidden`}
+        className="w-full h-full rounded-sm border-b-4 border-r-4 border-black/40 flex flex-col items-center overflow-hidden shadow-2xl relative transition-colors duration-300"
+        style={{ backgroundColor: colors.armor }}
       >
-        {/* Cabeça */}
         <div
-          className={`w-3/4 h-2/5 ${style.skin} -mt-4 rounded-sm border-b-2 border-r-2 border-black/20 relative z-10`}
+          className="w-4/5 h-2/5 absolute top-0 z-0"
+          style={{ backgroundColor: colors.hair }}
+        ></div>
+        <div
+          className="w-2/3 h-1/3 mt-2 rounded-sm border-2 border-black/10 relative z-10 flex justify-center items-center transition-colors duration-300"
+          style={{ backgroundColor: colors.skin }}
         >
-          {/* Cabelo */}
-          <div
-            className={`absolute -top-1 left-0 right-0 h-2 ${style.hair} rounded-t-sm`}
-          />
-          {/* Olhos */}
-          <div className="absolute top-1/2 left-1/4 w-1 h-1 bg-white" />
-          <div className="absolute top-1/2 right-1/4 w-1 h-1 bg-white" />
+          {expression === "normal" && (
+            <>
+              <div className="w-1.5 h-1.5 bg-white absolute left-1 top-3">
+                <div className="w-0.5 h-0.5 bg-black absolute right-0 bottom-0"></div>
+              </div>
+              <div className="w-1.5 h-1.5 bg-white absolute right-1 top-3">
+                <div className="w-0.5 h-0.5 bg-black absolute right-0 bottom-0"></div>
+              </div>
+            </>
+          )}
+          {expression === "angry" && (
+            <>
+              <div className="w-1.5 h-0.5 bg-black absolute left-1 top-2 rotate-12"></div>
+              <div className="w-1.5 h-0.5 bg-black absolute right-1 top-2 -rotate-12"></div>
+              <div className="w-1.5 h-1.5 bg-white absolute left-1 top-3 border border-black"></div>
+              <div className="w-1.5 h-1.5 bg-white absolute right-1 top-3 border border-black"></div>
+            </>
+          )}
+          {expression === "pain" && (
+            <>
+              <div className="text-[8px] font-black absolute left-1 top-2 text-black leading-none">
+                {">"}
+              </div>
+              <div className="text-[8px] font-black absolute right-1 top-2 text-black leading-none">
+                {"<"}
+              </div>
+              <div className="w-2 h-1 bg-black absolute bottom-2 rounded-full"></div>
+            </>
+          )}
+          {expression === "dead" && (
+            <>
+              <div className="text-[8px] font-black absolute left-1 top-2 text-black leading-none">
+                x
+              </div>
+              <div className="text-[8px] font-black absolute right-1 top-2 text-black leading-none">
+                x
+              </div>
+            </>
+          )}
+          {expression === "happy" && (
+            <>
+              <div className="text-[8px] font-black absolute left-1 top-2 text-black leading-none">
+                ^
+              </div>
+              <div className="text-[8px] font-black absolute right-1 top-2 text-black leading-none">
+                ^
+              </div>
+            </>
+          )}
         </div>
-
-        {/* Detalhes da armadura */}
         <div
-          className={`absolute bottom-2 left-1/2 -translate-x-1/2 w-3/4 h-1 ${style.accent} rounded`}
-        />
-
-        {/* Logo AAAKN no peito */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 text-[6px] font-black text-white/30 tracking-tighter">
-          AAAKN
-        </div>
+          className="w-1/2 h-1/4 mt-1 rounded-sm opacity-80"
+          style={{ backgroundColor: colors.accent }}
+        ></div>
+        <div className="absolute inset-0 bg-gradient-to-tr from-black/40 to-transparent pointer-events-none"></div>
       </div>
-
-      {/* Efeito de brilho */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-sm pointer-events-none" />
     </div>
   );
 }

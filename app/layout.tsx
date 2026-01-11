@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+// Tente usar caminhos relativos se o alias @ estiver falhando
 import BottomNav from "./components/BottomNav";
-import { AuthProvider } from "@/context/AuthContext"; // Importação do contexto
+import RouteGuard from "./components/RouteGuard";
+import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,14 +32,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen`}
       >
-        {/* O AuthProvider deve envolver tudo que precisa de acesso aos dados do usuário */}
         <AuthProvider>
-          <main className="pb-20">
-            {" "}
-            {/* pb-20 para dar espaço ao BottomNav fixo */}
-            {children}
-          </main>
-          <BottomNav />
+          <ToastProvider>
+            <RouteGuard>
+              <main className="pb-20">{children}</main>
+              <BottomNav />
+            </RouteGuard>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

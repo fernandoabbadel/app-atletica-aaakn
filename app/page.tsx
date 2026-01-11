@@ -1,32 +1,50 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Home,
-  Calendar,
-  Dumbbell,
-  Users,
-  CreditCard,
   Bell,
-  Menu,
-  Search,
-  MapPin,
   Gamepad2,
-  Zap,
   Star,
-  Trophy,
-  ShoppingBag,
+  Dumbbell,
+  CreditCard,
   MessageSquare,
   Heart,
   MoreHorizontal,
   Flag,
+  LogIn,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
-  const userTurmaImage = "/turma5.jpeg";
+  const { user } = useAuth();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
-  // Dados dos parceiros (Devem ser os mesmos da sua ParceirosPage para manter consistência)
+  useEffect(() => {
+    setMounted(true);
+    // Redireciona se estiver logado mas não tiver completado o cadastro (sem nome)
+    if (user && !user.nome) {
+      router.push("/cadastro");
+    }
+  }, [user, router]);
+
+  const isGuest = !user;
+  const activeUser = user || {
+    nome: "Visitante",
+    turma: "---",
+    foto: "https://github.com/shadcn.png",
+    level: 1,
+  };
+
+  // Classe que deixa tudo cinza e bloqueia cliques se for visitante
+  const guestBlockClass = isGuest
+    ? "opacity-20 grayscale pointer-events-none blur-[2px] select-none"
+    : "";
+
+  // --- DADOS ESTÁTICOS ---
   const parceirosOficiais = [
     { id: 1, nome: "Ironberg", slug: "ironberg" },
     { id: 2, nome: "Monstro", slug: "acai-do-monstro" },
@@ -56,6 +74,25 @@ export default function HomePage() {
     },
   ];
 
+  const proximosEventos = [
+    {
+      id: 1,
+      titulo: "Intermed 2026",
+      imagem:
+        "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80",
+      tipo: "OPEN BAR",
+      cor: "bg-purple-600",
+    },
+    {
+      id: 2,
+      titulo: "Tubarões vs Engenharia",
+      imagem:
+        "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80",
+      tipo: "FINAL",
+      cor: "bg-orange-600",
+    },
+  ];
+
   const postsComunidade = [
     {
       id: 1,
@@ -69,137 +106,139 @@ export default function HomePage() {
     },
   ];
 
-  const proximosEventos = [
-    {
-      id: 1,
-      titulo: "Intermed 2026",
-      data: "12 OUT",
-      local: "Arena XP",
-      tipo: "OPEN BAR",
-      cor: "bg-purple-600",
-      imagem:
-        "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80",
-      lote: "Lote 2",
-      preco: "R$ 85,00",
-      vendidos: 178,
-      total: 300,
-    },
-    {
-      id: 2,
-      titulo: "Tubarões vs Engenharia",
-      data: "20 JAN",
-      local: "Ginásio Municipal",
-      tipo: "FINAL",
-      cor: "bg-orange-600",
-      imagem:
-        "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80",
-      lote: "Entrada Franca",
-      preco: "GRÁTIS",
-      vendidos: 450,
-      total: 500,
-    },
-  ];
+  if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500/30">
-      <header className="bg-black/90 backdrop-blur-md p-4 sticky top-0 z-20 flex justify-between items-center border-b border-zinc-900">
-        <Link href="/perfil" className="flex items-center gap-3 group">
-          <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center border-2 border-[#0a2e23] relative overflow-hidden group-active:scale-95 transition">
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans relative selection:bg-emerald-500/30">
+      {/* HEADER (Sempre ativo para permitir o Login) */}
+      <header className="glass p-4 sticky top-0 z-40 flex justify-between items-center border-b border-white/5 backdrop-blur-md">
+        <Link
+          href={isGuest ? "/login" : "/perfil"}
+          className="flex items-center gap-3 group"
+        >
+          <div className="w-12 h-12 rounded-full border-2 border-[#0a2e23] relative overflow-hidden group-active:scale-95 transition shadow-lg">
             <img
-              src="https://github.com/shadcn.png"
+              src={activeUser.foto}
               className="w-full h-full object-cover"
               alt="Perfil"
             />
-            <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black"></div>
+            {!isGuest && (
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black"></div>
+            )}
           </div>
           <div>
             <h1 className="font-bold text-lg leading-tight text-white group-hover:text-emerald-400 transition">
-              Olá, Tubarão!
+              Olá, {activeUser.nome.split(" ")[0]}!
             </h1>
-            <span className="text-xs text-zinc-400 font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block"></span>
-              Sócio Ativo • T5
-            </span>
+            <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
+              {isGuest ? "Modo Visitante" : `Sócio ${activeUser.turma}`}
+            </p>
           </div>
         </Link>
-        <div className="flex gap-2">
-          <button className="p-2 bg-zinc-900 rounded-full text-white relative">
-            <Bell size={20} />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+
+        {isGuest ? (
+          <button
+            onClick={() => router.push("/login")}
+            className="bg-emerald-600 px-4 py-2 rounded-full text-xs font-black flex items-center gap-2 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+          >
+            <LogIn size={16} /> ENTRAR
           </button>
-        </div>
+        ) : (
+          <button className="p-2 bg-zinc-900/50 rounded-full text-white relative hover:bg-zinc-800 transition">
+            <Bell size={20} />
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+        )}
       </header>
 
-      <main className="p-4 space-y-8">
-        {/* SEÇÃO PARCEIROS COM LINKS FUNCIONAIS */}
+      {/* OVERLAY DE BLOQUEIO PARA VISITANTES */}
+      {isGuest && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-6 bg-black/20 pointer-events-none">
+          <div className="bg-zinc-900/95 border border-emerald-500/30 p-8 rounded-[2.5rem] text-center pointer-events-auto shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-md max-w-sm w-full">
+            <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-emerald-500/50 shadow-inner">
+              <Lock size={40} className="text-emerald-500" />
+            </div>
+            <h2 className="text-2xl font-black uppercase italic mb-3 text-white tracking-tighter">
+              Área Restrita
+            </h2>
+            <p className="text-zinc-400 text-sm mb-8 leading-relaxed font-medium">
+              O cardume está esperando por você! Faça login para desbloquear a
+              Arena Games, Gym Rats e sua Carteirinha.
+            </p>
+            <button
+              onClick={() => router.push("/login")}
+              className="w-full bg-emerald-500 text-black font-black py-4 rounded-2xl uppercase tracking-tighter hover:bg-emerald-400 transition shadow-[0_0_25px_rgba(16,185,129,0.3)] active:scale-95"
+            >
+              Começar Agora
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CONTEÚDO PRINCIPAL (BLOQUEÁVEL) */}
+      <main className={`p-4 space-y-8 ${guestBlockClass}`}>
+        {/* PARCEIROS */}
         <section>
-          <div className="flex justify-between items-center mb-3 px-1">
+          <div className="flex justify-between items-center mb-3">
             <h2 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
               Parceiros Oficiais
             </h2>
-            <Link
-              href="/parceiros"
-              className="text-[9px] font-bold text-emerald-500 uppercase tracking-tighter"
-            >
+            <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-tighter">
               Ver Clube
-            </Link>
+            </span>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
             {parceirosOficiais.map((parceiro) => (
-              <Link
+              <div
                 key={parceiro.id}
-                href={`/parceiros/${parceiro.id}`}
-                className="min-w-[80px] h-12 bg-zinc-900/50 rounded-lg border border-zinc-800 flex items-center justify-center grayscale hover:grayscale-0 hover:border-emerald-500/50 transition cursor-pointer"
+                className="min-w-[80px] h-12 glass rounded-xl border border-white/5 flex items-center justify-center grayscale"
               >
-                <span className="text-[9px] font-black text-zinc-600 tracking-tighter uppercase px-2 text-center">
+                <span className="text-[9px] font-black text-zinc-400 tracking-tighter uppercase px-2 text-center">
                   {parceiro.nome}
                 </span>
-              </Link>
+              </div>
             ))}
           </div>
         </section>
 
-        {/* STATUS DO HERÓI */}
-        <section className="bg-gradient-to-r from-zinc-900 to-black p-4 rounded-2xl border border-zinc-800 shadow-xl">
-          <div className="flex justify-between items-center mb-3">
+        {/* STATUS */}
+        <section className="glass p-5 rounded-3xl border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.05)]">
+          <div className="flex justify-between items-center mb-4">
             <h2 className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em]">
               Status do Avatar
             </h2>
-            <div className="flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400">
-              <Star size={10} fill="currentColor" /> LVL 7
+            <div className="flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded-lg text-[10px] font-bold text-emerald-400">
+              <Star size={10} fill="currentColor" /> LVL {activeUser.level}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-500">
-                <span>XP</span>
-                <span>62%</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="space-y-1.5 text-center">
+              <span className="text-[9px] uppercase font-bold text-zinc-500">
+                XP
+              </span>
+              <div className="h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-emerald-500"
                   style={{ width: "62%" }}
                 ></div>
               </div>
             </div>
-            <div className="space-y-1">
-              <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-500">
-                <span>HP</span>
-                <span>140</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="space-y-1.5 text-center">
+              <span className="text-[9px] uppercase font-bold text-zinc-500">
+                HP
+              </span>
+              <div className="h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-red-500"
                   style={{ width: "85%" }}
                 ></div>
               </div>
             </div>
-            <div className="space-y-1">
-              <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-500">
-                <span>Energia</span>
-                <span>5/5</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="space-y-1.5 text-center">
+              <span className="text-[9px] uppercase font-bold text-zinc-500">
+                Energy
+              </span>
+              <div className="h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-yellow-500"
                   style={{ width: "100%" }}
@@ -209,29 +248,23 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ATALHOS PRINCIPAIS */}
+        {/* ATALHOS */}
         <section className="grid grid-cols-2 gap-3">
-          <Link
-            href="/games"
-            className="bg-gradient-to-br from-[#1a3a2a] to-black p-4 rounded-2xl border border-emerald-900/50 flex flex-col items-start gap-3 hover:scale-[1.02] transition shadow-lg group"
-          >
-            <div className="w-10 h-10 bg-emerald-500 text-black rounded-full flex items-center justify-center group-hover:rotate-12 transition">
+          <div className="glass p-4 rounded-2xl border border-white/5 flex flex-col items-start gap-3">
+            <div className="w-10 h-10 bg-emerald-500 text-black rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
               <Gamepad2 size={20} />
             </div>
             <div>
               <span className="font-bold text-white text-md tracking-tight">
                 Arena Tubarão
               </span>
-              <p className="text-[10px] text-emerald-200/70 uppercase font-black">
+              <p className="text-[10px] text-emerald-400 uppercase font-black">
                 Lutar Agora
               </p>
             </div>
-          </Link>
-          <Link
-            href="/gym"
-            className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 flex flex-col items-start gap-3 hover:scale-[1.02] transition"
-          >
-            <div className="w-10 h-10 bg-zinc-800 text-emerald-500 rounded-full flex items-center justify-center">
+          </div>
+          <div className="glass p-4 rounded-2xl border border-white/5 flex flex-col items-start gap-3">
+            <div className="w-10 h-10 bg-zinc-800 text-emerald-500 rounded-xl flex items-center justify-center border border-zinc-700">
               <Dumbbell size={20} />
             </div>
             <div>
@@ -242,35 +275,33 @@ export default function HomePage() {
                 +XP Força
               </p>
             </div>
-          </Link>
+          </div>
         </section>
 
         {/* CARTEIRINHA */}
-        <Link
-          href="/carteirinha"
-          className="block relative group overflow-hidden rounded-[2rem] border border-emerald-900/30"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-900/80 to-black/90 z-10"></div>
+        <div className="block relative group overflow-hidden rounded-[2rem] border border-emerald-900/30 shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-950 to-black z-10 opacity-90"></div>
           <img
-            src={userTurmaImage}
-            className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
+            src={
+              !isGuest
+                ? `/turma${activeUser.turma.replace(/\D/g, "")}.jpeg`
+                : "/turma5.jpeg"
+            }
+            className="absolute inset-0 w-full h-full object-cover opacity-30 mix-blend-overlay"
             alt="Turma"
           />
           <div className="relative z-20 p-6 flex justify-between items-center">
             <div>
-              <h3 className="text-2xl font-black italic uppercase tracking-tighter">
+              <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">
                 Minha Carteirinha
               </h3>
-              <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">
-                Acesso & Benefícios Sócio
+              <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                Acesso & Benefícios
               </p>
             </div>
-            <CreditCard
-              size={32}
-              className="text-white/20 group-hover:text-emerald-400 transition-colors"
-            />
+            <CreditCard size={32} className="text-white/20 rotate-12" />
           </div>
-        </Link>
+        </div>
 
         {/* LOJA */}
         <section>
@@ -278,57 +309,44 @@ export default function HomePage() {
             <h2 className="text-xl font-black uppercase italic tracking-tighter underline decoration-emerald-500 decoration-4 underline-offset-4">
               Loja K.N.
             </h2>
-            <Link
-              href="/loja"
-              className="text-[10px] text-emerald-500 font-black uppercase tracking-widest"
-            >
+            <span className="text-[10px] text-emerald-500 font-black uppercase tracking-widest">
               Ver Catálogo
-            </Link>
+            </span>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
             {itensLoja.map((item) => (
-              <Link
+              <div
                 key={item.id}
-                href="/loja"
-                className="min-w-[160px] bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden p-3 group"
+                className="min-w-[160px] glass border border-white/5 rounded-2xl overflow-hidden p-3 transition"
               >
-                <div className="h-32 bg-zinc-800 rounded-xl mb-3 overflow-hidden relative">
+                <div className="h-32 bg-black/50 rounded-xl mb-3 overflow-hidden relative">
                   <img
                     src={item.img}
-                    className="w-full h-full object-cover group-hover:scale-110 transition duration-500"
+                    className="w-full h-full object-cover"
                     alt={item.nome}
                   />
-                  <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur px-2 py-1 rounded text-[10px] font-bold text-emerald-400">
+                  <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-emerald-400 border border-emerald-500/20">
                     {item.preco}
                   </div>
                 </div>
                 <h3 className="text-[11px] font-bold uppercase text-zinc-300 leading-tight">
                   {item.nome}
                 </h3>
-              </Link>
+              </div>
             ))}
           </div>
         </section>
 
         {/* EVENTOS */}
         <section>
-          <div className="flex justify-between items-end mb-4 px-1">
-            <h2 className="text-xl font-black uppercase italic tracking-tighter">
-              Próximos Rolês
-            </h2>
-            <Link
-              href="/eventos"
-              className="text-[10px] text-emerald-500 font-black uppercase tracking-widest"
-            >
-              Ver Tudo
-            </Link>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide snap-x snap-mandatory">
+          <h2 className="text-xl font-black uppercase italic tracking-tighter mb-4">
+            Próximos Rolês
+          </h2>
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory">
             {proximosEventos.map((evento) => (
-              <Link
+              <div
                 key={evento.id}
-                href="/eventos"
-                className="min-w-[280px] snap-center block bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 relative group transition shadow-lg"
+                className="min-w-[280px] snap-center block glass rounded-3xl overflow-hidden border border-white/5 relative group transition"
               >
                 <div className="h-40 relative">
                   <img
@@ -336,139 +354,59 @@ export default function HomePage() {
                     className="w-full h-full object-cover opacity-80"
                     alt={evento.titulo}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent"></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent"></div>
                   <div
-                    className={`absolute top-3 left-3 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white ${evento.cor}`}
+                    className={`absolute top-3 left-3 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white ${evento.cor} shadow-lg`}
                   >
                     {evento.tipo}
                   </div>
                 </div>
-                <div className="p-4">
+                <div className="p-4 relative -mt-4">
                   <h3 className="text-lg font-black text-white uppercase truncate mb-3">
                     {evento.titulo}
                   </h3>
-                  <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500"
-                      style={{ width: "60%" }}
-                    ></div>
-                  </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </section>
 
         {/* COMUNIDADE */}
-        <section className="bg-zinc-900/30 rounded-[2rem] p-6 border border-zinc-800/50">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black uppercase italic tracking-tighter">
-              Comunidade
-            </h2>
-            <Link
-              href="/comunidade"
-              className="p-2 bg-zinc-800 rounded-lg text-emerald-500"
-            >
-              <MessageSquare size={18} />
-            </Link>
-          </div>
+        <section className="glass rounded-[2rem] p-6 border border-white/5">
+          <h2 className="text-xl font-black uppercase italic tracking-tighter mb-6 px-1">
+            Comunidade
+          </h2>
           {postsComunidade.map((post) => (
             <div key={post.id} className="space-y-4">
-              <div className="flex justify-between items-start">
-                <Link
-                  href="/perfil/abbade"
-                  className="flex items-center gap-3 group"
-                >
-                  <img
-                    src={post.avatar}
-                    className="w-10 h-10 rounded-full border border-emerald-500/30 group-hover:border-emerald-500 transition"
-                    alt="User"
-                  />
-                  <div>
-                    <h4 className="text-sm font-bold group-hover:text-emerald-400 transition">
-                      {post.user}
-                    </h4>
-                    <span className="text-[10px] text-zinc-500 font-bold">
-                      {post.handle}
-                    </span>
-                  </div>
-                </Link>
-                <button className="text-zinc-600">
-                  <MoreHorizontal size={20} />
-                </button>
+              <div className="flex items-center gap-3">
+                <img
+                  src={post.avatar}
+                  className="w-10 h-10 rounded-full border border-emerald-500/30"
+                  alt="User"
+                />
+                <div>
+                  <h4 className="text-sm font-bold">{post.user}</h4>
+                  <span className="text-[10px] text-zinc-500 font-bold tracking-wider">
+                    {post.handle}
+                  </span>
+                </div>
               </div>
-              <p className="text-sm text-zinc-300 leading-relaxed font-medium">
-                {post.content}
+              <p className="text-sm text-zinc-300 leading-relaxed font-medium italic">
+                "{post.content}"
               </p>
-              <div className="flex items-center gap-6 pt-2">
-                <button className="flex items-center gap-1.5 text-zinc-500 hover:text-red-500 transition group">
-                  <Heart
-                    size={18}
-                    className="group-active:scale-125 transition"
-                  />
-                  <span className="text-xs font-bold">{post.likes}</span>
-                </button>
-                <button className="flex items-center gap-1.5 text-zinc-500 hover:text-emerald-400 transition">
-                  <MessageSquare size={18} />
-                  <span className="text-xs font-bold">{post.comments}</span>
-                </button>
-                <button
-                  className="flex items-center gap-1.5 text-zinc-500 hover:text-orange-500 transition ml-auto"
-                  title="Denunciar"
-                >
-                  <Flag size={16} />
-                </button>
+              <div className="flex items-center gap-6 pt-4 border-t border-white/5 mt-2 text-zinc-500">
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <Heart size={18} /> {post.likes}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <MessageSquare size={18} /> {post.comments}
+                </div>
+                <Flag size={16} className="ml-auto" />
               </div>
             </div>
           ))}
         </section>
       </main>
-
-      <nav className="fixed bottom-0 left-0 w-full bg-black/95 backdrop-blur-lg border-t border-zinc-900 pb-safe pt-2 px-6 flex justify-between items-center z-50 h-20">
-        <NavItem icon={<Home size={22} />} label="Início" active />
-        <Link href="/eventos">
-          <NavItem icon={<Calendar size={22} />} label="Eventos" />
-        </Link>
-        <div className="-mt-8">
-          <Link
-            href="/games"
-            className="bg-[#1a3a2a] p-4 rounded-full shadow-[0_0_20px_rgba(74,222,128,0.4)] text-[#4ade80] border-4 border-[#050505] hover:scale-110 transition flex items-center justify-center"
-          >
-            <Gamepad2 size={26} />
-          </Link>
-        </div>
-        <Link href="/ranking">
-          <NavItem icon={<Trophy size={22} />} label="Ranking" />
-        </Link>
-        <Link href="/menu">
-          <NavItem icon={<Menu size={22} />} label="Mais" />
-        </Link>
-      </nav>
     </div>
-  );
-}
-
-function NavItem({
-  icon,
-  label,
-  active = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <button
-      className={`flex flex-col items-center gap-1 ${
-        active
-          ? "text-[#4ade80]"
-          : "text-zinc-600 hover:text-zinc-400 transition"
-      }`}
-    >
-      {icon}
-      <span className="text-[9px] font-bold uppercase tracking-tight">
-        {label}
-      </span>
-    </button>
   );
 }

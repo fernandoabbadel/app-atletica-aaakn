@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 export default function Loading() {
   const [frase, setFrase] = useState("Carregando...");
 
-  // Lista de frases criativas
+  // Suas frases excelentes (Mantidas!)
   const frases = [
     "Afiando o bisturi... e os dentes. 🦈",
     "Os tubarões estão revisando Anatomia...",
@@ -20,52 +20,77 @@ export default function Loading() {
   ];
 
   useEffect(() => {
-    // Escolhe uma frase aleatória quando o componente monta
+    // Escolhe frase aleatória e troca a cada 2.5s para não ficar estático se demorar
     const randomIndex = Math.floor(Math.random() * frases.length);
     setFrase(frases[randomIndex]);
+
+    const interval = setInterval(() => {
+      const newIndex = Math.floor(Math.random() * frases.length);
+      setFrase(frases[newIndex]);
+    }, 2500);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center">
-      {/* CONTAINER DA ANIMAÇÃO (Bolinha enchendo) */}
-      <div className="relative w-32 h-32 rounded-full border-4 border-zinc-800 overflow-hidden bg-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.2)] mb-8">
-        {/* ÍCONE/LOGO NO CENTRO (Fica parado) */}
-        <div className="absolute inset-0 z-20 flex items-center justify-center">
-          {/* Se tiver a imagem do logo, use <img src="/logo.png" className="w-16 opacity-80" /> */}
-          {/* Por enquanto, usando o emoji grande */}
-          <span className="text-5xl drop-shadow-lg filter grayscale opacity-50">
-            🦈
-          </span>
+    <div className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center">
+      {/* CONTAINER DA ANIMAÇÃO (Bolinha) */}
+      <div className="relative w-32 h-32 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
+        {/* LOGO NO CENTRO (Frente da água) */}
+        <div className="relative z-20 w-20 h-20 flex items-center justify-center">
+          <img
+            src="/logo.png"
+            alt="Loading"
+            className="w-full h-full object-contain drop-shadow-2xl animate-pulse-slow"
+            onError={(e) => {
+              // Fallback para o emoji caso a imagem falhe
+              e.currentTarget.style.display = "none";
+              const span = document.createElement("span");
+              span.innerText = "🦈";
+              span.style.fontSize = "3rem";
+              e.currentTarget.parentElement?.appendChild(span);
+            }}
+          />
         </div>
 
-        {/* ONDA VERDE (Animação subindo) */}
-        <div className="absolute left-0 w-[200%] h-[200%] bg-emerald-600/80 rounded-[40%] animate-wave -translate-x-1/4 z-10 top-[100%]"></div>
+        {/* ONDA ESMERALDA (Fundo) */}
+        <div className="absolute left-0 w-[200%] h-[200%] bg-emerald-600/20 rounded-[40%] animate-wave-fill z-10"></div>
+        {/* Segunda onda para dar profundidade */}
+        <div
+          className="absolute left-0 w-[200%] h-[200%] bg-emerald-500/10 rounded-[45%] animate-wave-fill z-0"
+          style={{ animationDuration: "4s", animationDelay: "1s" }}
+        ></div>
       </div>
 
-      {/* TEXTO DE CARREGAMENTO */}
-      <div className="text-center px-4">
-        <h2 className="text-emerald-500 font-bold text-lg animate-pulse mb-2">
-          CARREGANDO
+      {/* TEXTO */}
+      <div className="text-center px-6 max-w-sm">
+        <h2 className="text-emerald-500 font-black text-xl tracking-[0.2em] animate-pulse mb-3 uppercase">
+          Carregando
         </h2>
-        <p className="text-zinc-400 text-sm font-medium italic max-w-xs mx-auto">
+        <p className="text-zinc-400 text-sm font-medium italic leading-relaxed min-h-[3rem] transition-all duration-500">
           "{frase}"
         </p>
       </div>
 
-      {/* CSS INLINE PARA A ANIMAÇÃO DA ONDA */}
+      {/* STYLES */}
       <style jsx>{`
-        @keyframes wave {
+        @keyframes wave-fill {
           0% {
-            transform: rotate(0deg);
+            transform: rotate(0deg) translateY(0);
             top: 100%;
+            left: -50%;
           }
           100% {
-            transform: rotate(360deg);
-            top: -50%;
+            transform: rotate(360deg) translateY(0);
+            top: 20%; /* Sobe até cobrir boa parte */
+            left: -50%;
           }
         }
-        .animate-wave {
-          animation: wave 3s ease-in-out infinite;
+        .animate-wave-fill {
+          animation: wave-fill 2.5s ease-in-out infinite alternate;
+        }
+        .animate-pulse-slow {
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
       `}</style>
     </div>

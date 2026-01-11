@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 // Suba dois níveis para sair de 'perfil' e 'app' e chegar na raiz
 import { useAuth } from "../../context/AuthContext";
+
 // --- DADOS UNIFICADOS (SIMULAÇÃO DE HISTÓRICO) ---
 const HISTORY_ACTIVITIES = [
   {
@@ -140,6 +141,7 @@ export default function MyProfilePage() {
                   src={`/turma${user.turma.replace(/\D/g, "")}.jpeg`}
                   className="w-full h-full object-cover"
                   alt="Logo Turma"
+                  onError={(e) => (e.currentTarget.src = "/logo.png")} // Fallback seguro
                 />
               </div>
             </div>
@@ -273,11 +275,144 @@ export default function MyProfilePage() {
               ))}
             </div>
           )}
-          {/* ... Mapeamento das outras abas (conquests e community) ... */}
+
+          {activeTab === "conquests" && (
+            <div className="grid grid-cols-1 gap-3 italic font-black uppercase">
+              {HISTORY_ACHIEVEMENTS.map((ach) => (
+                <div
+                  key={ach.id}
+                  className="bg-[#111] p-4 rounded-2xl border border-zinc-800 flex items-center gap-4"
+                >
+                  <div className="text-3xl p-3 bg-black rounded-xl border border-zinc-800">
+                    {ach.icone}
+                  </div>
+                  <div>
+                    <h4 className="text-sm tracking-tighter">{ach.titulo}</h4>
+                    <p className="text-[10px] text-zinc-500">{ach.desc}</p>
+                  </div>
+                  <span className="ml-auto text-[10px] text-zinc-600 bg-black px-2 py-1 rounded-lg">
+                    {ach.data}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === "community" && (
+            <div className="space-y-4">
+              {COMMUNITY_POSTS.map((post) => (
+                <div
+                  key={post.id}
+                  className="bg-[#111] p-5 rounded-3xl border border-zinc-800"
+                >
+                  <p className="text-sm mb-4 italic">"{post.texto}"</p>
+                  <div className="flex items-center gap-4 pt-4 border-t border-zinc-900">
+                    <button className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-red-500 transition">
+                      <Heart size={14} /> {post.likes}
+                    </button>
+                    <button className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-[#4ade80] transition">
+                      <MessageCircle size={14} /> {post.comentarios}
+                    </button>
+                    <button className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-orange-500 transition ml-auto">
+                      <Flag size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
+
+      {/* MODAL DETALHE TREINO */}
+      {selectedPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/90 backdrop-blur-md"
+            onClick={() => setSelectedPost(null)}
+          ></div>
+          <div className="bg-[#111] w-full max-w-lg rounded-[3rem] overflow-hidden border border-zinc-800 relative z-10 animate-in zoom-in-95 duration-200">
+            <img src={selectedPost.foto} className="w-full h-72 object-cover" />
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-2xl font-black italic uppercase tracking-tighter">
+                    {selectedPost.tipo}
+                  </h3>
+                  <p className="text-xs text-[#4ade80] font-bold uppercase">
+                    {selectedPost.local}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedPost(null)}
+                  className="p-2 bg-zinc-900 rounded-full text-zinc-500"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <p className="text-zinc-300 italic mb-8">
+                "{selectedPost.legenda}"
+              </p>
+              <div className="flex gap-3">
+                <button className="flex-1 bg-[#4ade80] text-black py-4 rounded-2xl font-black uppercase italic tracking-tighter">
+                  Curtir ({selectedPost.likes})
+                </button>
+                <button className="flex-1 bg-zinc-800 text-white py-4 rounded-2xl font-black uppercase italic tracking-tighter">
+                  Comentar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Funções auxiliares StatCard e TabButton omitidas para brevidade, mantenha as originais do arquivo.
+// --- FUNÇÕES AUXILIARES QUE FALTAVAM ---
+
+function StatCard({ label, value, icon, highlight }: any) {
+  return (
+    <div
+      className={`p-4 rounded-[2rem] border transition-all ${
+        highlight
+          ? "bg-[#4ade80] border-[#4ade80]"
+          : "bg-[#111] border-zinc-800 shadow-xl"
+      }`}
+    >
+      <div className="flex items-center justify-center gap-1 mb-1">
+        <span
+          className={`text-xl font-black italic tracking-tighter ${
+            highlight ? "text-black" : "text-white"
+          }`}
+        >
+          {value}
+        </span>
+        {icon}
+      </div>
+      <span
+        className={`block text-[8px] font-black uppercase tracking-widest text-center ${
+          highlight ? "text-black/60" : "text-zinc-500"
+        }`}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 py-4 flex items-center justify-center gap-2 font-black uppercase italic text-xs tracking-tighter transition-all relative ${
+        active ? "text-[#4ade80]" : "text-zinc-500"
+      }`}
+    >
+      {icon} {label}
+      {active && (
+        <div className="absolute bottom-0 w-12 h-1 bg-[#4ade80] rounded-full shadow-[0_0_10px_#4ade80]"></div>
+      )}
+    </button>
+  );
+}

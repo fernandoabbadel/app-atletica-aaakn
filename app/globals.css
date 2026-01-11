@@ -3,76 +3,124 @@
 @tailwind utilities;
 
 :root {
-  /* Cores baseadas na identidade visual da AAAKN */
-  /* Fundo preto profundo e texto claro para contraste gamer */
-  --background: #030a08;
-  --foreground: #ededed;
-  --accent-green: #4ade80; /* Verde neon do Tubarão */
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 5, 5, 5;
+  --background-end-rgb: 5, 5, 5;
+  --neon-green: #4ade80;
+  --neon-red: #e53935;
 }
 
-/* Aplicação Global */
+/* --- 1. MELHORIA NA ROLAGEM (SMOOTH) --- */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: "Geist", Arial, Helvetica, sans-serif; /* Prioriza a fonte do Next.js */
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  /* Melhora a renderização de fontes */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar Customizada (Estilo Dark/Moderno) */
+/* --- 2. SCROLLBAR ESTILIZADA (MODERNA) --- */
+/* Funciona no Chrome, Edge e Safari */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: #0d0d0d;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1a3a2a; /* Verde escuro da Atlética */
+  background: #333;
   border-radius: 10px;
+  transition: background 0.3s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4ade80; /* Brilha ao passar o mouse */
+  background: var(--neon-green); /* Fica verde ao passar o mouse */
 }
 
-/* Classes Utilitárias Customizadas */
+/* --- 3. SELEÇÃO DE TEXTO PERSONALIZADA --- */
+::selection {
+  background-color: rgba(74, 222, 128, 0.3); /* Verde translúcido */
+  color: #fff;
+  text-shadow: 0 0 10px var(--neon-green);
+}
 
-/* Esconde scrollbar mas mantém funcionalidade (Útil para carrosséis) */
+/* --- 4. UTILITÁRIOS DE ANIMAÇÃO (COPIE E USE NOS COMPONENTES) --- */
+
+/* Esconder barra de rolagem mas manter funcionalidade (útil para carrossel) */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-/* Safe area para dispositivos com notch (iPhone/Android modernos) */
-/* Essencial para o seu BottomNav não ficar cortado */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.pt-safe {
-  padding-top: env(safe-area-inset-top);
-}
-
-/* Animação extra para os Cards do Game */
-@keyframes glow {
+/* Animação de "Respiração" (Glow pulsante) */
+@keyframes neon-pulse {
   0%,
   100% {
-    border-color: #2d5a42;
-    box-shadow: 0 0 5px rgba(74, 222, 128, 0.1);
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
+    border-color: rgba(74, 222, 128, 0.2);
   }
   50% {
-    border-color: #4ade80;
-    box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+    box-shadow: 0 0 25px rgba(74, 222, 128, 0.4);
+    border-color: rgba(74, 222, 128, 0.6);
   }
 }
 
-.card-glow {
-  animation: glow 3s infinite ease-in-out;
+.animate-neon-pulse {
+  animation: neon-pulse 3s infinite ease-in-out;
+}
+
+/* Animação de Flutuar (Para o logo ou botões importantes) */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Efeito de Vidro Fosco Global */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Efeito de Gradiente Animado (Para fundos ou textos) */
+@keyframes gradient-xy {
+  0%,
+  100% {
+    background-size: 400% 400%;
+    background-position: left center;
+  }
+  50% {
+    background-size: 200% 200%;
+    background-position: right center;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-xy 6s ease infinite;
 }
