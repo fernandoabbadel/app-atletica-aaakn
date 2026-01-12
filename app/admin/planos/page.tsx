@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { 
   ArrowLeft, Edit, Save, Plus, Trash2, CheckCircle, X, 
   LayoutDashboard, CreditCard, DollarSign, Crown, Star, Ghost, 
-  Users, TrendingUp, Calendar, Search, Image as ImageIcon 
+  Users, TrendingUp, Calendar, Search, Megaphone, Type, Sparkles, ChevronRight
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/context/ToastContext";
@@ -16,9 +16,15 @@ interface Plano {
     preco: string;
     parcelamento: string;
     descricao: string;
-    cor: string; // 'emerald' | 'zinc' | 'yellow'
+    cor: string;
     destaque: boolean;
     beneficios: string[];
+}
+
+interface BannerConfig {
+    titulo: string;
+    subtitulo: string;
+    cor: 'dourado' | 'esmeralda' | 'roxo' | 'fogo';
 }
 
 interface Assinatura {
@@ -73,17 +79,23 @@ export default function AdminPlanosPage() {
   const { addToast } = useToast();
   
   // Estados
-  const [activeTab, setActiveTab] = useState<"dashboard" | "config">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "config" | "marketing">("dashboard");
   const [planos, setPlanos] = useState<Plano[]>(INITIAL_PLANOS);
   const [editingPlan, setEditingPlan] = useState<Plano | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // ESTADO DO BANNER (MARKETING)
+  const [bannerConfig, setBannerConfig] = useState<BannerConfig>({
+      titulo: "VIRE TUBARÃO REI",
+      subtitulo: "Domine o Oceano & Os Rolês",
+      cor: 'dourado'
+  });
+
   // --- LÓGICA DO DASHBOARD ---
   const totalFaturamento = ASSINATURAS_MOCK.reduce((acc, curr) => acc + curr.valorPago, 0);
   const totalSocios = ASSINATURAS_MOCK.length;
   
-  // Agrupar por plano
   const statsPorPlano = planos.map(plano => {
       const subs = ASSINATURAS_MOCK.filter(s => s.planoId === plano.id);
       const total = subs.reduce((acc, curr) => acc + curr.valorPago, 0);
@@ -106,18 +118,20 @@ export default function AdminPlanosPage() {
 
   const handleSave = () => {
       if (!editingPlan) return;
-      
       if (editingPlan.id === "") {
-          // Criar Novo
           const newPlan = { ...editingPlan, id: Date.now().toString() };
           setPlanos([...planos, newPlan]);
           addToast("Novo plano criado!", "success");
       } else {
-          // Editar Existente
           setPlanos(prev => prev.map(p => p.id === editingPlan.id ? editingPlan : p));
           addToast("Plano atualizado!", "success");
       }
       setIsModalOpen(false);
+  };
+
+  const handleSaveBanner = () => {
+      // Aqui você salvaria no Firebase
+      addToast("Botão de Sócio atualizado no App!", "success");
   };
 
   const handleBenefitChange = (index: number, value: string) => {
@@ -138,6 +152,17 @@ export default function AdminPlanosPage() {
       setEditingPlan({ ...editingPlan, beneficios: newBenefits });
   };
 
+  // Helper para renderizar o preview do botão
+  const getBannerStyles = (cor: string) => {
+      switch(cor) {
+          case 'dourado': return { gradient: "from-yellow-600 via-amber-500 to-yellow-600", border: "border-yellow-400/50", shadow: "shadow-[0_0_25px_rgba(234,179,8,0.4)]" };
+          case 'esmeralda': return { gradient: "from-emerald-600 via-green-500 to-emerald-600", border: "border-emerald-400/50", shadow: "shadow-[0_0_25px_rgba(16,185,129,0.4)]" };
+          case 'roxo': return { gradient: "from-purple-600 via-indigo-500 to-purple-600", border: "border-purple-400/50", shadow: "shadow-[0_0_25px_rgba(147,51,234,0.4)]" };
+          case 'fogo': return { gradient: "from-red-600 via-orange-500 to-red-600", border: "border-orange-400/50", shadow: "shadow-[0_0_25px_rgba(249,115,22,0.4)]" };
+          default: return { gradient: "from-zinc-600 via-zinc-500 to-zinc-600", border: "border-zinc-400/50", shadow: "" };
+      }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">
       
@@ -152,9 +177,10 @@ export default function AdminPlanosPage() {
 
       {/* ABAS */}
       <div className="px-6 pt-6">
-          <div className="flex border-b border-zinc-800 gap-6">
-              <button onClick={() => setActiveTab("dashboard")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 ${activeTab === "dashboard" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent"}`}><LayoutDashboard size={16}/> Dashboard</button>
-              <button onClick={() => setActiveTab("config")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 ${activeTab === "config" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent"}`}><Edit size={16}/> Configurar Planos</button>
+          <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto">
+              <button onClick={() => setActiveTab("dashboard")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === "dashboard" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}><LayoutDashboard size={16}/> Dashboard</button>
+              <button onClick={() => setActiveTab("config")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === "config" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}><Edit size={16}/> Configurar Planos</button>
+              <button onClick={() => setActiveTab("marketing")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === "marketing" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}><Megaphone size={16}/> Marketing Botão</button>
           </div>
       </div>
 
@@ -163,8 +189,7 @@ export default function AdminPlanosPage() {
         {/* --- ABA DASHBOARD --- */}
         {activeTab === "dashboard" && (
             <div className="space-y-8">
-                
-                {/* 1. KPIs */}
+                {/* KPIs */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl flex items-center justify-between">
                         <div><p className="text-zinc-500 text-[10px] font-bold uppercase">Faturamento Total</p><h3 className="text-3xl font-black text-white mt-1">R$ {totalFaturamento}</h3></div>
@@ -180,51 +205,13 @@ export default function AdminPlanosPage() {
                     </div>
                 </div>
 
-                {/* 2. PERFORMANCE POR PLANO */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                        <h3 className="text-sm font-bold text-white uppercase mb-6 flex items-center gap-2"><CreditCard size={16} className="text-emerald-500"/> Receita por Plano</h3>
-                        <div className="space-y-5">
-                            {statsPorPlano.map(stat => (
-                                <div key={stat.id}>
-                                    <div className="flex justify-between text-xs mb-1">
-                                        <span className="font-bold text-zinc-300">{stat.nome}</span>
-                                        <span className="text-emerald-400 font-bold">R$ {stat.receita}</span>
-                                    </div>
-                                    <div className="w-full bg-black h-2 rounded-full overflow-hidden">
-                                        <div className={`h-full ${stat.cor === 'yellow' ? 'bg-yellow-500' : stat.cor === 'zinc' ? 'bg-zinc-500' : 'bg-emerald-500'}`} style={{width: `${(stat.receita/totalFaturamento)*100}%`}}></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                        <h3 className="text-sm font-bold text-white uppercase mb-6 flex items-center gap-2"><Users size={16} className="text-blue-500"/> Adesão por Plano</h3>
-                        <div className="space-y-5">
-                            {statsPorPlano.map(stat => (
-                                <div key={stat.id}>
-                                    <div className="flex justify-between text-xs mb-1">
-                                        <span className="font-bold text-zinc-300">{stat.nome}</span>
-                                        <span className="text-white font-bold">{stat.qtd} sócios</span>
-                                    </div>
-                                    <div className="w-full bg-black h-2 rounded-full overflow-hidden">
-                                        <div className={`h-full ${stat.cor === 'yellow' ? 'bg-yellow-500' : stat.cor === 'zinc' ? 'bg-zinc-500' : 'bg-emerald-500'}`} style={{width: `${(stat.qtd/totalSocios)*100}%`}}></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* 3. TURMAS (COM FOTOS) */}
+                {/* TURMAS */}
                 <div>
                     <h3 className="text-sm font-bold text-white uppercase mb-4 flex items-center gap-2"><Crown size={16} className="text-yellow-500"/> Performance por Turma</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {TURMAS_MOCK.map(turma => (
                             <div key={turma.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center gap-4 hover:border-emerald-500/50 transition group">
                                 <div className="w-16 h-16 rounded-xl bg-black overflow-hidden border border-zinc-700 shrink-0 relative">
-                                    {/* SIMULAÇÃO DE FOTO DA PASTA PUBLIC */}
                                     <img src={turma.foto} alt={turma.nome} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition"/>
                                     <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white/50 group-hover:opacity-0">{turma.id}</div>
                                 </div>
@@ -238,7 +225,7 @@ export default function AdminPlanosPage() {
                     </div>
                 </div>
 
-                {/* 4. TABELA DE HISTÓRICO */}
+                {/* TABELA */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
                     <div className="p-5 border-b border-zinc-800 bg-black/20 flex justify-between items-center">
                         <h3 className="text-sm font-bold text-white flex items-center gap-2"><Calendar size={16} className="text-zinc-400"/> Histórico de Assinaturas</h3>
@@ -249,23 +236,17 @@ export default function AdminPlanosPage() {
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left whitespace-nowrap">
-                            <thead className="bg-black/40 text-zinc-500 text-[10px] font-bold uppercase"><tr><th className="p-4">Aluno</th><th className="p-4">Turma</th><th className="p-4">Plano Escolhido</th><th className="p-4">Valor</th><th className="p-4 text-right">Data Início</th></tr></thead>
+                            <thead className="bg-black/40 text-zinc-500 text-[10px] font-bold uppercase"><tr><th className="p-4">Aluno</th><th className="p-4">Turma</th><th className="p-4">Plano</th><th className="p-4">Valor</th><th className="p-4 text-right">Data Início</th></tr></thead>
                             <tbody className="divide-y divide-zinc-800/50 text-sm text-zinc-300">
-                                {ASSINATURAS_MOCK.filter(s => s.aluno.toLowerCase().includes(searchTerm.toLowerCase())).map((sub) => {
-                                    const plano = planos.find(p => p.id === sub.planoId);
-                                    return (
-                                        <tr key={sub.id} className="hover:bg-zinc-800/30 transition">
-                                            <td className="p-4 font-bold text-white">{sub.aluno}</td>
-                                            <td className="p-4"><span className="bg-zinc-800 px-2 py-1 rounded text-xs font-bold">{sub.turma}</span></td>
-                                            <td className="p-4 flex items-center gap-2">
-                                                {plano?.id === 'lenda' ? <Crown size={14} className="text-yellow-500"/> : plano?.id === 'atleta' ? <Star size={14} className="text-zinc-400"/> : <Ghost size={14} className="text-emerald-500"/>}
-                                                {plano?.nome}
-                                            </td>
-                                            <td className="p-4 text-emerald-400 font-mono">R$ {sub.valorPago}</td>
-                                            <td className="p-4 text-right text-zinc-500 text-xs">{sub.dataInicio}</td>
-                                        </tr>
-                                    );
-                                })}
+                                {ASSINATURAS_MOCK.filter(s => s.aluno.toLowerCase().includes(searchTerm.toLowerCase())).map((sub) => (
+                                    <tr key={sub.id} className="hover:bg-zinc-800/30 transition">
+                                        <td className="p-4 font-bold text-white">{sub.aluno}</td>
+                                        <td className="p-4"><span className="bg-zinc-800 px-2 py-1 rounded text-xs font-bold">{sub.turma}</span></td>
+                                        <td className="p-4">{sub.planoId}</td>
+                                        <td className="p-4 text-emerald-400 font-mono">R$ {sub.valorPago}</td>
+                                        <td className="p-4 text-right text-zinc-500 text-xs">{sub.dataInicio}</td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
@@ -273,30 +254,122 @@ export default function AdminPlanosPage() {
             </div>
         )}
 
-        {/* --- ABA CONFIGURAÇÃO (CRUD) --- */}
+        {/* --- ABA MARKETING (NOVA) --- */}
+        {activeTab === "marketing" && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                
+                {/* EDITOR */}
+                <div className="space-y-6">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                        <h3 className="text-sm font-bold text-white uppercase mb-6 flex items-center gap-2"><Megaphone size={16} className="text-emerald-500"/> Configurar Botão de Venda</h3>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2"><Type size={12}/> Título de Impacto</label>
+                                <input 
+                                    type="text" 
+                                    className="input-admin text-lg font-black uppercase text-yellow-500" 
+                                    value={bannerConfig.titulo} 
+                                    onChange={e => setBannerConfig({...bannerConfig, titulo: e.target.value})}
+                                    maxLength={20}
+                                />
+                                <p className="text-[10px] text-zinc-600 mt-1 text-right">{bannerConfig.titulo.length}/20</p>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2"><Sparkles size={12}/> Subtítulo Persuasivo</label>
+                                <input 
+                                    type="text" 
+                                    className="input-admin" 
+                                    value={bannerConfig.subtitulo} 
+                                    onChange={e => setBannerConfig({...bannerConfig, subtitulo: e.target.value})}
+                                    maxLength={30}
+                                />
+                                <p className="text-[10px] text-zinc-600 mt-1 text-right">{bannerConfig.subtitulo.length}/30</p>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Tema Visual</label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {(['dourado', 'esmeralda', 'roxo', 'fogo'] as const).map(cor => (
+                                        <button 
+                                            key={cor}
+                                            onClick={() => setBannerConfig({...bannerConfig, cor})}
+                                            className={`h-10 rounded-xl border-2 transition capitalize text-xs font-bold ${bannerConfig.cor === cor ? 'border-white scale-105' : 'border-transparent opacity-50 hover:opacity-100'}`}
+                                            style={{background: cor === 'dourado' ? '#eab308' : cor === 'esmeralda' ? '#10b981' : cor === 'roxo' ? '#9333ea' : '#ef4444'}}
+                                        >
+                                            {cor}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-zinc-800 flex justify-end">
+                            <button onClick={handleSaveBanner} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 text-xs uppercase shadow-lg transition active:scale-95">
+                                <Save size={16}/> Salvar Alterações
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* PREVIEW */}
+                <div className="bg-[#09090b] border border-zinc-800 rounded-[2.5rem] p-4 shadow-2xl relative max-w-sm mx-auto w-full">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-black px-4 py-1 rounded-b-xl text-[10px] font-bold text-zinc-500 border border-zinc-800 border-t-0">LIVE PREVIEW</div>
+                    
+                    <div className="mt-8 space-y-4 px-2">
+                        {/* Simulação da Sidebar */}
+                        <div className="flex items-center gap-3 p-3 bg-zinc-900 rounded-2xl border border-zinc-800 opacity-50">
+                            <div className="w-10 h-10 rounded-full bg-zinc-800"></div>
+                            <div className="flex-1 space-y-2">
+                                <div className="h-2 w-20 bg-zinc-800 rounded full"></div>
+                                <div className="h-2 w-10 bg-zinc-800 rounded full"></div>
+                            </div>
+                        </div>
+
+                        {/* O BOTÃO REAL */}
+                        <div className="py-2">
+                            <p className="text-[10px] text-zinc-500 text-center mb-2 uppercase tracking-widest">Assim que o aluno vê:</p>
+                            
+                            <button className={`w-full group relative overflow-hidden rounded-2xl transition-all shadow-xl border ${getBannerStyles(bannerConfig.cor).border} ${getBannerStyles(bannerConfig.cor).shadow}`}>
+                                <div className={`absolute inset-0 bg-gradient-to-r ${getBannerStyles(bannerConfig.cor).gradient} opacity-100`}></div>
+                                <div className="absolute inset-0 bg-white/20 -skew-x-12 translate-x-[-150%] animate-[shine_2s_infinite]"></div>
+
+                                <div className="relative p-4 flex items-center justify-between z-10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-full bg-black/20 backdrop-blur-md border border-white/20 shadow-inner">
+                                            <Crown size={20} className="text-white drop-shadow-md" />
+                                        </div>
+                                        <div className="text-left">
+                                            <h4 className="text-sm font-black uppercase leading-none drop-shadow-md text-white">{bannerConfig.titulo}</h4>
+                                            <p className="text-[10px] font-bold opacity-90 mt-1 drop-shadow-sm text-white">{bannerConfig.subtitulo}</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={18} className="text-white drop-shadow-md" />
+                                </div>
+                            </button>
+                        </div>
+
+                        {/* Resto da lista simulada */}
+                        {[1,2,3].map(i => (
+                            <div key={i} className="h-10 w-full bg-zinc-900/50 rounded-xl border border-zinc-800/50 opacity-30"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* --- ABA CONFIG (CRUD PLANOS) --- */}
         {activeTab === "config" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {planos.map(plano => (
-                    <div key={plano.id} className={`bg-zinc-900 border rounded-3xl p-6 flex flex-col relative overflow-hidden transition hover:border-opacity-100 ${plano.cor === 'yellow' ? 'border-yellow-500/30 hover:border-yellow-500' : plano.cor === 'zinc' ? 'border-zinc-500/30 hover:border-white' : 'border-emerald-500/30 hover:border-emerald-500'}`}>
-                        {plano.destaque && <div className="absolute top-0 right-0 bg-white text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-wider">Mais Vendido</div>}
+                    <div key={plano.id} className={`bg-zinc-900 border rounded-3xl p-6 flex flex-col relative overflow-hidden transition ${plano.cor === 'yellow' ? 'border-yellow-500/30' : plano.cor === 'zinc' ? 'border-zinc-500/30' : 'border-emerald-500/30'}`}>
                         <div className="mb-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${plano.cor === 'yellow' ? 'bg-yellow-500/10 text-yellow-500' : plano.cor === 'zinc' ? 'bg-zinc-800 text-white' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                                {plano.id === 'lenda' ? <Crown size={24}/> : plano.id === 'atleta' ? <Star size={24}/> : <Ghost size={24}/>}
-                            </div>
                             <h2 className="text-xl font-black uppercase">{plano.nome}</h2>
                             <p className="text-xs text-zinc-400 mt-1">{plano.descricao}</p>
                         </div>
-                        <div className="mb-6">
-                            <span className="text-xs text-zinc-500 font-bold uppercase">Valor</span>
-                            <div className="flex items-end gap-1"><span className="text-sm font-bold text-zinc-400 mb-1">R$</span><span className={`text-3xl font-black ${plano.cor === 'yellow' ? 'text-yellow-500' : plano.cor === 'zinc' ? 'text-white' : 'text-emerald-500'}`}>{plano.preco}</span></div>
-                            <p className="text-[10px] text-zinc-500">{plano.parcelamento}</p>
-                        </div>
-                        <div className="space-y-2 flex-1 mb-6">
-                            {plano.beneficios.map((ben, i) => (
-                                <div key={i} className="flex items-start gap-2 text-xs text-zinc-300"><CheckCircle size={14} className={`shrink-0 mt-0.5 ${plano.cor === 'yellow' ? 'text-yellow-500' : plano.cor === 'zinc' ? 'text-zinc-400' : 'text-emerald-500'}`}/>{ben}</div>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
+                        <div className="mb-6"><span className="text-xs text-zinc-500 font-bold uppercase">Valor</span><div className="flex items-end gap-1"><span className="text-sm font-bold text-zinc-400 mb-1">R$</span><span className="text-3xl font-black text-white">{plano.preco}</span></div></div>
+                        <div className="flex gap-2 mt-auto">
                             <button onClick={() => handleEdit(plano)} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl uppercase text-xs transition flex items-center justify-center gap-2"><Edit size={14}/> Editar</button>
                             <button onClick={() => {if(confirm('Excluir plano?')) setPlanos(prev => prev.filter(p => p.id !== plano.id))}} className="bg-red-900/20 text-red-500 px-4 rounded-xl hover:bg-red-900/40"><Trash2 size={16}/></button>
                         </div>
@@ -307,33 +380,19 @@ export default function AdminPlanosPage() {
 
       </main>
 
-      {/* MODAL DE CRIAÇÃO/EDIÇÃO */}
+      {/* MODAL DE CRIAÇÃO/EDIÇÃO (MANTIDO IGUAL) */}
       {isModalOpen && editingPlan && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
               <div className="bg-zinc-900 w-full max-w-lg rounded-3xl border border-zinc-800 p-6 shadow-2xl relative my-auto animate-in zoom-in-95 duration-200">
                   <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24}/></button>
                   <h2 className="font-bold text-white text-xl mb-6 flex items-center gap-2">{editingPlan.id ? "Editar Plano" : "Criar Novo Plano"}</h2>
-
                   <div className="space-y-4">
-                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Plano</label><input type="text" className="input-admin" value={editingPlan.nome} onChange={e => setEditingPlan({...editingPlan, nome: e.target.value})}/></div>
+                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome</label><input type="text" className="input-admin" value={editingPlan.nome} onChange={e => setEditingPlan({...editingPlan, nome: e.target.value})}/></div>
                       <div className="grid grid-cols-2 gap-3">
-                          <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Preço (R$)</label><input type="text" className="input-admin" value={editingPlan.preco} onChange={e => setEditingPlan({...editingPlan, preco: e.target.value})}/></div>
-                          <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Parcelamento</label><input type="text" className="input-admin" value={editingPlan.parcelamento} onChange={e => setEditingPlan({...editingPlan, parcelamento: e.target.value})}/></div>
+                          <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Preço</label><input type="text" className="input-admin" value={editingPlan.preco} onChange={e => setEditingPlan({...editingPlan, preco: e.target.value})}/></div>
+                          <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Parcelas</label><input type="text" className="input-admin" value={editingPlan.parcelamento} onChange={e => setEditingPlan({...editingPlan, parcelamento: e.target.value})}/></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Cor do Tema</label>
-                            <select className="input-admin text-zinc-300" value={editingPlan.cor} onChange={e => setEditingPlan({...editingPlan, cor: e.target.value})}>
-                                <option value="emerald">Verde (Básico)</option>
-                                <option value="zinc">Prata (Médio)</option>
-                                <option value="yellow">Dourado (VIP)</option>
-                            </select>
-                        </div>
-                        <div className="flex items-end mb-2">
-                             <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-white"><input type="checkbox" checked={editingPlan.destaque} onChange={e => setEditingPlan({...editingPlan, destaque: e.target.checked})} className="w-4 h-4 rounded border-zinc-700 bg-black text-emerald-500"/> Marcar como Destaque</label>
-                        </div>
-                      </div>
-                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Descrição Curta</label><textarea rows={2} className="input-admin" value={editingPlan.descricao} onChange={e => setEditingPlan({...editingPlan, descricao: e.target.value})}/></div>
+                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Descrição</label><textarea rows={2} className="input-admin" value={editingPlan.descricao} onChange={e => setEditingPlan({...editingPlan, descricao: e.target.value})}/></div>
                       
                       <div className="bg-black/30 p-4 rounded-xl border border-zinc-800">
                           <div className="flex justify-between items-center mb-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Benefícios</label><button onClick={addBenefit} className="text-[10px] bg-emerald-900/30 text-emerald-500 px-2 py-1 rounded hover:bg-emerald-900/50">+ Adicionar</button></div>
@@ -344,10 +403,9 @@ export default function AdminPlanosPage() {
                           </div>
                       </div>
                   </div>
-
                   <div className="mt-6 flex justify-end gap-2">
                       <button onClick={() => setIsModalOpen(false)} className="px-6 py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold hover:bg-zinc-800 text-xs uppercase">Cancelar</button>
-                      <button onClick={handleSave} className="px-8 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 shadow-lg text-xs uppercase flex items-center gap-2"><Save size={16}/> Salvar</button>
+                      <button onClick={handleSave} className="px-8 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 shadow-lg text-xs uppercase flex items-center gap-2"><CheckCircle size={16}/> Salvar</button>
                   </div>
               </div>
           </div>

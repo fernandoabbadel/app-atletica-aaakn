@@ -1,214 +1,133 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, Calendar, MapPin, Clock, Camera } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft, Calendar, MapPin, Trophy, ChevronRight, CalendarRange } from "lucide-react";
 
-// Dados baseados nas imagens que você enviou
-const timelineEventos = [
-  {
-    id: 1,
-    titulo: "3º JUCA BEACH",
-    subtitulo: "A Invasão do Litoral",
-    data: "23 de Março",
-    local: "Praia do Camaroeiro",
-    descricao:
-      "Sol, areia e muita integração. Nossos atletas dominaram as quadras de areia e a torcida fez a praia tremer.",
-    imagem: "/historico/juca-beach.JPG",
-    cor: "from-yellow-500 to-blue-500",
-    tags: ["Jogos", "Praia", "Integração"],
-  },
-  {
-    id: 2,
-    titulo: "ANESTESIA",
-    subtitulo: "Worries Off",
-    data: "14 de Maio",
-    local: "Santé Gastro Club",
-    descricao:
-      "O dress code branco tomou conta da cidade. Uma noite insana para esquecer dos problemas e focar na diversão.",
-    imagem: "/historico/anestesia.JPG",
-    cor: "from-zinc-200 to-zinc-500",
-    tags: ["White Party", "Open Bar"],
-  },
-  {
-    id: 3,
-    titulo: "CALOURADA 2025.2",
-    subtitulo: "O Início da Jornada",
-    data: "15 de Agosto",
-    local: "O Garimpo",
-    descricao:
-      "A recepção oficial dos novos tubarões. DJ Lanco e Pétala comandaram o som até o amanhecer.",
-    imagem: "/historico/calourada.JPG",
-    cor: "from-green-600 to-emerald-900",
-    tags: ["Boas-vindas", "Trote"],
-  },
-  {
-    id: 4,
-    titulo: "BLACKOUT",
-    subtitulo: "Turn Off The Lights",
-    data: "27 de Setembro",
-    local: "Santé Gastro Club",
-    descricao:
-      "Quando as luzes se apagam, a loucura começa. A festa mais misteriosa e sensorial do ano.",
-    imagem: "/historico/black-out.JPG",
-    cor: "from-zinc-800 to-black",
-    tags: ["Noite", "Mistério"],
-  },
-  {
-    id: 5,
-    titulo: "EPIDEMIA",
-    subtitulo: "A Festa à Fantasia",
-    data: "25 de Outubro",
-    local: "Rua Iraci, 59",
-    descricao:
-      "A criatividade rolou solta! Uma noite assustadoramente divertida onde ninguém era quem parecia ser.",
-    imagem: "/historico/epidemia.JPG",
-    cor: "from-red-900 to-black",
-    tags: ["Fantasia", "Halloween"],
-  },
-  {
-    id: 6,
-    titulo: "JIMESP",
-    subtitulo: "Jogos Intermed SP",
-    data: "20 a 22 de Novembro",
-    local: "São Paulo",
-    descricao:
-      "A primeira edição histórica. Sangue, suor e glória defendendo o manto verde e preto contra as maiores medicinas do estado.",
-    imagem: "/historico/jimesp.JPG",
-    cor: "from-green-500 to-yellow-400",
-    tags: ["Campeonato", "Esportes", "Viagem"],
-  },
+// MOCK: Apontando para a pasta local public/historico
+const EVENTS_MOCK = [
+    {
+        id: "1", titulo: "Fundação da AAAKN", data: "2018-03-15", ano: "2018",
+        descricao: "O início de tudo. A primeira gestão reuniu os alunos para criar a maior do litoral. Foi um dia histórico onde assinamos a ata de fundação.",
+        local: "Campus Unitau", foto: "/historico/fundacao.jpg" // Nome exemplo
+    },
+    {
+        id: "2", titulo: "Primeiro Título no JIMESP", data: "2022-11-02", ano: "2022",
+        descricao: "Contra todas as probabilidades, trouxemos o caneco pra casa no Futsal Masculino. Uma final emocionante decidida nos pênaltis.",
+        local: "Ginásio Municipal", foto: "/historico/titulo_2022.jpg"
+    },
+    {
+        id: "3", titulo: "A Maior Calourada", data: "2024-02-20", ano: "2024",
+        descricao: "Recorde de público com mais de 500 pessoas. O Tubarão dominou a cidade e mostrou quem manda no litoral.",
+        local: "Arena Show", foto: "/historico/calourada_2024.jpg"
+    }
 ];
 
 export default function HistoricoPage() {
+  const timelineEvents = [...EVENTS_MOCK].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-24 selection:bg-emerald-500/30">
-      {/* HEADER */}
-      <header className="fixed top-0 left-0 w-full z-30 bg-[#050505]/90 backdrop-blur-xl border-b border-white/5">
-        <div className="p-4 flex items-center gap-3 max-w-2xl mx-auto">
-          <Link
-            href="/"
-            className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-white/10 group"
-          >
-            <ArrowLeft
-              size={24}
-              className="group-hover:-translate-x-1 transition-transform"
-            />
-          </Link>
-          <h1 className="font-black text-xl italic uppercase tracking-tighter text-white">
-            Nossa História
-          </h1>
-        </div>
-      </header>
-
-      <div className="h-20"></div>
-
-      <main className="p-4 max-w-2xl mx-auto space-y-12">
-        {/* Intro */}
-        <section className="text-center space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <span className="text-emerald-500 text-xs font-black uppercase tracking-[0.3em]">
-            Galeria AAAKN
-          </span>
-          <h2 className="text-3xl font-black text-white italic uppercase leading-none">
-            Momentos <br />{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500">
-              Lendários
-            </span>
-          </h2>
-          <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
-            Da praia ao ginásio, da festa ao pódio. Confira os eventos que
-            construíram nossa tradição.
-          </p>
-        </section>
-
-        {/* TIMELINE */}
-        <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-white/10 before:to-transparent">
-          {timelineEventos.map((evento, index) => (
-            <div
-              key={evento.id}
-              className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group"
-            >
-              {/* Bolinha da Timeline */}
-              <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-[#050505] bg-zinc-800 group-hover:bg-emerald-500 transition shadow-[0_0_15px_rgba(0,0,0,0.5)] shrink-0 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                <Camera
-                  size={16}
-                  className="text-zinc-400 group-hover:text-black"
-                />
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500">
+      
+      {/* HEADER COM LOGO AAAKN */}
+      <div className="relative h-72 w-full overflow-hidden flex items-center justify-center bg-zinc-900">
+          {/* Background Abstrato */}
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/50 to-[#050505] z-10"></div>
+          
+          {/* LOGO CENTRALIZADA */}
+          <div className="relative z-20 flex flex-col items-center animate-in zoom-in-50 duration-700">
+              <div className="w-32 h-32 bg-black/50 backdrop-blur-xl rounded-full border-4 border-emerald-500/30 p-4 shadow-[0_0_40px_rgba(16,185,129,0.2)]">
+                <img src="/logo.png" className="w-full h-full object-contain drop-shadow-xl" alt="Logo AAAKN" />
               </div>
+              <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white mt-4 drop-shadow-xl">
+                  Nossa <span className="text-emerald-500">História</span>
+              </h1>
+          </div>
+          
+          {/* Botão Voltar */}
+          <div className="absolute top-6 left-6 z-30">
+              <Link href="/menu" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10">
+                <ArrowLeft size={20}/>
+              </Link>
+          </div>
+      </div>
 
-              {/* Card do Evento */}
-              <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] bg-zinc-900/50 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-white/20 transition-all duration-500 hover:-translate-y-1">
-                {/* Imagem */}
-                <div className="h-48 relative overflow-hidden">
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent z-10`}
-                  ></div>
-                  <img
-                    src={evento.imagem}
-                    alt={evento.titulo}
-                    className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
-                  />
-                  {/* Data Badge */}
-                  <div className="absolute top-3 right-3 z-20 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg border border-white/10 flex flex-col items-center">
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold">
-                      {evento.data.split(" ")[2]}
-                    </span>
-                    <span className="text-lg font-black text-white leading-none">
-                      {evento.data.split(" ")[0]}
-                    </span>
-                  </div>
-                </div>
+      {/* TIMELINE CONTAINER */}
+      <div className="max-w-4xl mx-auto px-4 mt-8 relative">
+          
+          {/* LINHA CENTRAL VERTICAL */}
+          <div className="absolute left-4 md:left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-500 via-zinc-800 to-transparent"></div>
 
-                {/* Conteúdo */}
-                <div className="p-5 relative">
-                  {/* Tags */}
-                  <div className="flex gap-2 mb-3">
-                    {evento.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-[9px] font-bold uppercase px-2 py-0.5 bg-white/5 rounded text-zinc-300 border border-white/5"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+          <div className="space-y-12">
+              {timelineEvents.map((event, index) => {
+                  const isEven = index % 2 === 0;
+                  return (
+                      <div key={event.id} className={`relative flex flex-col md:flex-row items-start md:items-center ${isEven ? 'md:flex-row-reverse' : ''}`}>
+                          
+                          {/* BOLINHA DA TIMELINE */}
+                          <div className="absolute left-4 md:left-1/2 -translate-x-[5px] md:-translate-x-1/2 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black shadow-[0_0_10px_rgba(16,185,129,0.8)] z-10 mt-1.5 md:mt-0"></div>
 
-                  <h3 className="text-xl font-black italic uppercase text-white leading-none mb-1">
-                    {evento.titulo}
-                  </h3>
-                  <p
-                    className={`text-xs font-bold bg-clip-text text-transparent bg-gradient-to-r ${evento.cor} uppercase tracking-widest mb-3`}
-                  >
-                    {evento.subtitulo}
-                  </p>
+                          {/* CONTEÚDO (CARD) */}
+                          <div className={`pl-10 md:pl-0 w-full md:w-1/2 ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
+                              <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-hidden group hover:border-emerald-500/50 transition duration-300 shadow-xl">
+                                  
+                                  {/* Imagem do Evento (Public Folder) */}
+                                  <div className="h-40 w-full overflow-hidden relative bg-black">
+                                      <img 
+                                        src={event.foto} 
+                                        onError={(e) => e.currentTarget.src = "https://via.placeholder.com/400x200?text=Sem+Foto"} // Fallback se não achar a foto na pasta
+                                        className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
+                                      />
+                                      <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1 rounded-full border border-white/10">
+                                          <span className="text-xs font-black text-emerald-400">{event.ano}</span>
+                                      </div>
+                                  </div>
 
-                  <p className="text-zinc-400 text-xs leading-relaxed mb-4">
-                    {evento.descricao}
-                  </p>
+                                  <div className="p-5">
+                                      <h3 className="text-xl font-black uppercase text-white mb-2 leading-tight">{event.titulo}</h3>
+                                      <div className="flex items-center gap-4 text-[10px] font-bold text-zinc-500 uppercase mb-3">
+                                          <span className="flex items-center gap-1"><Calendar size={12}/> {event.data}</span>
+                                          <span className="flex items-center gap-1"><MapPin size={12}/> {event.local}</span>
+                                      </div>
+                                      <p className="text-sm text-zinc-400 leading-relaxed border-t border-zinc-800 pt-3">
+                                          {event.descricao}
+                                      </p>
+                                  </div>
+                              </div>
+                          </div>
 
-                  <div className="flex items-center gap-2 text-zinc-500 text-xs pt-3 border-t border-white/5">
-                    <MapPin size={14} className="text-emerald-500" />
-                    {evento.local}
-                  </div>
-                </div>
+                          {/* ESPAÇO VAZIO (Para alinhar no desktop) */}
+                          <div className="w-full md:w-1/2 hidden md:block"></div>
+                      </div>
+                  );
+              })}
+          </div>
+
+          {/* FIM DA LINHA E BOTÃO GLOWING */}
+          <div className="mt-16 mb-8 flex flex-col items-center gap-6">
+              <div className="inline-block p-4 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-500 animate-bounce">
+                  <Trophy size={24} className="text-yellow-500"/>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {/* CTA FINAL */}
-        <div className="text-center pt-8 pb-4">
-          <p className="text-zinc-500 text-sm mb-4">
-            Não fique de fora da próxima história...
-          </p>
-          <Link
-            href="/eventos"
-            className="inline-flex items-center gap-2 bg-emerald-500 text-black px-8 py-4 rounded-xl font-black uppercase text-sm hover:bg-emerald-400 transition shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-          >
-            <Calendar size={18} /> Ver Agenda 2026
-          </Link>
-        </div>
-      </main>
+              
+              {/* BOTÃO FLOATING COOL PARA EVENTOS */}
+              <Link href="/eventos" className="relative group w-full max-w-sm">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl blur opacity-40 group-hover:opacity-100 transition duration-500 animate-pulse"></div>
+                  <button className="relative w-full bg-zinc-900 ring-1 ring-white/10 rounded-xl px-6 py-4 flex items-center justify-between overflow-hidden">
+                      <div className="flex items-center gap-4">
+                          <div className="bg-emerald-500/20 p-2 rounded-lg text-emerald-400">
+                              <CalendarRange size={24} />
+                          </div>
+                          <div className="text-left">
+                              <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Próximos Passos</p>
+                              <h3 className="text-lg font-black text-white italic uppercase">Agenda do Tubarão</h3>
+                          </div>
+                      </div>
+                      <ChevronRight className="text-zinc-500 group-hover:text-white group-hover:translate-x-1 transition"/>
+                  </button>
+              </Link>
+          </div>
+      </div>
     </div>
   );
 }
