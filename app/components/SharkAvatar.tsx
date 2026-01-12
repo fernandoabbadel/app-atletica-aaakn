@@ -6,17 +6,17 @@ interface SharkAvatarProps {
   name?: string;
   level?: number;
   size?: "sm" | "md" | "lg" | "xl";
-  customColor?: string;    // Cor do Corpo
-  customEyeColor?: string; // NOVO: Cor dos Olhos
+  customColor?: string;    
+  customEyeColor?: string; 
   className?: string;
 }
 
 export default function SharkAvatar({ 
-    name, // Se não passar nome, não mostra a badge
+    name, 
     level = 1, 
     size = "md", 
     customColor = "#64748b", 
-    customEyeColor = "#0f172a", // Padrão: Preto/Azul Escuro
+    customEyeColor = "#0f172a", 
     className = ""
 }: SharkAvatarProps) {
   
@@ -54,18 +54,16 @@ export default function SharkAvatar({
             viewBox="0 0 200 200" 
             fill="none" 
             xmlns="http://www.w3.org/2000/svg" 
-            className="w-full h-full drop-shadow-xl overflow-visible" // Overflow visible para não cortar sombras
+            className="w-full h-full drop-shadow-xl overflow-visible"
             style={{ filter: "drop-shadow(0px 12px 10px rgba(0,0,0,0.25))" }}
         >
            <defs>
-             {/* PELE DINÂMICA */}
              <linearGradient id="skinGrad" x1="100" y1="0" x2="100" y2="180" gradientUnits="userSpaceOnUse">
                <stop offset="0%" stopColor={customColor} stopOpacity="0.9" />
                <stop offset="50%" stopColor={customColor} />
                <stop offset="100%" stopColor="#0f172a" stopOpacity="0.6" />
              </linearGradient>
 
-             {/* OLHOS DINÂMICOS */}
              <radialGradient id="customEye" cx="0.3" cy="0.3" r="0.8">
                  <stop offset="0%" stopColor={customEyeColor} stopOpacity="0.8" />
                  <stop offset="100%" stopColor={customEyeColor} />
@@ -79,7 +77,7 @@ export default function SharkAvatar({
 
            {/* ==================== BABY SLIME (< 20) ==================== */}
            {!isEvolved && (
-             <g transform="translate(0, 10)"> {/* Ajuste fino de centro */}
+             <g transform="translate(0, 10)">
                <path d="M140 130 Q 160 120 155 150 L 130 145 Z" fill="url(#skinGrad)" stroke="rgba(0,0,0,0.1)" strokeWidth="1" className="origin-[140px_130px] animate-wag"/>
                <path d="M100 40 Q 120 10 135 60 L 110 70 Z" fill="url(#skinGrad)" stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
                <path d="M60 60 C 60 20, 140 20, 140 60 C 145 100, 130 130, 100 130 C 70 130, 55 100, 60 60 Z" fill="url(#skinGrad)" stroke="rgba(0,0,0,0.1)" strokeWidth="2"/>
@@ -129,12 +127,12 @@ export default function SharkAvatar({
         </svg>
       </div>
 
-      {/* SOMBRA DE ATERRISSAGEM (Mais forte) */}
-      <div className="w-24 h-4 bg-black/30 rounded-[100%] blur-md animate-shadow-gentle mt-[-15px] z-0"></div>
+      {/* SOMBRA NO CHÃO */}
+      <div className="w-24 h-4 bg-black/40 rounded-[100%] blur-md animate-shadow-gentle -mt-6 z-0"></div>
 
-      {/* LABEL DO NOME E NÍVEL (Aproximado do Avatar) */}
+      {/* LABEL DO NOME E NÍVEL (AGORA MAIS PERTO COM -mt-6) */}
       {name && (
-        <div className="mt-1 flex flex-col items-center animate-float-gentle" style={{ animationDelay: "0.2s" }}>
+        <div className="flex flex-col items-center animate-float-gentle -mt-2 relative z-20" style={{ animationDelay: "0.2s" }}>
             <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest bg-black/80 px-2 py-0.5 rounded-t-md border-t border-x border-zinc-700 -mb-1 relative z-0">LVL {level}</span>
             <div className={`bg-white/10 backdrop-blur-md px-3 py-1 rounded-md border border-white/20 shadow-sm flex items-center gap-1.5 relative z-10 ${isEvolved ? 'border-emerald-500/50' : ''}`}>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">
@@ -144,7 +142,6 @@ export default function SharkAvatar({
         </div>
       )}
 
-      {/* ANIMAÇÕES */}
       <style jsx>{`
         @keyframes float-gentle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         .animate-float-gentle { animation: float-gentle 4s infinite ease-in-out; }
