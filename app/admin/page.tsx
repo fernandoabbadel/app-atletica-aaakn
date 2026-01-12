@@ -28,6 +28,10 @@ import {
   CheckCircle,
   ListChecks,
   Plus,
+  Globe,
+  MousePointerClick,
+  Eye,
+  Smartphone
 } from "lucide-react";
 // Import charts
 import {
@@ -49,7 +53,7 @@ import {
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
-// --- MOCK DATA ---
+// --- MOCK DATA ORIGINAL ---
 const dataArea = [
   { name: "Jan", uv: 4000, pv: 2400 },
   { name: "Fev", uv: 3000, pv: 1398 },
@@ -88,6 +92,22 @@ const dataPie = [
 ];
 const COLORS = ["#34d399", "#60a5fa", "#fbbf24", "#f87171"];
 
+// --- NOVOS DADOS (RANKINGS E ACESSOS) ---
+const topPages = [
+    { name: "Gym Rats (Treino)", path: "/gym", views: 12540, growth: "+12%" },
+    { name: "Carteirinha Digital", path: "/carteirinha", views: 9850, growth: "+5%" },
+    { name: "Loja Oficial", path: "/loja", views: 8400, growth: "+22%" },
+    { name: "Calendário Eventos", path: "/eventos", views: 6200, growth: "-2%" },
+    { name: "Ranking Geral", path: "/ranking", views: 4100, growth: "+8%" },
+];
+
+const topProfiles = [
+    { name: "Duda Med", role: "Sócio Lenda", views: 1204, foto: "https://i.pravatar.cc/150?u=a042581f4e29026024d" },
+    { name: "João Engenharia", role: "Sócio Atleta", views: 980, foto: "https://i.pravatar.cc/150?u=a042581f4e29026704d" },
+    { name: "Ana Direito", role: "Diretoria", views: 850, foto: "https://i.pravatar.cc/150?u=a04258114e29026302d" },
+    { name: "Pedro Bixo", role: "Sócio Bicho", views: 620, foto: "https://i.pravatar.cc/150?u=a04258a2462d826712d" },
+];
+
 export default function AdminDashboard() {
   const { checkPermission } = useAuth();
 
@@ -101,7 +121,7 @@ export default function AdminDashboard() {
   const canManageAdmins = checkPermission(["admin_gestor", "master"]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-700">
       {/* Header */}
       <div className="flex justify-between items-end">
         <div>
@@ -351,6 +371,74 @@ export default function AdminDashboard() {
         </div>
       </section>
 
+      {/* --- NOVA SEÇÃO: INTELIGÊNCIA & RANKINGS (ADICIONADA AQUI) --- */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* RANKING DE PÁGINAS MAIS ACESSADAS */}
+          <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800 relative overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-white text-lg flex items-center gap-2">
+                      <Globe size={18} className="text-blue-500" /> Top Páginas
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 font-black uppercase bg-zinc-800 px-2 py-1 rounded">Hoje</p>
+              </div>
+              
+              <div className="space-y-5">
+                  {topPages.map((page, i) => (
+                      <div key={i} className="group relative">
+                          <div className="flex justify-between items-end mb-1 relative z-10">
+                              <span className="text-xs font-bold text-white flex items-center gap-3">
+                                  <span className={`w-5 h-5 flex items-center justify-center rounded bg-zinc-800 text-[10px] ${i === 0 ? 'text-yellow-500' : 'text-zinc-500'}`}>#{i+1}</span> 
+                                  {page.name}
+                              </span>
+                              <div className="text-right flex items-center gap-2">
+                                  <span className={`text-[10px] font-bold ${page.growth.includes('+') ? 'text-emerald-500' : 'text-red-500'}`}>{page.growth}</span>
+                                  <span className="text-[10px] font-mono text-zinc-400 block">{page.views.toLocaleString()}</span>
+                              </div>
+                          </div>
+                          {/* Barra de Progresso */}
+                          <div className="w-full bg-black h-2 rounded-full overflow-hidden relative">
+                              <div 
+                                  className={`h-full rounded-full transition-all duration-1000 ${i === 0 ? 'bg-gradient-to-r from-blue-600 to-blue-400' : 'bg-zinc-700'}`} 
+                                  style={{ width: `${(page.views / 15000) * 100}%` }}
+                              ></div>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+
+          {/* PERFIS MAIS ACESSADOS (STALKERS) */}
+          <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800">
+              <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-white text-lg flex items-center gap-2">
+                      <MousePointerClick size={18} className="text-purple-500" /> Perfis Popstars
+                  </h3>
+              </div>
+              <div className="space-y-3">
+                  {topProfiles.map((profile, i) => (
+                      <div key={i} className="flex items-center gap-4 p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-purple-500/30 hover:bg-purple-900/10 transition group">
+                          <div className="relative">
+                              <img src={profile.foto} className="w-12 h-12 rounded-full border-2 border-zinc-800 group-hover:border-purple-500 transition"/>
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-900 rounded-full flex items-center justify-center text-[10px] font-bold text-white border border-zinc-700">#{i+1}</div>
+                          </div>
+                          <div className="flex-1">
+                              <h4 className="text-sm font-bold text-white group-hover:text-purple-400 transition">{profile.name}</h4>
+                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wide">{profile.role}</p>
+                          </div>
+                          <div className="text-right bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-800">
+                              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <Eye size={12} className="text-purple-500"/> 
+                                  {profile.views}
+                              </span>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+
+      </section>
+
       {/* COACH DASHBOARD (ADMIN 3) */}
       {canManageTrainings && (
         <section>
@@ -469,7 +557,7 @@ export default function AdminDashboard() {
               borderColor="border-yellow-500/30"
             />
 
-            {/* Row 3: Institutional */}
+            {/* Row 3: Institutional & Config (NOVO BOTÃO AQUI) */}
             <AdminCard
               icon={<Crown size={24} />}
               title="Planos"
@@ -499,6 +587,16 @@ export default function AdminDashboard() {
               title="Guia do App"
               subtitle="Tutoriais de Ajuda"
               href="/admin/guia"
+            />
+            {/* BOTÃO DE CONFIGURAÇÕES ADICIONADO AQUI */}
+            <AdminCard
+              icon={<Settings size={24} />}
+              title="Configurações"
+              subtitle="App & Menus"
+              href="/admin/configuracoes"
+              color="text-zinc-300"
+              bgColor="bg-zinc-800"
+              borderColor="border-zinc-700"
             />
           </div>
         </section>

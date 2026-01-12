@@ -9,36 +9,88 @@ export default function RouteGuard({
 }: {
   children: React.ReactNode;
 }) {
-  const { user } = useAuth();
+  // CORREÇÃO: Usando 'as any' para evitar erro de TypeScript no contexto antigo
+  const { user, loading } = useAuth() as any; 
   const router = useRouter();
   const pathname = usePathname();
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
-    const publicPaths = ["/login", "/", "/historico", "/cadastro"];
+    // 0. Se o Firebase ainda está carregando, não faz nada
+    if (loading) return;
+
+    // Definição de rotas públicas
+    const publicPaths = [
+      "/login", 
+      "/", 
+      "/historico", 
+      "/cadastro", 
+      "/termos", 
+      "/empresa/cadastro"
+    ];
+    
     const path = pathname.split("?")[0];
 
-    // 1. Bloqueio de Visitante (Login obrigatório para páginas internas)
-    if (!user && !publicPaths.includes(path)) {
-      setAuthorized(false);
-      router.push("/login");
+    // 1. BLOQUEIO DE VISITANTE 🚫
+    if (!user) {
+      if (!publicPaths.includes(path)) {
+        setAuthorized(false);
+        router.push("/login");
+      } else {
+        setAuthorized(true);
+      }
       return;
     }
 
-    // 2. Bloqueio de Admin (Segurança da Área Restrita)
-    if (path.startsWith("/admin")) {
-      // Se não tem usuário OU o papel é apenas 'user' ou 'guest'
-      if (!user || user.role === "user" || user.role === "guest") {
+    // A partir daqui, user existe. Pegamos a role como string.
+    const role = (user.role || 'usuario') as string;
+
+    // 2. LÓGICA DA EMPRESA 💼
+    if (role === 'empresa') {
+      if (!path.startsWith('/empresa')) {
         setAuthorized(false);
-        router.push("/"); // Manda de volta pra casa
+        router.push("/empresa");
         return;
       }
     }
 
-    setAuthorized(true);
-  }, [user, pathname, router]);
+    // 3. BLOQUEIO DE ALUNO NO PAINEL ADMIN 🛡️
+    if (role === 'usuario') {
+      if (path.startsWith('/admin') || (path.startsWith('/empresa') && path !== '/empresa/cadastro')) {
+        setAuthorized(false);
+        router.push("/menu");
+        return;
+      }
+    }
 
-  if (!authorized) {
+    // 4. REGRAS DENTRO DO ADMIN 👮‍♂️
+    if (path.startsWith('/admin')) {
+      // 4.1 Treinador
+      if (role === 'treinador') {
+        const allowedRoutes = ['/admin/treinos', '/admin/gym'];
+        const isAllowed = allowedRoutes.some(p => path.startsWith(p));
+        if (!isAllowed) {
+          setAuthorized(false);
+          router.push("/admin/treinos");
+          return;
+        }
+      }
+      // 4.2 Admin Comum
+      if (role === 'admin') {
+        if (path.startsWith('/admin/permissoes')) {
+          setAuthorized(false);
+          router.push("/admin");
+          return;
+        }
+      }
+    }
+
+    setAuthorized(true);
+
+  }, [user, loading, pathname, router]);
+
+  // Spinner de carregamento
+  if (loading || !authorized) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
