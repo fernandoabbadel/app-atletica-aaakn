@@ -1,299 +1,99 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  ArrowLeft,
-  Check,
-  X,
-  Crown,
-  Star,
-  Zap,
-  Beer,
-  Dumbbell,
-  Ticket,
-} from "lucide-react";
+import React from "react";
+import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+// DADOS (Idealmente viriam do backend, aqui repetimos o mock para o front)
+const PLANOS = [
+    {
+        id: "bicho", nome: "Bicho Solto", preco: "75,00", parcelas: "Semestral", cor: "emerald", icon: Ghost, destaque: false,
+        chamada: "Kit Sobrevivência",
+        benefits: ["Kit: Caneca + Tirante", "15% OFF na Lojinha", "Fura-fila Open Cooler", "1 VIP preço de Pista"]
+    },
+    {
+        id: "atleta", nome: "Atleta de Bar", preco: "160,00", parcelas: "2x Sem Juros", cor: "zinc", icon: Star, destaque: true,
+        chamada: "O Mais Vendido",
+        benefits: ["Kit: Caneca + Tirante", "Kit: Camiseta ou Samba", "Preço Gestão (3 itens)", "50% OFF em 2 Festas", "Prioridade JIMESP"]
+    },
+    {
+        id: "lenda", nome: "Lenda da JIMESP", preco: "250,00", parcelas: "3x Sem Juros", cor: "yellow", icon: Crown, destaque: false,
+        chamada: "Status & VIP",
+        benefits: ["Kit Caneca + Tirante", "Kit Colete ou Body + Bandana", "R$ 50 OFF no JIMESP", "VIP Garantido", "Sorteio Camarote"]
+    }
+];
 
 export default function PlanosPage() {
-  const [ciclo, setCiclo] = useState<"mensal" | "semestral">("mensal");
-
-  const planos = [
-    {
-      nome: "Plano Cação",
-      preco: ciclo === "mensal" ? "R$ 14,90" : "R$ 79,90",
-      desc: "Para quem tá chegando agora no mar.",
-      cor: "blue",
-      icone: <Star size={24} />,
-      beneficios: [
-        "Carteirinha Digital",
-        "Acesso à Lojinha",
-        "Descontos em parceiros básicos",
-        "Participação em sorteios simples",
-      ],
-      naoInclui: [
-        "Treinos Esportivos",
-        "Desconto em Festas",
-        "Kits Exclusivos",
-      ],
-    },
-    {
-      nome: "Tubarão Martelo",
-      preco: ciclo === "mensal" ? "R$ 29,90" : "R$ 159,90",
-      desc: "Focado em quem defende a atlética em quadra.",
-      cor: "orange",
-      destaque: "ESPORTES",
-      icone: <Dumbbell size={24} />,
-      beneficios: [
-        "Tudo do Plano Cação",
-        "Acesso liberado aos treinos",
-        "Prioridade em campeonatos",
-        "Desconto em Fisioterapia",
-        "Isenção de taxa de seletiva",
-      ],
-      naoInclui: ["Desconto em Festas", "Kit Sócio"],
-    },
-    {
-      nome: "Tubarão Titular",
-      preco: ciclo === "mensal" ? "R$ 39,90" : "R$ 199,90",
-      desc: "O plano padrão para o torcedor fiel.",
-      cor: "emerald",
-      icone: <Zap size={24} />,
-      popular: true,
-      beneficios: [
-        "Carteirinha Digital & Física",
-        "10% OFF na Lojinha",
-        "15% OFF em Festas Oficiais",
-        "Direito a voto em assembleias",
-        "Acesso à arquibancada premium",
-      ],
-      naoInclui: ["Kit Sócio Rei", "Open Bar estendido"],
-    },
-    {
-      nome: "Lenda do Bar",
-      preco: ciclo === "mensal" ? "R$ 49,90" : "R$ 249,90",
-      desc: "Para quem não perde um gole.",
-      cor: "purple",
-      icone: <Beer size={24} />,
-      beneficios: [
-        "Carteirinha + Tirante exclusivo",
-        "Fura-fila no Bar das festas",
-        "Welcome Shot em eventos oficiais",
-        "Copo exclusivo da gestão",
-        "Desconto em cervejadas (20%)",
-      ],
-      naoInclui: ["Acesso a treinos"],
-    },
-    {
-      nome: "Lenda dos Eventos",
-      preco: ciclo === "mensal" ? "R$ 59,90" : "R$ 299,90",
-      desc: "VIP é pouco pra você.",
-      cor: "pink",
-      icone: <Ticket size={24} />,
-      beneficios: [
-        "Garantia de Lote Promocional (Sempre)",
-        "Entrada VIP (sem fila) nas festas",
-        "Acesso ao Backstage/Camarote",
-        "Meet & Greet com atrações",
-        "10% OFF em ingressos para amigos",
-      ],
-      naoInclui: ["Acesso a treinos"],
-    },
-    {
-      nome: "Tubarão Rei",
-      preco: ciclo === "mensal" ? "R$ 99,90" : "R$ 499,90",
-      desc: "A hierarquia máxima. Domine o oceano.",
-      cor: "yellow",
-      icone: <Crown size={24} />,
-      beneficios: [
-        "Acesso TOTAL (Treinos + Festas)",
-        "Kit Sócio Rei (Moletom + Boné + Caneca)",
-        "1 Festa Open Bar grátis/ano",
-        "Personal Shopper na Lojinha",
-        "Nome gravado no mural da sede",
-        "30% OFF em qualquer produto",
-      ],
-      naoInclui: [], // Tem tudo
-    },
-  ];
-
-  // Função auxiliar para cores
-  const getColorClasses = (cor: string) => {
-    const map: any = {
-      blue: "text-blue-400 border-blue-500/20 bg-blue-500/10",
-      orange: "text-orange-400 border-orange-500/20 bg-orange-500/10",
-      emerald: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
-      purple: "text-purple-400 border-purple-500/20 bg-purple-500/10",
-      pink: "text-pink-400 border-pink-500/20 bg-pink-500/10",
-      yellow: "text-yellow-400 border-yellow-500/50 bg-yellow-500/10",
-    };
-    return map[cor] || map.emerald;
-  };
+  const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-10 selection:bg-emerald-500/30">
-      {/* HEADER */}
-      <header className="p-4 sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md flex items-center gap-3 border-b border-zinc-900">
-        <Link
-          href="/carteirinha"
-          className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900"
-        >
-          <ArrowLeft size={24} />
-        </Link>
-        <h1 className="font-bold text-lg">Seja Sócio</h1>
-      </header>
-
-      <main className="p-4 space-y-8">
-        {/* Toggle Mensal/Semestral */}
-        <div className="flex justify-center">
-          <div className="bg-zinc-900 p-1 rounded-xl flex border border-zinc-800 relative">
-            <button
-              onClick={() => setCiclo("mensal")}
-              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${
-                ciclo === "mensal"
-                  ? "bg-zinc-800 text-white shadow"
-                  : "text-zinc-500"
-              }`}
-            >
-              Mensal
-            </button>
-            <button
-              onClick={() => setCiclo("semestral")}
-              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${
-                ciclo === "semestral"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-zinc-500"
-              }`}
-            >
-              Semestral
-            </button>
-            {/* Badge de desconto */}
-            <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce">
-              -15% OFF
-            </span>
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-emerald-500 pb-20">
+      
+      {/* HEADER HERO */}
+      <div className="relative pt-10 pb-20 px-6 overflow-hidden">
+          <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[80%] h-[80%] bg-emerald-600/20 blur-[120px] rounded-full pointer-events-none"></div>
+          
+          <div className="relative z-10 max-w-4xl mx-auto text-center">
+              <Link href="/menu" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white mb-6 transition uppercase text-xs font-bold tracking-widest"><ArrowLeft size={16}/> Voltar ao Menu</Link>
+              <h1 className="text-4xl md:text-6xl font-black text-white uppercase tracking-tighter mb-4">Seja Sócio <span className="text-emerald-500">Tubarão</span></h1>
+              <p className="text-zinc-400 max-w-lg mx-auto text-sm md:text-base">Não é só ajudar a atlética. É matemática inteligente. Economize nos rolês, garanta seu kit e tenha prioridade em tudo.</p>
           </div>
-        </div>
+      </div>
 
-        {/* Lista de Planos */}
-        <div className="space-y-6">
-          {planos.map((plano, i) => {
-            const styles = getColorClasses(plano.cor);
-            const isRei = plano.nome === "Tubarão Rei";
+      {/* CARDS */}
+      <div className="px-6 relative z-20 -mt-10">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+              {PLANOS.map(plano => (
+                  <div key={plano.id} className={`bg-zinc-900/80 backdrop-blur-xl border rounded-[2rem] p-6 flex flex-col relative transition duration-300 hover:-translate-y-2 ${plano.destaque ? 'border-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.2)] md:pb-12 md:pt-10 bg-zinc-900' : 'border-zinc-800 hover:border-zinc-600'}`}>
+                      
+                      {plano.destaque && (
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-black text-[10px] uppercase px-4 py-1 rounded-b-xl shadow-lg tracking-widest w-fit whitespace-nowrap">
+                              Escolha dos Veteranos
+                          </div>
+                      )}
 
-            return (
-              <div
-                key={i}
-                className={`relative rounded-3xl p-6 border transition-all duration-300 ${
-                  isRei
-                    ? "bg-gradient-to-b from-[#1a1a0f] to-black border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)]"
-                    : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"
-                }`}
-              >
-                {/* Tag Popular ou Destaque */}
-                {plano.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
-                    Mais Escolhido
-                  </div>
-                )}
-                {plano.destaque && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-black text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
-                    {plano.destaque}
-                  </div>
-                )}
-
-                {/* Cabeçalho do Card */}
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h2
-                      className={`text-xl font-black italic uppercase mb-1 ${
-                        isRei ? "text-yellow-400" : "text-white"
-                      }`}
-                    >
-                      {plano.nome}
-                    </h2>
-                    <p className="text-xs text-zinc-400 w-3/4 leading-tight">
-                      {plano.desc}
-                    </p>
-                  </div>
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center border ${styles}`}
-                  >
-                    {plano.icone}
-                  </div>
-                </div>
-
-                {/* Preço */}
-                <div className="mb-6">
-                  <span className="text-3xl font-black text-white">
-                    {plano.preco}
-                  </span>
-                  <span className="text-xs text-zinc-500 font-medium">
-                    {" "}
-                    / {ciclo}
-                  </span>
-                </div>
-
-                {/* Lista de Benefícios */}
-                <ul className="space-y-3 mb-6">
-                  {plano.beneficios.map((item, idx) => (
-                    <li
-                      key={idx}
-                      className="flex items-start gap-3 text-sm text-zinc-300"
-                    >
-                      <div
-                        className={`mt-0.5 min-w-[16px] flex justify-center`}
-                      >
-                        <Check
-                          size={14}
-                          className={
-                            isRei ? "text-yellow-500" : "text-emerald-500"
-                          }
-                          strokeWidth={3}
-                        />
+                      <div className="mb-6 text-center">
+                          <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 ${plano.cor === 'yellow' ? 'bg-yellow-500/10 text-yellow-500' : plano.cor === 'zinc' ? 'bg-zinc-800 text-white' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                              <plano.icon size={32}/>
+                          </div>
+                          <h3 className={`text-2xl font-black uppercase ${plano.cor === 'yellow' ? 'text-yellow-500' : plano.cor === 'zinc' ? 'text-white' : 'text-emerald-500'}`}>{plano.nome}</h3>
+                          <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1">{plano.chamada}</p>
                       </div>
-                      <span
-                        className={
-                          item.includes("Kit") || item.includes("VIP")
-                            ? "font-bold text-white"
-                            : ""
-                        }
-                      >
-                        {item}
-                      </span>
-                    </li>
-                  ))}
-                  {plano.naoInclui.map((item, idx) => (
-                    <li
-                      key={idx}
-                      className="flex items-start gap-3 text-sm text-zinc-600 line-through decoration-zinc-700"
-                    >
-                      <div className="mt-0.5 min-w-[16px] flex justify-center">
-                        <X size={14} />
+
+                      <div className="text-center mb-8">
+                          <div className="flex items-end justify-center gap-1">
+                              <span className="text-sm font-bold text-zinc-500 mb-2">R$</span>
+                              <span className="text-5xl font-black text-white">{plano.preco}</span>
+                          </div>
+                          <p className="text-xs text-emerald-400 font-bold mt-2">{plano.parcelas}</p>
                       </div>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
 
-                {/* Botão de Assinar */}
-                <button
-                  className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-widest transition active:scale-95 ${
-                    isRei
-                      ? "bg-gradient-to-r from-yellow-600 to-yellow-400 text-black shadow-lg hover:shadow-yellow-500/20"
-                      : "bg-white text-black hover:bg-emerald-400"
-                  }`}
-                >
-                  Virar {plano.nome.split(" ")[0]}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                      <div className="space-y-3 flex-1 mb-8">
+                          {plano.benefits.map((ben, i) => (
+                              <div key={i} className="flex items-center gap-3 text-sm text-zinc-300">
+                                  <CheckCircle size={16} className={`shrink-0 ${plano.cor === 'yellow' ? 'text-yellow-500' : plano.cor === 'zinc' ? 'text-white' : 'text-emerald-500'}`}/>
+                                  {ben}
+                              </div>
+                          ))}
+                      </div>
 
-        <p className="text-center text-[10px] text-zinc-600 px-8">
-          Ao assinar, você concorda com os termos de uso da Atlética AAAKN. O
-          cancelamento pode ser feito a qualquer momento.
-        </p>
-      </main>
+                      <button 
+                        onClick={() => router.push(`/planos/adesao?plano=${plano.id}`)}
+                        className={`w-full py-4 rounded-xl font-black uppercase text-sm tracking-wider transition shadow-lg flex items-center justify-center gap-2 ${plano.destaque ? 'bg-emerald-500 text-black hover:bg-emerald-400' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
+                      >
+                          Quero Esse <ArrowRight size={16}/>
+                      </button>
+                  </div>
+              ))}
+          </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto mt-16 px-6 text-center">
+          <p className="text-zinc-500 text-xs">
+              * A adesão é válida por um semestre letivo. Os kits devem ser retirados na salinha da Atlética mediante apresentação do QR Code gerado após o pagamento. Dúvidas? Chame a diretoria no Insta.
+          </p>
+      </div>
     </div>
   );
 }
