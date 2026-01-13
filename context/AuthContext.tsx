@@ -1,156 +1,147 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signOut, 
+  User as FirebaseUser 
+} from "firebase/auth";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { auth, db, googleProvider } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 
-// --- NÍVEIS DE ACESSO (ROLES) ---
-// Atualizado para incluir os tipos que causavam erro na Landing Page
-export type UserRole =
-  | "guest"         // Visitante
-  | "user"          // Sócio Padrão (Atleta)
-  | "treinador"     // Novo: Treinador
-  | "empresa"       // Novo: Parceiro Comercial
-  | "admin_treino"  // Admin 3 (Coach Legacy)
-  | "admin_geral"   // Admin 1 (Diretoria)
-  | "admin_gestor"  // Admin 2 (Presidência)
-  | "master";       // Você (Super Admin)
+// --- TIPAGEM ---
+export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master";
 
-// Definição COMPLETA do usuário
 export interface User {
-  uid?: string; // Adicionado para compatibilidade com Firebase
+  uid: string;
   nome: string;
-  handle: string;
-  matricula: string;
-  turma: string;
-  turmaPhoto?: string; // Opcional para o Dashboard
-  
-  // Gamificação Base
-  level: number;
-  xp: number;
-  heroPower?: number; // Poder do Herói (Arena)
-  rankingPosition?: number; // Posição Geral
-  dailyMatchesPlayed?: number; // Controle de partidas
-  
-  // Perfil Social
+  email: string;
   foto: string;
-  instagram: string;
-  bio: string;
-  curso: string;
-  seguidores: number;
-  seguindo: number;
   role: UserRole;
   
-  // --- CAMPOS VISUAIS ---
-  plano?: string;       // Ex: "Tubarão Rei", "Lenda do Bar"
-  patente?: string;     // Ex: "Megalodon", "Barracuda"
-  plano_badge?: string; // Legado (VIP)
+  // Opcionais
+  matricula?: string;
+  turma?: string;
+  handle?: string;
+  level?: number;
+  xp?: number;
+  heroPower?: number;
+  rankingPosition?: number;
+  dailyMatchesPlayed?: number;
+  turmaPhoto?: string;
+  
+  // Visuais
+  plano?: string;
+  patente?: string;
+  plano_badge?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean; // ADICIONADO: Essencial para evitar redirects errados
-  setUser: (user: User | null) => void;
-  updateUser: (data: Partial<User>) => void;
-  login: (userData: User) => void;
-  logout: () => void;
+  loading: boolean;
+  loginGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
+  // Trouxe de volta para não quebrar seu BottomNav e RouteGuard
   checkPermission: (allowedRoles: UserRole[]) => boolean;
+  updateUser: (data: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [loading, setLoading] = useState(true); // Começa carregando
-  
-  // Usuário inicial MOCKADO (Atualizado com dados para o Dashboard funcionar)
-  const [user, setUser] = useState<User | null>({
-    uid: "user_123",
-    nome: "Maria Eduarda",
-    handle: "@duda_med",
-    matricula: "2023001",
-    turma: "T5",
-    turmaPhoto: "https://images.unsplash.com/photo-1523580494863-6f3031224c94?auto=format&fit=crop&q=80&w=1000",
-    
-    // Gamificação
-    level: 7,
-    xp: 620,
-    heroPower: 8450,
-    rankingPosition: 12,
-    dailyMatchesPlayed: 1,
-
-    // Social
-    foto: "https://i.pravatar.cc/300?u=maria",
-    instagram: "@duda_medicina",
-    bio: "Futura Doutora 🩺 | Shark Team 🦈",
-    curso: "Medicina",
-    seguidores: 154,
-    seguindo: 89,
-    role: "master", // Teste mudando aqui para 'empresa' ou 'treinador' para testar os redirects
-    
-    // Visual
-    plano: "Tubarão Rei",    
-    patente: "Megalodon",    
-    plano_badge: "VIP"       
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    // Simula verificação de sessão (localStorage ou Firebase)
-    if (typeof window !== "undefined") {
-      const storedUser = localStorage.getItem("tubarao_user");
-      if (storedUser) {
+    // Monitora o Firebase Auth
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
+      if (fbUser) {
         try {
-          setUser(JSON.parse(storedUser));
-        } catch (e) {
-          console.error("Erro ao ler usuário do cache", e);
-          localStorage.removeItem("tubarao_user");
+          const userRef = doc(db, "users", fbUser.uid);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            setUser(userSnap.data() as User);
+          } else {
+            // Cria usuário novo se não existir
+            const newUser: User = {
+              uid: fbUser.uid,
+              nome: fbUser.displayName || "Sem Nome",
+              email: fbUser.email || "",
+              foto: fbUser.photoURL || "https://github.com/shadcn.png",
+              role: "guest",
+              level: 1,
+              xp: 0,
+            };
+            await setDoc(userRef, newUser);
+            setUser(newUser);
+          }
+        } catch (error) {
+          console.error("Erro ao buscar user:", error);
+          setUser(null);
         }
+      } else {
+        setUser(null);
       }
-    }
-    setLoading(false); // Fim do carregamento inicial
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const login = (userData: User) => {
-    setUser(userData);
-    localStorage.setItem("tubarao_user", JSON.stringify(userData));
-  };
+  // --- AÇÕES ---
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("tubarao_user");
-    // Opcional: router.push('/login');
-  };
-
-  const updateUser = (data: Partial<User>) => {
-    if (user) {
-      const newUser = { ...user, ...data };
-      setUser(newUser);
-      localStorage.setItem("tubarao_user", JSON.stringify(newUser));
+  const loginGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Login falhou:", error);
     }
   };
 
+  const logout = async () => {
+    await signOut(auth);
+    router.push("/");
+  };
+
+  // Função recuperada para compatibilidade com o resto do app
   const checkPermission = (allowedRoles: UserRole[]) => {
     if (!user) return false;
     if (user.role === "master") return true;
     return allowedRoles.includes(user.role);
   };
 
+  // Função recuperada e conectada ao Firebase
+  const updateUser = async (data: Partial<User>) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, data);
+      // Atualiza estado local otimista
+      setUser((prev) => prev ? { ...prev, ...data } : null);
+    } catch (error) {
+      console.error("Erro ao atualizar:", error);
+    }
+  };
+
   return (
-    <AuthContext.Provider
-      value={{ 
-        user, 
-        loading, // Exportando o estado
-        setUser, 
-        updateUser, 
-        login, 
-        logout, 
-        checkPermission 
-      }}
-    >
-      {children}
+    <AuthContext.Provider value={{ user, loading, loginGoogle, logout, checkPermission, updateUser }}>
+      {loading ? (
+        <div className="h-screen w-full flex items-center justify-center bg-[#050505]">
+            <span className="text-orange-500 font-bold animate-pulse">CARREGANDO... 🦈</span>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context)
-    throw new Error("useAuth deve ser usado dentro de um AuthProvider");
+  if (!context) throw new Error("useAuth deve ser usado dentro de um AuthProvider");
   return context;
 };
