@@ -4,19 +4,23 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'firebasestorage.googleapis.com', // 📸 Fotos salvas no seu Storage
+        hostname: 'firebasestorage.googleapis.com', // 📸 Fotos que os usuários sobem no App
       },
       {
         protocol: 'https',
-        hostname: 'lh3.googleusercontent.com', // 👤 Avatares do Google Auth
+        hostname: 'lh3.googleusercontent.com', // 👤 Foto de perfil que vem do Login Google
       },
       {
         protocol: 'https',
-        hostname: 'images.unsplash.com', // 🖼️ Placeholders (se ainda estiver usando)
+        hostname: 'www.google.com', // 🚨 A CORREÇÃO: Libera o ícone "G" do botão de login
       },
       {
         protocol: 'https',
-        hostname: 'github.com', // 🐙 Caso use login com GitHub ou avatares de lá
+        hostname: 'i.pravatar.cc', // 🌟 Libera as fotos dos depoimentos da Landing Page
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com', // 🖼️ Mantive caso você use placeholders antigos
       }
     ],
   },

@@ -10,7 +10,7 @@
   --neon-red: #e53935;
 }
 
-/* --- 1. MELHORIA NA ROLAGEM (SMOOTH) --- */
+/* --- 1. ROLAGEM SUAVE --- */
 html {
   scroll-behavior: smooth;
 }
@@ -23,104 +23,73 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
-  /* Melhora a renderização de fontes */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- 2. SCROLLBAR ESTILIZADA (MODERNA) --- */
-/* Funciona no Chrome, Edge e Safari */
+/* --- 2. SCROLLBAR ESTILIZADA (Sua versão) --- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: #0d0d0d;
 }
-
 ::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
   transition: background 0.3s;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-green); /* Fica verde ao passar o mouse */
+  background: var(--neon-green);
 }
 
-/* --- 3. SELEÇÃO DE TEXTO PERSONALIZADA --- */
+/* --- 3. SELEÇÃO DE TEXTO --- */
 ::selection {
-  background-color: rgba(74, 222, 128, 0.3); /* Verde translúcido */
+  background-color: rgba(74, 222, 128, 0.3);
   color: #fff;
   text-shadow: 0 0 10px var(--neon-green);
 }
 
-/* --- 4. UTILITÁRIOS DE ANIMAÇÃO (COPIE E USE NOS COMPONENTES) --- */
+/* --- 4. NOVAS ANIMAÇÕES (Para a Landing Page funcionar) --- */
 
-/* Esconder barra de rolagem mas manter funcionalidade (útil para carrossel) */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+/* Esconder Scrollbar */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Animação de "Respiração" (Glow pulsante) */
-@keyframes neon-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
-    border-color: rgba(74, 222, 128, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 25px rgba(74, 222, 128, 0.4);
-    border-color: rgba(74, 222, 128, 0.6);
-  }
+/* Flutuar Lento (Para a Logo Gigante) */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
 }
 
-.animate-neon-pulse {
-  animation: neon-pulse 3s infinite ease-in-out;
+/* Texto Brilhante (Shimmer) */
+@keyframes text-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+.animate-text-shimmer {
+  background-size: 200% auto;
+  animation: text-shimmer 3s linear infinite;
 }
 
-/* Animação de Flutuar (Para o logo ou botões importantes) */
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+/* Pulso Lento (Para o Background) */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
 }
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
+/* Fade In (Entrada suave) */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-/* Efeito de Vidro Fosco Global */
-.glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Efeito de Gradiente Animado (Para fundos ou textos) */
-@keyframes gradient-xy {
-  0%,
-  100% {
-    background-size: 400% 400%;
-    background-position: left center;
-  }
-  50% {
-    background-size: 200% 200%;
-    background-position: right center;
-  }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-xy 6s ease infinite;
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
 }
