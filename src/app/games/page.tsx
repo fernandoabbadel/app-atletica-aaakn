@@ -7,10 +7,10 @@ import {
   XCircle, Eye, Info, ShoppingBag, Dumbbell, Crown, Calendar, Megaphone, Target
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../context/ToastContext";
 import html2canvas from "html2canvas";
 import SharkAvatar from "../components/SharkAvatar";
-import { useAuth } from "@/src/context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 // ============================================================================
 // 1. CONFIGURAÇÕES E TIPAGEM

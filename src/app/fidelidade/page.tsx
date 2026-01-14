@@ -12,8 +12,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
-import { useAuth } from "@/src/context/AuthContext";
-import { useToast } from "@/src/context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function FidelidadePage() {
   const { user } = useAuth();
@@ -27,17 +27,20 @@ export default function FidelidadePage() {
       </div>
     );
 
+  // 🦈 CORREÇÃO: Garantindo que userXP seja um número (fallback para 0 se for undefined)
+  const userXP = user.xp || 0;
+
   // --- CONFIGURAÇÃO (VIRIA DO BACKEND DO ADMIN) ---
   const XP_POR_SELO = 100; // Valor configurável no Admin
   const TOTAL_SELOS = 10;
 
   // Cálculo de Progresso
   const selosConquistados = Math.min(
-    Math.floor(user.xp / XP_POR_SELO),
+    Math.floor(userXP / XP_POR_SELO),
     TOTAL_SELOS
   );
   const progresso = (selosConquistados / TOTAL_SELOS) * 100;
-  const xpProximoSelo = (selosConquistados + 1) * XP_POR_SELO - user.xp;
+  const xpProximoSelo = (selosConquistados + 1) * XP_POR_SELO - userXP;
 
   // Prêmios Mockados (Refletindo o Admin)
   const premios = [
@@ -120,7 +123,7 @@ export default function FidelidadePage() {
         </div>
         <div className="bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full flex items-center gap-2 shadow-inner">
           <Star size={12} className="text-yellow-500 fill-yellow-500" />
-          <span className="text-xs font-bold text-white">{user.xp} XP</span>
+          <span className="text-xs font-bold text-white">{userXP} XP</span>
         </div>
       </header>
 
@@ -176,7 +179,7 @@ export default function FidelidadePage() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-bold text-zinc-300 uppercase tracking-widest">
-                      {user.nome.split(" ")[0]}
+                      {user.nome ? user.nome.split(" ")[0] : "Atleta"}
                     </p>
                     <p className="text-[9px] text-zinc-500 font-mono tracking-widest">
                       ID: {user.matricula || "0000"}
@@ -335,9 +338,9 @@ export default function FidelidadePage() {
               </h3>
               <div className="space-y-4">
                 {premios.map((premio) => {
-                  const bloqueado = user.xp < premio.custo;
+                  const bloqueado = userXP < premio.custo;
                   const progressoItem = Math.min(
-                    (user.xp / premio.custo) * 100,
+                    (userXP / premio.custo) * 100,
                     100
                   );
 
@@ -388,7 +391,7 @@ export default function FidelidadePage() {
                           </span>
                           {bloqueado && (
                             <span className="text-[9px] text-zinc-600">
-                              Faltam {premio.custo - user.xp} XP
+                              Faltam {premio.custo - userXP} XP
                             </span>
                           )}
                         </div>

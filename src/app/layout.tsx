@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-// Tente usar caminhos relativos se o alias @ estiver falhando
+
+// 🦈 IMPORTS DE COMPONENTES (Assumindo que estão em src/app/components)
 import BottomNav from "./components/BottomNav";
 import RouteGuard from "./components/RouteGuard";
-import { AuthProvider } from "@/src/context/AuthContext";
-import { ToastProvider } from "@/src/context/ToastContext";
+
+// 🦈 IMPORTS DE CONTEXTO CORRIGIDOS (Usando ../ em vez de @)
+import { AuthProvider } from "../context/AuthContext";
+import { ToastProvider } from "../context/ToastContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +37,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <ToastProvider>
+            {/* O RouteGuard protege todas as páginas dentro dele */}
             <RouteGuard>
               <main className="pb-20">{children}</main>
               <BottomNav />

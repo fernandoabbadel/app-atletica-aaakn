@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../src/context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 export default function SettingsPage() {
   const router = useRouter();

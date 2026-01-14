@@ -9,7 +9,7 @@ import {
   FileBadge, User, BarChart3, PieChart, Power, AlertTriangle, Eye, Shield, Star
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // --- TIPAGEM ---
 interface Cupom { id: string; titulo: string; regra: string; valor: string; imagem: string; }

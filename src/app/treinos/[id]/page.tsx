@@ -20,8 +20,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/src/context/AuthContext";
-import { useToast } from "@/src/context/ToastContext";
+import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
 
 // --- DADOS MOCKADOS ---
 const TREINOS_DATA = [

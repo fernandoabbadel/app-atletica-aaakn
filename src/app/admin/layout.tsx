@@ -8,7 +8,7 @@ import {
   Star, Gamepad2, BookOpen, Dumbbell, History, ShoppingBag, Megaphone,
   Lock, Crown, BarChart3, Users,
 } from "lucide-react";
-import { useAuth } from "@/src/context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

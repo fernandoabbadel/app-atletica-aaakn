@@ -8,7 +8,7 @@ import {
   PieChart, BarChart3, Clock, Calendar, Truck, CheckCircle2, XCircle, UserCheck, CornerDownRight
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // --- TIPAGEM ---
 
@@ -30,6 +30,7 @@ interface ProdutoAdmin {
     variantes: Variante[];
     lote: string;
     descricao: string;
+    estoque?: number; // 🦈 CORREÇÃO: Adicionado campo opcional para o Total de Estoque
 }
 
 interface VendaItem {
@@ -82,6 +83,7 @@ const PRODUTOS_MOCK: ProdutoAdmin[] = [
     vendidos: 120, 
     lote: "Lote 1/26", 
     descricao: "Samba oficial.",
+    estoque: 45, // Soma das variantes abaixo
     variantes: [
         { id: "sku-1a", tamanho: "P", cor: "Azul", estoque: 12 },
         { id: "sku-1b", tamanho: "M", cor: "Azul", estoque: 8 }, 
@@ -97,6 +99,7 @@ const PRODUTOS_MOCK: ProdutoAdmin[] = [
     vendidos: 450, 
     lote: "Lote Extra", 
     descricao: "Térmica.",
+    estoque: 45,
     variantes: [
         { id: "sku-2a", tamanho: "Único", cor: "Prata", estoque: 5 }, 
         { id: "sku-2b", tamanho: "Único", cor: "Preto Fosco", estoque: 40 },
@@ -290,6 +293,7 @@ export default function AdminLojaPage() {
           lote: formData.lote || "",
           descricao: formData.descricao || "",
           variantes: variantesTemp,
+          // 🦈 AGORA FUNCIONA: Calcula o estoque total somando as variantes
           estoque: variantesTemp.reduce((acc, curr) => acc + Number(curr.estoque), 0)
       };
 
@@ -518,7 +522,7 @@ export default function AdminLojaPage() {
             </div>
         )}
 
-        {/* --- 3. HISTÓRICO DE VENDAS (COLUNAS SEPARADAS) --- */}
+        {/* --- 3. HISTÓRICO DE VENDAS --- */}
         {activeTab === 'vendas' && (
             <div className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="overflow-x-auto">

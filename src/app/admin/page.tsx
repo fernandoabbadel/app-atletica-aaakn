@@ -51,7 +51,7 @@ import {
   LabelList,
 } from "recharts";
 import Link from "next/link";
-import { useAuth } from "@/src/context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 // --- MOCK DATA ORIGINAL ---
 const dataArea = [

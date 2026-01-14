@@ -7,10 +7,12 @@ import {
   Eye, Waves, Sparkles, Users, 
   MapPin, Mail, Phone, Instagram, ShieldCheck, Dumbbell, Star, Rocket, Crown
 } from "lucide-react";
-import { useAuth } from "@/src/context/AuthContext";
-import { useToast } from "@/src/context/ToastContext";
-import { collection, getCountFromServer } from "firebase/firestore";
+
+// 🦈 IMPORTS CORRIGIDOS (Caminho Relativo ../)
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { db } from "../lib/firebase";
+import { collection, getCountFromServer } from "firebase/firestore";
 
 // --- HOOK: Contadores Animados ---
 const useCounter = (end: number, duration: number = 2000) => {
@@ -34,12 +36,10 @@ const useCounter = (end: number, duration: number = 2000) => {
   return count;
 };
 
-// --- COMPONENTE: Card de Estatística (CORRIGIDO) ---
-// Removemos o uso de ${color} dinâmico que quebrava o build
+// --- COMPONENTE: Card de Estatística ---
 const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: any) => {
   const count = useCounter(value);
 
-  // Mapeamento manual das cores para o Tailwind entender (Safelist)
   const styles: any = {
     emerald: {
       border: "hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]",
@@ -165,7 +165,6 @@ export default function LandingPage() {
       <div className="fixed inset-0 pointer-events-none z-0">
          <div className="absolute top-[-10%] left-[-20%] w-[80%] h-[80%] bg-emerald-500/5 rounded-full blur-[120px] animate-pulse-slow" />
          <div className="absolute bottom-[-10%] right-[-20%] w-[80%] h-[80%] bg-teal-600/5 rounded-full blur-[120px] animate-pulse-slow delay-700" />
-         <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03]" />
       </div>
 
       {/* ================= HERO SECTION ================= */}

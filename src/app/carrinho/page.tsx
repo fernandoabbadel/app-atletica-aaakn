@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/src/context/ToastContext"; // <--- NOVO
+import { useToast } from "../../context/ToastContext"; // <--- NOVO
 
 interface CartItem {
   id: number;

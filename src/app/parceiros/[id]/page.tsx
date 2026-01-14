@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, MapPin, Clock, Phone, Globe, Copy, QrCode, CheckCircle, Ticket, Instagram, MessageCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation"; 
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // MOCK ESTENDIDO COM CUPONS
 const PARCEIROS_MOCK = [

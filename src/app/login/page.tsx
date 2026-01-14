@@ -4,7 +4,7 @@ import type React from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Waves, Sparkles } from "lucide-react";
-import { useToast } from "@/src/context/ToastContext"; // Use o Toast
+import { useToast } from "../../context/ToastContext"; // Use o Toast
 
 export default function LoginPage() {
   const router = useRouter();

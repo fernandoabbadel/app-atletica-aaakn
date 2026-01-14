@@ -1,6 +1,7 @@
 "use client";
 
-import { useAuth } from "../../../src/context/AuthContext";
+// 🦈 CAMINHO CORRIGIDO: Sai de components, sai de app, entra em context
+import { useAuth } from "../../context/AuthContext"; 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -9,14 +10,14 @@ export default function RouteGuard({
 }: {
   children: React.ReactNode;
 }) {
-  // CORREÇÃO: Usando 'as any' para evitar erro de TypeScript no contexto antigo
+  // Casting 'as any' mantido como solicitado
   const { user, loading } = useAuth() as any; 
   const router = useRouter();
   const pathname = usePathname();
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
-    // 0. Se o Firebase ainda está carregando, não faz nada
+    // 0. Se o Firebase ainda está carregando, aguarda...
     if (loading) return;
 
     // Definição de rotas públicas
@@ -29,20 +30,22 @@ export default function RouteGuard({
       "/empresa/cadastro"
     ];
     
+    // Ignora query params (ex: ?id=123)
     const path = pathname.split("?")[0];
 
-    // 1. BLOQUEIO DE VISITANTE 🚫
+    // 1. BLOQUEIO DE VISITANTE 🚫 (Não logado)
     if (!user) {
       if (!publicPaths.includes(path)) {
         setAuthorized(false);
-        router.push("/login");
+        // Se tentar acessar área restrita, manda pro Login (Home)
+        router.push("/"); 
       } else {
         setAuthorized(true);
       }
       return;
     }
 
-    // A partir daqui, user existe. Pegamos a role como string.
+    // A partir daqui, user existe. Pegamos a role.
     const role = (user.role || 'usuario') as string;
 
     // 2. LÓGICA DA EMPRESA 💼
@@ -54,20 +57,25 @@ export default function RouteGuard({
       }
     }
 
-    // 3. BLOQUEIO DE ALUNO NO PAINEL ADMIN 🛡️
     // 3. BLOQUEIO DE ALUNO / GUEST 🛡️
     if (role === 'usuario' || role === 'guest') {
       
       // 🦈 TRAVA DO NOVATO: Se for 'guest', SÓ PODE ir pro /cadastro
-      if (role === 'guest' && path !== '/cadastro' && path !== '/login') {
+      if (role === 'guest' && path !== '/cadastro' && path !== '/' && path !== '/login') {
          router.push("/cadastro");
+         return;
+      }
+
+      // Se o aluno já terminou o cadastro, mas tenta voltar pro /cadastro, joga pro dashboard
+      if (role === 'usuario' && path === '/cadastro') {
+         router.push("/dashboard");
          return;
       }
 
       // Trava de Admin para usuários comuns
       if (path.startsWith('/admin') || (path.startsWith('/empresa') && path !== '/empresa/cadastro')) {
         setAuthorized(false);
-        router.push("/dashboard"); // Mudei de /menu para /dashboard (padrão novo)
+        router.push("/dashboard");
         return;
       }
     }

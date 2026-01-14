@@ -10,7 +10,8 @@ import {
   Crown, Medal, Star, ShieldCheck, User, Ghost, Sparkles, Zap, LogIn,
   Layout
 } from "lucide-react";
-import { useAuth } from "@/src/context/AuthContext";
+// 🦈 Rota relativa mantida para evitar o erro do @
+import { useAuth } from "../../context/AuthContext";
 
 // --- 1. DEFINIÇÃO DE TIPOS ---
 interface UserWithTier {
@@ -55,18 +56,16 @@ const TierBadge = ({ tier }: { tier: string }) => {
     );
 };
 
-// BOTÃO "TUBARÃO REI" - APELATIVO E GAMIFICADO
 const SocioGrowthBanner = ({ tier, router, closeMenu }: { tier: string, router: any, closeMenu: () => void }) => {
     if (tier === 'lenda') return null; 
     
-    // Configuração visual PARA GERAÇÃO Z: DOURADO, OUSADO E "HYPE"
     const config = { 
-        title: "VIRE TUBARÃO REI", // Mudança aqui: Mais agressivo e gamificado
-        subtitle: "Domine o Oceano & Os Rolês", // Conecta a metáfora com a festa
+        title: "VIRE TUBARÃO REI", 
+        subtitle: "Domine o Oceano & Os Rolês", 
         icon: Crown, 
         gradient: "from-yellow-600 via-amber-500 to-yellow-600", 
         border: "border-yellow-400/50",
-        shadow: "shadow-[0_0_30px_rgba(234,179,8,0.5)]", // Glow mais forte
+        shadow: "shadow-[0_0_30px_rgba(234,179,8,0.5)]", 
         text: "text-white",
         animation: "animate-pulse"
     };
@@ -75,10 +74,7 @@ const SocioGrowthBanner = ({ tier, router, closeMenu }: { tier: string, router: 
 
     return (
         <button onClick={() => { closeMenu(); router.push('/planos'); }} className={`w-full group relative overflow-hidden rounded-2xl mb-6 transition-all duration-300 transform hover:scale-[1.03] active:scale-95 shadow-xl border ${config.border} ${config.shadow} ${config.animation}`}>
-            {/* Background Dourado Animado (Flow) */}
             <div className={`absolute inset-0 bg-gradient-to-r ${config.gradient} bg-[length:200%_200%] animate-[gradient_2s_ease_infinite]`}></div>
-            
-            {/* Efeito de Reflexo/Brilho passando */}
             <div className="absolute inset-0 bg-white/20 -skew-x-12 translate-x-[-150%] group-hover:animate-[shine_1s_infinite] pointer-events-none"></div>
 
             <div className="relative p-4 flex items-center justify-between z-10">
@@ -102,7 +98,7 @@ const SocioGrowthBanner = ({ tier, router, closeMenu }: { tier: string, router: 
 export default function BottomNavbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, checkPermission } = useAuth();
+  const { user, logout, checkPermission } = useAuth() as any;
   
   const currentUser = user as unknown as UserWithTier; 
 
@@ -146,11 +142,12 @@ export default function BottomNavbar() {
   }, [isSidebarOpen]);
 
   const handleNavigation = (path: string) => { setIsSidebarOpen(false); router.push(path); };
-  const handleLogout = () => { if (logout) logout(); setIsSidebarOpen(false); router.push("/login"); };
+  const handleLogout = () => { if (logout) logout(); setIsSidebarOpen(false); router.push("/"); };
 
   // --- ITENS DA BARRA INFERIOR ---
   const bottomItems: NavItemProps[] = [
-      { id: 'home', label: 'Início', icon: <Home size={22}/>, path: '/menu' },
+      // 🦈 CORREÇÃO: Direcionando para o Dashboard em vez do Menu
+      { id: 'home', label: 'Início', icon: <Home size={22}/>, path: '/dashboard' },
       { id: 'eventos', label: 'Eventos', icon: <Calendar size={22}/>, path: '/eventos' },
       { id: 'gym', label: 'Gym Rats', icon: <Dumbbell size={28}/>, path: '/gym', isMain: true },
       { id: 'carteira', label: 'Carteira', icon: <Wallet size={22}/>, path: '/carteirinha' },
@@ -179,7 +176,8 @@ export default function BottomNavbar() {
       { id: 'historico', label: 'Nossa História', icon: <Clock size={18} />, path: '/historico' },
   ];
 
-  if (["/login", "/cadastro", "/empresa/cadastro"].includes(pathname)) return null;
+  // 🦈 CORREÇÃO: Ocultando a barra na Landing Page ("/") e outras rotas de fluxo
+  if (["/", "/login", "/cadastro", "/empresa/cadastro"].includes(pathname)) return null;
 
   return (
     <>
@@ -201,7 +199,6 @@ export default function BottomNavbar() {
                 </div>
             ) : null}
 
-            {/* BOTÃO GROWTH (TUBARÃO REI) */}
             <SocioGrowthBanner tier={currentUser?.tier || 'standard'} router={router} closeMenu={() => setIsSidebarOpen(false)} />
 
             <div className="px-2 pt-2 pb-2"><h3 className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-2"><Layout size={10}/> Menu Principal</h3></div>

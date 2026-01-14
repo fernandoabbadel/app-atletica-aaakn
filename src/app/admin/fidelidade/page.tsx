@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // ============================================================================
 // 1. DADOS MOCKADOS (O que viria do Banco de Dados)

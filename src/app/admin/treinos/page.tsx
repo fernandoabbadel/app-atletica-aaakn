@@ -7,7 +7,7 @@ import {
   CalendarRange, RefreshCw, MoreHorizontal, ExternalLink, Filter, Medal
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // --- TIPOS ---
 interface Aluno {
@@ -46,7 +46,7 @@ const TREINOS_MOCK: Treino[] = [
         id: 1,
         esporte: "Futsal",
         categoria: "Masculino",
-        dia: "2026-10-12", // Formato YYYY-MM-DD para input date
+        dia: "2026-10-12",
         horario: "22:00",
         local: "Ginásio Municipal",
         img: "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=800&q=80",
@@ -118,6 +118,10 @@ export default function AdminTreinosPage() {
 
   const handleCriarModalidade = () => {
       if(!novaModalidadeNome.trim()) return;
+      if(modalidades.includes(novaModalidadeNome)) {
+        addToast("Essa modalidade já existe!", "error");
+        return;
+      }
       setModalidades([...modalidades, novaModalidadeNome]);
       HISTORICO_DATA[novaModalidadeNome] = { dates: [], alunos: [] };
       setNovaModalidadeNome("");
@@ -125,14 +129,13 @@ export default function AdminTreinosPage() {
       addToast(`Modalidade ${novaModalidadeNome} criada! Os tubarões vão dominar.`, "success");
   }
 
-  // Renovar Agenda (Agora acionado dentro do modal de novo treino)
+  // Renovar Agenda
   const handleRenovarAgenda = () => {
       if(!novoTreino.dia) {
           addToast("Selecione um dia de início primeiro!", "error");
           return;
       }
       if(confirm(`Criar treinos recorrentes de ${novoTreino.esporte} por 3 meses a partir de ${novoTreino.dia}?`)) {
-          // Lógica de backend iria aqui (loop for + addDoc)
           setShowCreateModal(false);
           addToast("Agenda renovada até Janeiro de 2027! 📅", "success");
       }
@@ -145,15 +148,24 @@ export default function AdminTreinosPage() {
       }
       
       const novoId = Date.now();
-      setTreinos([...treinos, { 
-          id: novoId, 
-          ...novoTreino as Treino, 
-          chamada: [], 
-          turmas_destaque: [] 
-      }]);
       
-      if(HISTORICO_DATA[novoTreino.esporte!]) {
-          HISTORICO_DATA[novoTreino.esporte!].dates.push(novoTreino.dia!.split("-").slice(1).reverse().join("/") || "DATA");
+      // Criando objeto explicitamente para evitar spread de props indesejadas
+      const treinoCriado: Treino = {
+          id: novoId,
+          esporte: novoTreino.esporte || "Futsal",
+          categoria: novoTreino.categoria || "Masculino",
+          dia: novoTreino.dia || "",
+          horario: novoTreino.horario || "",
+          local: novoTreino.local || "",
+          img: novoTreino.img || "",
+          chamada: [],
+          turmas_destaque: []
+      };
+
+      setTreinos([...treinos, treinoCriado]);
+      
+      if(HISTORICO_DATA[treinoCriado.esporte]) {
+          HISTORICO_DATA[treinoCriado.esporte].dates.push(treinoCriado.dia.split("-").slice(1).reverse().join("/") || "DATA");
       }
 
       setShowCreateModal(false);
@@ -200,8 +212,12 @@ export default function AdminTreinosPage() {
         if(file.size > 2 * 1024 * 1024) { addToast("Imagem muito pesada (Max 2MB)", "error"); return; }
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = (ev) => setNovoTreino({ ...novoTreino, img: ev.target?.result as string });
-        addToast("Foto carregada com sucesso!", "success");
+        reader.onload = (ev) => {
+            if (ev.target?.result) {
+                setNovoTreino(prev => ({ ...prev, img: ev.target!.result as string }));
+                addToast("Foto carregada com sucesso!", "success");
+            }
+        };
     }
   };
 
@@ -212,7 +228,6 @@ export default function AdminTreinosPage() {
       }
   }
 
-  // Helper para formatar data BR
   const formatData = (isoDate: string) => {
       if(!isoDate) return "";
       const [ano, mes, dia] = isoDate.split("-");
@@ -329,7 +344,7 @@ export default function AdminTreinosPage() {
                                 {HISTORICO_DATA[abaAtiva]?.dates.map((date, i) => (
                                     <th key={i} className="p-4 text-center min-w-[80px] border-r border-zinc-800/50">{date}</th>
                                 ))}
-                                {HISTORICO_DATA[abaAtiva]?.dates.length === 0 && <th className="p-4 text-center text-zinc-600 font-normal normal-case italic">Nenhum treino realizado ainda.</th>}
+                                {(!HISTORICO_DATA[abaAtiva]?.dates || HISTORICO_DATA[abaAtiva]?.dates.length === 0) && <th className="p-4 text-center text-zinc-600 font-normal normal-case italic">Nenhum treino realizado ainda.</th>}
                                 <th className="p-4 text-center text-emerald-500 min-w-[80px]">% Freq.</th>
                             </tr>
                         </thead>
@@ -361,7 +376,7 @@ export default function AdminTreinosPage() {
                                     </tr>
                                 )
                             })}
-                            {HISTORICO_DATA[abaAtiva]?.alunos.length === 0 && (
+                            {(!HISTORICO_DATA[abaAtiva]?.alunos || HISTORICO_DATA[abaAtiva]?.alunos.length === 0) && (
                                 <tr><td colSpan={10} className="p-8 text-center text-zinc-600">Nenhum dado registrado para {abaAtiva}.</td></tr>
                             )}
                         </tbody>
@@ -493,7 +508,6 @@ export default function AdminTreinosPage() {
             </div>
             
             <div className="grid grid-cols-2 gap-3">
-                {/* INPUT DATE (SELETOR DE DIA) */}
                 <input 
                     type="date" 
                     className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" 
@@ -504,7 +518,6 @@ export default function AdminTreinosPage() {
             </div>
             <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" value={novoTreino.local} onChange={e => setNovoTreino({...novoTreino, local: e.target.value})} />
 
-            {/* BOTÃO DE RENOVAR AGENDA (DENTRO DO MODAL) */}
             <div className="bg-zinc-800/50 p-3 rounded-xl border border-zinc-700 flex justify-between items-center">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase w-1/2">Repetir por 3 meses?</span>
                 <button onClick={handleRenovarAgenda} className="bg-zinc-900 border border-zinc-600 text-xs px-3 py-1.5 rounded-lg text-emerald-400 hover:text-emerald-300 hover:border-emerald-500 transition font-bold uppercase flex items-center gap-1">
@@ -530,7 +543,7 @@ function KpiCard({ title, value, icon, color, barColor, subInfo, percent }: any)
             <p className="text-[10px] text-zinc-500 font-bold uppercase flex items-center gap-2">{icon} {title}</p>
             <p className={`text-2xl font-black mt-1 ${color}`}>{value}</p>
             {subInfo && <p className="text-[9px] text-zinc-500 mt-1">{subInfo}</p>}
-            {percent && <div className="w-full h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden"><div className={`h-full w-[${percent}%] ${barColor}`}></div></div>}
+            {percent && <div className="w-full h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden"><div className={`h-full ${barColor}`} style={{ width: `${percent}%` }}></div></div>}
         </div>
     )
 }

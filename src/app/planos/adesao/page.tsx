@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, CheckCircle, CreditCard, Lock, Crown, Star, Ghost, Copy, QrCode } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 const PLANOS_INFO: any = {
     'bicho': { nome: "Bicho Solto", preco: "75,00", icon: Ghost, color: "text-emerald-500" },

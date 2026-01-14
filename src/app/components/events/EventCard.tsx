@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { MapPin, Calendar, Heart, CheckCircle, HelpCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/src/context/AuthContext';
+import { useAuth } from '../../../context/AuthContext';
 // import { useToast } from '@/hooks/useToast'; // Supondo que você tenha seu hook de toast
 
 // Interface local para as props

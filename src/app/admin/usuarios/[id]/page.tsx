@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../../context/ToastContext";
 
 // --- MOCK DATABASE COMPLETO (REFLETINDO 100% DO ECOSSISTEMA) ---
 const USER_FULL_DB = {

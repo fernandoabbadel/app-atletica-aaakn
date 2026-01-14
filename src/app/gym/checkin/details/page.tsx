@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, CheckCircle2, Tag, Type, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../../../src/context/AuthContext";
+import { useAuth } from "../../../../context/AuthContext";
 
 const WORKOUT_TYPES = [
   "Musculação",

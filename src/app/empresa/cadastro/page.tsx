@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { ArrowLeft, Store, Mail, Lock, FileText, Phone, Tag, Image as ImageIcon, CheckCircle, ChevronRight, Crown, Star, Shield, User, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 const PLANOS = [
     { id: 'ouro', nome: 'Ouro', valor: 'R$ 500', icon: Crown, color: 'text-yellow-500', border: 'border-yellow-500/50', bg: 'bg-yellow-500/10' },

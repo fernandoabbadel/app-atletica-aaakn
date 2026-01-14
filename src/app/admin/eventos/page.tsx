@@ -7,7 +7,7 @@ import {
   UploadCloud, X, Tag, Users, CheckCircle, Search, MoreHorizontal, Download
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../../context/ToastContext";
 
 // Tipos
 interface Lote {
@@ -123,20 +123,37 @@ export default function AdminEventosPage() {
       addToast("Participante removido da lista.", "info");
   };
 
-  // --- CRUD EVENTOS E LOTES (Mantido do anterior) ---
+  // --- CRUD EVENTOS E LOTES ---
   const handleSave = () => {
     if (!novoEvento.titulo?.trim()) {
         addToast("Ops — título obrigatório!", "error");
         return;
     }
-    setEventos([...eventos, { 
-        id: Date.now(), 
-        ...novoEvento as Evento, 
-        lotes: novoEvento.lotes || [], 
+
+    const novoId = Date.now();
+
+    // 🦈 CORREÇÃO: Criando objeto explicitamente para evitar conflito de 'id'
+    const eventoCriado: Evento = {
+        id: novoId,
+        titulo: novoEvento.titulo || "Sem Título",
+        data: novoEvento.data || "",
+        hora: novoEvento.hora || "",
+        local: novoEvento.local || "",
+        tipo: novoEvento.tipo || "Festa",
+        destaque: novoEvento.destaque || "",
+        mapsUrl: novoEvento.mapsUrl || "",
+        imagem: novoEvento.imagem || "",
+        lotes: novoEvento.lotes || [],
         participantes: [],
-        status: "ativo" 
-    }]);
+        status: "ativo"
+    };
+
+    setEventos([...eventos, eventoCriado]);
     setShowModal(false);
+    
+    // Limpar form
+    setNovoEvento({ titulo: "", data: "", hora: "", local: "", tipo: "Festa", destaque: "", mapsUrl: "", imagem: "", lotes: [] });
+    
     addToast("Evento criado! Os tubarões já estão sabendo.", "success");
   };
 
@@ -189,7 +206,11 @@ export default function AdminEventosPage() {
     if (file) {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = (ev) => setNovoEvento({ ...novoEvento, imagem: ev.target?.result as string });
+        reader.onload = (ev) => {
+            if(ev.target?.result) {
+                setNovoEvento(prev => ({ ...prev, imagem: ev.target!.result as string }));
+            }
+        };
     }
   };
 
@@ -333,7 +354,7 @@ export default function AdminEventosPage() {
           </div>
       )}
 
-      {/* MODAL CRIAR (Igual anterior) */}
+      {/* MODAL CRIAR */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-zinc-900 w-full max-w-lg rounded-2xl border border-zinc-800 p-6 space-y-4 my-10">

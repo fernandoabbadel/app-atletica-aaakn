@@ -5,7 +5,7 @@ import {
   ArrowLeft, MapPin, Clock, CalendarCheck, ChevronLeft, ChevronRight, Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useAuth } from "@/src/context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 // --- DADOS MOCKADOS (Sincronizados com o Admin) ---
 const TREINOS_DATA = [

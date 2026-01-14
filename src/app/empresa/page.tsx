@@ -7,7 +7,7 @@ import {
   Calendar, Clock, MapPin, Globe, Phone, Instagram, Trash2, CheckCircle, Search
 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/src/context/ToastContext";
+import { useToast } from "../../context/ToastContext";
 
 // --- TIPAGEM ---
 interface Cupom {

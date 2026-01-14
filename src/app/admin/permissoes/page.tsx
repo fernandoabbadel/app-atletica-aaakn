@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/src/context/AuthContext";
-import { useToast } from "@/src/context/ToastContext";
+import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
 
 // --- TIPOS DE CARGO (HIERARQUIA) ---
 type UserRole = 'master' | 'admin' | 'treinador' | 'empresa' | 'usuario';
