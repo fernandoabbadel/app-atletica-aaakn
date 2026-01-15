@@ -1,75 +1,18 @@
 "use client";
 
-import React, { use } from "react";
+import React, { use, useEffect, useState } from "react";
 import { ArrowLeft, Users, Trophy } from "lucide-react";
 import Link from "next/link";
+import { db } from "../../../lib/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 
-// REUTILIZANDO DADOS MOCKADOS (Em um app real, isso viria de um Contexto ou API)
-const RANKING_INDIVIDUAL = [
-  {
-    id: 1,
-    nome: "Julia Felinto",
-    pontos: 1250,
-    avatar: "https://i.pravatar.cc/150?u=julia",
-    turma: "T5",
-  },
-  {
-    id: 2,
-    nome: "Matheus Negreiros",
-    pontos: 1180,
-    avatar: "https://i.pravatar.cc/150?u=matheus",
-    turma: "T3",
-  },
-  {
-    id: 3,
-    nome: "Maria Gabriela",
-    pontos: 1100,
-    avatar: "https://i.pravatar.cc/150?u=maria",
-    turma: "T5",
-  },
-  {
-    id: 4,
-    nome: "João Silva",
-    pontos: 950,
-    avatar: "https://i.pravatar.cc/150?u=joao",
-    turma: "T1",
-  },
-  {
-    id: 5,
-    nome: "Ana Clara",
-    pontos: 920,
-    avatar: "https://i.pravatar.cc/150?u=ana",
-    turma: "T7",
-  },
-  {
-    id: 6,
-    nome: "Pedro Costa",
-    pontos: 880,
-    avatar: "https://i.pravatar.cc/150?u=pedro",
-    turma: "T2",
-  },
-  {
-    id: 7,
-    nome: "Lucas Almeida",
-    pontos: 850,
-    avatar: "https://i.pravatar.cc/150?u=lucas",
-    turma: "T4",
-  },
-  {
-    id: 8,
-    nome: "Fernanda Lima",
-    pontos: 800,
-    avatar: "https://i.pravatar.cc/150?u=fernanda",
-    turma: "T5",
-  },
-  {
-    id: 9,
-    nome: "Bruno Souza",
-    pontos: 750,
-    avatar: "https://i.pravatar.cc/150?u=bruno",
-    turma: "T5",
-  },
-];
+interface User {
+    id: string;
+    nome: string;
+    xp: number;
+    foto: string;
+    turma: string;
+}
 
 export default function TurmaRankingPage({
   params,
@@ -77,14 +20,50 @@ export default function TurmaRankingPage({
   params: Promise<{ turmaId: string }>;
 }) {
   const { turmaId } = use(params);
+  
+  // Decodifica a URL (ex: "T5" vem limpo, mas previne %20)
+  const turmaReal = decodeURIComponent(turmaId);
 
-  // Filtrar alunos desta turma e ordenar por pontos
-  const alunosDaTurma = RANKING_INDIVIDUAL.filter(
-    (aluno) => aluno.turma === turmaId
-  ).sort((a, b) => b.pontos - a.pontos);
+  const [alunos, setAlunos] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+      async function fetchTurmaData() {
+          try {
+              // 🦈 Query com Índice Composto Necessário!
+              // O Firebase vai pedir para criar índice: 'turma' Ascending + 'xp' Descending
+              const q = query(
+                  collection(db, "users"),
+                  where("turma", "==", turmaReal),
+                  orderBy("xp", "desc")
+              );
+
+              const snapshot = await getDocs(q);
+              const data = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  nome: doc.data().nome || "Anônimo",
+                  xp: doc.data().xp || 0,
+                  foto: doc.data().foto || "https://github.com/shadcn.png",
+                  turma: doc.data().turma
+              })) as User[];
+
+              setAlunos(data);
+          } catch (error) {
+              console.error("Erro ao carregar turma:", error);
+          } finally {
+              setLoading(false);
+          }
+      }
+
+      fetchTurmaData();
+  }, [turmaReal]);
 
   // Calcular total de pontos da turma
-  const totalPontos = alunosDaTurma.reduce((acc, curr) => acc + curr.pontos, 0);
+  const totalPontos = alunos.reduce((acc, curr) => acc + curr.xp, 0);
+
+  if (loading) {
+      return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-bold animate-pulse">Carregando Turma...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
@@ -98,7 +77,7 @@ export default function TurmaRankingPage({
             <ArrowLeft size={24} />
           </Link>
           <h1 className="font-black text-xl italic uppercase tracking-tighter">
-            Ranking {turmaId}
+            Ranking {turmaReal}
           </h1>
         </div>
       </header>
@@ -110,17 +89,17 @@ export default function TurmaRankingPage({
           <div className="relative z-10">
             <div className="w-20 h-20 mx-auto bg-white rounded-full p-1 mb-3">
               <img
-                src={`/turma${turmaId.replace(/\D/g, "")}.jpeg`}
+                src={`/turma${turmaReal.replace(/\D/g, "")}.jpeg`}
                 className="w-full h-full rounded-full object-cover"
                 onError={(e) => (e.currentTarget.src = "/logo.png")}
               />
             </div>
             <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white">
-              Turma {turmaId}
+              Turma {turmaReal}
             </h2>
             <div className="flex justify-center gap-4 mt-4 text-xs font-bold uppercase tracking-widest text-zinc-500">
               <span className="flex items-center gap-1">
-                <Users size={14} /> {alunosDaTurma.length} Alunos
+                <Users size={14} /> {alunos.length} Alunos
               </span>
               <span className="flex items-center gap-1">
                 <Trophy size={14} className="text-[#4ade80]" /> {totalPontos}{" "}
@@ -136,8 +115,8 @@ export default function TurmaRankingPage({
             Classificação Interna
           </h3>
 
-          {alunosDaTurma.length > 0 ? (
-            alunosDaTurma.map((item, index) => (
+          {alunos.length > 0 ? (
+            alunos.map((item, index) => (
               <Link
                 key={item.id}
                 href={`/perfil/${item.id}`}
@@ -157,10 +136,11 @@ export default function TurmaRankingPage({
                   {index + 1}º
                 </span>
                 <img
-                  src={item.avatar}
+                  src={item.foto}
                   className={`w-10 h-10 rounded-full object-cover bg-zinc-800 ${
                     index === 0 ? "border-2 border-yellow-500" : ""
                   }`}
+                  onError={(e) => (e.currentTarget.src = "https://github.com/shadcn.png")}
                 />
                 <div className="flex-1">
                   <p className="text-sm font-bold text-white">{item.nome}</p>
@@ -170,7 +150,7 @@ export default function TurmaRankingPage({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-black text-[#4ade80]">
-                    {item.pontos}
+                    {item.xp}
                   </p>
                   <p className="text-[8px] text-zinc-600 font-bold uppercase">
                     PTS

@@ -7,13 +7,10 @@ import {
   Home, Calendar, Dumbbell, CreditCard, Menu, X, Wallet,
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
-  Crown, Medal, Star, ShieldCheck, User, Ghost, Sparkles, Zap, LogIn,
-  Layout
+  Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout
 } from "lucide-react";
-// 🦈 Rota relativa mantida para evitar o erro do @
 import { useAuth } from "../../context/AuthContext";
 
-// --- 1. DEFINIÇÃO DE TIPOS ---
 interface UserWithTier {
     uid?: string;
     nome: string;
@@ -31,75 +28,37 @@ interface NavItemProps {
     icon: React.ReactNode; 
     action?: () => void;
     isMain?: boolean;
-    highlight?: boolean;
-    badge?: number;
 }
 
-// --- 2. COMPONENTES INTERNOS ---
-
 const TierBadge = ({ tier }: { tier: string }) => {
-    const getStyle = (t: string) => {
-        switch(t) {
-            case 'lenda': return { label: 'SÓCIO LENDA', bg: 'bg-yellow-500/10', text: 'text-yellow-500', border: 'border-yellow-500/30', icon: Crown };
-            case 'atleta': return { label: 'SÓCIO ATLETA', bg: 'bg-zinc-300/10', text: 'text-zinc-300', border: 'border-zinc-300/30', icon: Star };
-            case 'bicho': return { label: 'SÓCIO BICHO', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30', icon: Ghost };
-            default: return { label: 'NÃO SÓCIO', bg: 'bg-zinc-800', text: 'text-zinc-500', border: 'border-zinc-700', icon: User };
-        }
-    };
-    const style = getStyle(tier);
-    const Icon = style.icon;
-    return (
-        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${style.bg} ${style.border} shadow-sm backdrop-blur-md`}>
-            <Icon size={10} className={style.text} />
-            <span className={`text-[9px] font-black uppercase tracking-wider ${style.text}`}>{style.label}</span>
-        </div>
-    );
+    switch(tier) {
+        case 'lenda': return <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border bg-yellow-500/10 border-yellow-500/30 text-yellow-500"><Crown size={10}/><span className="text-[9px] font-black uppercase tracking-wider">SÓCIO LENDA</span></div>;
+        case 'atleta': return <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border bg-zinc-300/10 border-zinc-300/30 text-zinc-300"><Star size={10}/><span className="text-[9px] font-black uppercase tracking-wider">SÓCIO ATLETA</span></div>;
+        case 'bicho': return <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border bg-emerald-500/10 border-emerald-500/30 text-emerald-400"><Ghost size={10}/><span className="text-[9px] font-black uppercase tracking-wider">SÓCIO BICHO</span></div>;
+        default: return <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border bg-zinc-800 border-zinc-700 text-zinc-500"><User size={10}/><span className="text-[9px] font-black uppercase tracking-wider">NÃO SÓCIO</span></div>;
+    }
 };
 
-const SocioGrowthBanner = ({ tier, router, closeMenu }: { tier: string, router: any, closeMenu: () => void }) => {
-    if (tier === 'lenda') return null; 
-    
-    const config = { 
-        title: "VIRE TUBARÃO REI", 
-        subtitle: "Domine o Oceano & Os Rolês", 
-        icon: Crown, 
-        gradient: "from-yellow-600 via-amber-500 to-yellow-600", 
-        border: "border-yellow-400/50",
-        shadow: "shadow-[0_0_30px_rgba(234,179,8,0.5)]", 
-        text: "text-white",
-        animation: "animate-pulse"
-    };
-    
-    const Icon = config.icon;
-
+const SocioGrowthBanner = ({ tier, router, closeMenu }: any) => {
+    if (tier === 'lenda') return null;
     return (
-        <button onClick={() => { closeMenu(); router.push('/planos'); }} className={`w-full group relative overflow-hidden rounded-2xl mb-6 transition-all duration-300 transform hover:scale-[1.03] active:scale-95 shadow-xl border ${config.border} ${config.shadow} ${config.animation}`}>
-            <div className={`absolute inset-0 bg-gradient-to-r ${config.gradient} bg-[length:200%_200%] animate-[gradient_2s_ease_infinite]`}></div>
-            <div className="absolute inset-0 bg-white/20 -skew-x-12 translate-x-[-150%] group-hover:animate-[shine_1s_infinite] pointer-events-none"></div>
-
+        <button onClick={() => { closeMenu(); router.push('/planos'); }} className="w-full group relative overflow-hidden rounded-2xl mb-6 transition-all duration-300 transform hover:scale-[1.03] active:scale-95 shadow-xl border border-yellow-400/50 shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-pulse">
+            <div className="absolute inset-0 bg-gradient-to-r from-yellow-600 via-amber-500 to-yellow-600 bg-[length:200%_200%] animate-[gradient_2s_ease_infinite]"></div>
             <div className="relative p-4 flex items-center justify-between z-10">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-full bg-black/30 backdrop-blur-md border border-white/30 shadow-inner">
-                        <Icon size={22} className="text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
-                    </div>
-                    <div className="text-left">
-                        <h4 className={`text-base font-black italic uppercase leading-none drop-shadow-md ${config.text}`}>{config.title}</h4>
-                        <p className={`text-[10px] font-bold opacity-100 mt-1 drop-shadow-sm text-yellow-100 uppercase tracking-wide`}>{config.subtitle}</p>
-                    </div>
+                    <div className="p-2 rounded-full bg-black/30 backdrop-blur-md border border-white/30 shadow-inner"><Crown size={22} className="text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" /></div>
+                    <div className="text-left"><h4 className="text-base font-black italic uppercase leading-none drop-shadow-md text-white">VIRE TUBARÃO REI</h4><p className="text-[10px] font-bold opacity-100 mt-1 drop-shadow-sm text-yellow-100 uppercase tracking-wide">Domine o Oceano & Os Rolês</p></div>
                 </div>
-                <ChevronRight size={20} className={`${config.text} drop-shadow-md group-hover:translate-x-1 transition-transform`} />
+                <ChevronRight size={20} className="text-white drop-shadow-md group-hover:translate-x-1 transition-transform" />
             </div>
         </button>
     );
 };
 
-// --- 3. COMPONENTE PRINCIPAL ---
-
 export default function BottomNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, checkPermission } = useAuth() as any;
-  
   const currentUser = user as unknown as UserWithTier; 
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -112,8 +71,8 @@ export default function BottomNavbar() {
   useEffect(() => {
     const handleScroll = () => {
         const currentScrollY = window.scrollY;
-        if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-            if (!isSidebarOpen) setIsVisible(false);
+        if (currentScrollY > lastScrollY.current && currentScrollY > 20) {
+            setIsVisible(false);
         } else {
             setIsVisible(true);
         }
@@ -124,19 +83,20 @@ export default function BottomNavbar() {
         setIsVisible(true);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
-            if (!isSidebarOpen && window.scrollY > 50) setIsVisible(false);
+            if (!isSidebarOpen && window.scrollY > 10) setIsVisible(false);
         }, 3000);
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("click", resetTimer);
     window.addEventListener("touchstart", resetTimer);
+    
     resetTimer();
 
     return () => {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         window.removeEventListener("scroll", handleScroll);
-        window.removeEventListener("mousemove", resetTimer);
+        window.removeEventListener("click", resetTimer);
         window.removeEventListener("touchstart", resetTimer);
     };
   }, [isSidebarOpen]);
@@ -144,17 +104,14 @@ export default function BottomNavbar() {
   const handleNavigation = (path: string) => { setIsSidebarOpen(false); router.push(path); };
   const handleLogout = () => { if (logout) logout(); setIsSidebarOpen(false); router.push("/"); };
 
-  // --- ITENS DA BARRA INFERIOR ---
   const bottomItems: NavItemProps[] = [
-      // 🦈 CORREÇÃO: Direcionando para o Dashboard em vez do Menu
       { id: 'home', label: 'Início', icon: <Home size={22}/>, path: '/dashboard' },
       { id: 'eventos', label: 'Eventos', icon: <Calendar size={22}/>, path: '/eventos' },
       { id: 'gym', label: 'Gym Rats', icon: <Dumbbell size={28}/>, path: '/gym', isMain: true },
       { id: 'carteira', label: 'Carteira', icon: <Wallet size={22}/>, path: '/carteirinha' },
       { id: 'menu', label: 'Menu', icon: <Menu size={22}/>, action: () => setIsSidebarOpen(true) },
   ];
-
-  // --- ORGANIZAÇÃO DA SIDEBAR ---
+  
   const sidebarItemsGeneral: NavItemProps[] = [
       { id: 'loja', label: 'Lojinha', icon: <ShoppingBag size={18} />, path: '/loja' },
       { id: 'carteira_side', label: 'Carteirinha', icon: <CreditCard size={18} />, path: '/carteirinha' },
@@ -176,13 +133,11 @@ export default function BottomNavbar() {
       { id: 'historico', label: 'Nossa História', icon: <Clock size={18} />, path: '/historico' },
   ];
 
-  // 🦈 CORREÇÃO: Ocultando a barra na Landing Page ("/") e outras rotas de fluxo
   if (["/", "/login", "/cadastro", "/empresa/cadastro"].includes(pathname)) return null;
 
   return (
     <>
       <div className={`fixed inset-0 bg-black/80 backdrop-blur-md z-[60] transition-opacity duration-500 ${isSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`} onClick={() => setIsSidebarOpen(false)}/>
-
       <div className={`fixed top-0 left-0 h-full w-[85%] max-w-[340px] bg-[#09090b] border-r border-zinc-800 z-[70] transform transition-transform duration-500 flex flex-col shadow-2xl ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-6 pb-4 border-b border-zinc-800 bg-black/40 backdrop-blur-sm flex justify-between items-center">
             <div className="flex items-center gap-2"><div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center"><img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain"/></div><div><h2 className="text-lg font-black italic uppercase text-white leading-none">AAAKN</h2><p className="text-[10px] font-bold text-zinc-500 uppercase">App Oficial</p></div></div>
@@ -190,7 +145,6 @@ export default function BottomNavbar() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1">
-            
             {currentUser ? (
                 <div onClick={() => handleNavigation('/perfil')} className="flex items-center gap-3 p-3 bg-zinc-900 rounded-2xl border border-zinc-800 mb-6 cursor-pointer hover:border-emerald-500/30 transition">
                     <div className="w-12 h-12 rounded-full bg-black overflow-hidden border-2 border-zinc-700"><img src={currentUser.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
@@ -245,8 +199,8 @@ export default function BottomNavbar() {
         </div>
       </div>
 
-      <div className={`fixed bottom-6 left-0 right-0 z-50 flex justify-center transition-transform duration-500 ${isVisible || isSidebarOpen ? "translate-y-0" : "translate-y-[150%]"}`}>
-        <nav className="bg-[#09090b]/90 backdrop-blur-xl border border-white/10 rounded-3xl px-1 py-1 shadow-2xl flex items-center justify-between w-[92%] max-w-md relative">
+      <div className={`fixed bottom-6 left-0 right-0 z-40 flex justify-center transition-transform duration-500 ${isVisible && !isSidebarOpen ? "translate-y-0" : "translate-y-[200%]"}`}>
+        <nav className="bg-[#09090b]/95 backdrop-blur-xl border border-white/10 rounded-3xl px-1 py-1 shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex items-center justify-between w-[92%] max-w-md relative">
             {bottomItems.map((item) => (
                 item.isMain ? (
                     <div key={item.id} className="relative -top-10 mx-1 group z-20">
@@ -255,7 +209,7 @@ export default function BottomNavbar() {
                     </div>
                 ) : (
                     <div key={item.id} className="flex-1 h-full flex justify-center">
-                        <button onClick={item.action || (() => router.push(item.path!))} className={`w-full h-[60px] flex flex-col items-center justify-center gap-1 rounded-2xl active:scale-90 ${pathname === item.path ? "text-emerald-400" : "text-zinc-500"}`}>
+                        <button onClick={item.action || (() => router.push(item.path!))} className={`w-full h-[60px] flex flex-col items-center justify-center gap-1 rounded-2xl active:scale-90 transition-colors ${pathname === item.path ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300"}`}>
                             {item.icon}
                             <span className="text-[9px] font-bold uppercase">{item.label}</span>
                         </button>
@@ -264,7 +218,6 @@ export default function BottomNavbar() {
             ))}
         </nav>
       </div>
-      
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }

@@ -61,7 +61,7 @@ export default function Template({ children }: { children: React.ReactNode }) {
         {/* TEXTO */}
         <div className="text-center px-6">
           <h2 className="text-emerald-500 font-black text-xl tracking-widest mb-3 animate-pulse">
-            CARREGANDO...
+            CARREGANDO....
           </h2>
           <p className="text-zinc-400 text-sm font-medium italic max-w-xs mx-auto leading-relaxed">
             "{frase}"

@@ -1,335 +1,449 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  ArrowLeft,
-  ShoppingBag,
-  ShoppingCart,
-  Star,
-  X,
-  Minus,
-  Plus,
-  CheckCircle,
-  CornerDownRight,
-} from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, ShoppingBag, X, MousePointer2, Package, Check } from "lucide-react";
+import { useToast } from "../../context/ToastContext";
+import { db } from "../../lib/firebase";
+import { collection, doc, increment, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 
-// --- TIPAGEM ---
-type Comentario = {
-  user: string;
-  texto: string;
-  nota: number;
-  data: string;
-  respostaAdmin?: string;
-  respostaData?: string;
-  respostaAutor?: string;
-};
+interface Variante {
+  id: string;
+  tamanho: string;
+  cor: string;
+  estoque: number;
+}
 
-type Produto = {
-  id: number;
+interface ProdutoLoja {
+  id: string;
   nome: string;
   preco: number;
   precoAntigo?: number;
-  img: string;
-  tag?: string;
   categoria: string;
+  img: string;
+  vendidos: number;
+  cliques: number;
+  variantes: Variante[];
+  lote: string;
   descricao: string;
   caracteristicas: string[];
-  tamanhos?: string[];
-  cores?: { nome: string; hex: string }[];
-  nota: number;
-  avaliacoes: number;
-  comentarios?: Comentario[];
-  lote?: string;
+  tagLabel?: string;
+  tagColor?: string;
+  tagEffect?: "pulse" | "shine" | "none";
+}
+
+type CartItem = {
+  productId: string;
+  variantId: string;
+  nome: string;
+  preco: number;
+  img: string;
+  tamanho: string;
+  cor: string;
+  qtd: number;
+};
+
+const getTagColorClass = (color?: string) => {
+  switch (color) {
+    case "red":
+      return "bg-red-600";
+    case "emerald":
+      return "bg-emerald-600";
+    case "orange":
+      return "bg-orange-600";
+    case "purple":
+      return "bg-purple-600";
+    default:
+      return "bg-zinc-700";
+  }
 };
 
 export default function LojaPage() {
-  const [categoria, setCategoria] = useState("todos");
-  const [selectedProduto, setSelectedProduto] = useState<Produto | null>(null);
-  const [carrinhoCount, setCarrinhoCount] = useState(0);
-  const [showNotification, setShowNotification] = useState(false);
+  const { addToast } = useToast();
 
-  // Estados do Modal
-  const [qtd, setQtd] = useState(1);
-  const [tamanhoSelecionado, setTamanhoSelecionado] = useState("");
-  const [corSelecionada, setCorSelecionada] = useState("");
+  const [produtos, setProdutos] = useState<ProdutoLoja[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // --- DADOS DOS PRODUTOS ---
-  const produtos: Produto[] = [
-    {
-      id: 1,
-      nome: "Camiseta AAAKN Preta",
-      preco: 59.9,
-      precoAntigo: 79.9,
-      img: "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800&q=80",
-      tag: "DESTAQUE",
-      categoria: "VESTUÁRIO",
-      descricao: "Camiseta oficial em malha 100% algodão com logo bordado no peito. Ideal para treinos e festas.",
-      caracteristicas: ["100% algodão penteado", "Estampa Silk HD", "Gola careca reforçada", "Corte tradicional unissex"],
-      tamanhos: ["P", "M", "G", "GG", "XG"],
-      cores: [
-          { nome: "Preto", hex: "#000000" },
-          { nome: "Verde", hex: "#10b981" }
-      ],
-      nota: 4.8,
-      avaliacoes: 124,
-      comentarios: [
-          { 
-            user: "João Silva", 
-            texto: "Qualidade excelente, encolheu um pouco na lavagem mas serviu.", 
-            nota: 4, 
-            data: "10/10/2026",
-            respostaAdmin: "Opa João! O algodão natural tende a ajustar na primeira lavagem. Que bom que curtiu!",
-            respostaData: "11/10/2026",
-            respostaAutor: "Admin Tubarão"
-          },
-          { user: "Maria Eduarda", texto: "Amei! Entrega super rápida.", nota: 5, data: "05/10/2026" }
-      ],
-      lote: "Coleção 2026",
-    },
-    {
-      id: 2,
-      nome: "Moletom College Verde",
-      preco: 189.9,
-      precoAntigo: 240.0,
-      img: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&q=80",
-      tag: "-21% OFF",
-      categoria: "VESTUÁRIO",
-      descricao: "Moletom canguru super quente para os dias frios no campus. Forro peluciado.",
-      caracteristicas: ["Moletom 3 cabos", "Capuz forrado", "Bolso canguru", "Punhos em ribana"],
-      tamanhos: ["P", "M", "G", "GG"],
-      cores: [{ nome: "Verde", hex: "#10b981" }],
-      nota: 5.0,
-      avaliacoes: 89,
-      comentarios: [],
-      lote: "Últimas Peças",
-    },
-    // ... outros
-  ];
+  const [openProduto, setOpenProduto] = useState<ProdutoLoja | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("");
+  const [qtd, setQtd] = useState<number>(1);
 
-  const filtrados = categoria === "todos" ? produtos : produtos.filter((p) => p.categoria === categoria);
+  useEffect(() => {
+    const q = query(collection(db, "produtos"), orderBy("nome"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const lista = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        })) as ProdutoLoja[];
+        setProdutos(lista);
+        setLoading(false);
+      },
+      () => {
+        setProdutos([]);
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
-  const openModal = (produto: Produto) => {
-    setSelectedProduto(produto);
+  const produtosComEstoque = useMemo(() => {
+    return produtos.map((p) => {
+      const estoqueTotal = p.variantes?.reduce((acc, v) => acc + Number(v.estoque || 0), 0) || 0;
+      return { ...p, estoqueTotal } as ProdutoLoja & { estoqueTotal: number };
+    });
+  }, [produtos]);
+
+  const selectedVariant = useMemo(() => {
+    if (!openProduto) return null;
+    return openProduto.variantes?.find((v) => v.id === selectedVariantId) || null;
+  }, [openProduto, selectedVariantId]);
+
+  const selectedVariantStock = useMemo(() => {
+    if (!selectedVariant) return 0;
+    return Number(selectedVariant.estoque || 0);
+  }, [selectedVariant]);
+
+  const applyLocalClickIncrement = (productId: string) => {
+    setProdutos((prev) =>
+      prev.map((p) => (p.id === productId ? ({ ...p, cliques: Number(p.cliques || 0) + 1 } as any) : p))
+    );
+
+    setOpenProduto((prev) => {
+      if (!prev) return prev;
+      if (prev.id !== productId) return prev;
+      return { ...prev, cliques: Number(prev.cliques || 0) + 1 };
+    });
+  };
+
+  const handleOpenProduto = async (p: ProdutoLoja) => {
+    setOpenProduto(p);
     setQtd(1);
-    setTamanhoSelecionado(produto.tamanhos ? produto.tamanhos[0] : "");
-    setCorSelecionada(produto.cores ? produto.cores[0].nome : "");
+
+    const firstVariant = p.variantes?.[0]?.id || "";
+    setSelectedVariantId(firstVariant);
+
+    if (!p.id) return;
+
+    applyLocalClickIncrement(p.id);
+
+    try {
+      await updateDoc(doc(db, "produtos", p.id), { cliques: increment(1) });
+    } catch (e: any) {
+      addToast(
+        "Não consegui gravar o clique no Firestore. Verifique regras (permission-denied) e autenticação.",
+        "error"
+      );
+    }
   };
 
   const closeModal = () => {
-    setSelectedProduto(null);
+    setOpenProduto(null);
+    setSelectedVariantId("");
+    setQtd(1);
   };
 
   const addToCart = () => {
-    setCarrinhoCount((prev) => prev + qtd);
-    setShowNotification(true);
-    closeModal();
-    setTimeout(() => setShowNotification(false), 3000);
+    if (!openProduto) return;
+    if (!selectedVariant) {
+      addToast("Selecione uma variante (tamanho/cor).", "error");
+      return;
+    }
+    if (qtd < 1) {
+      addToast("Quantidade inválida.", "error");
+      return;
+    }
+    if (qtd > selectedVariantStock) {
+      addToast("Quantidade maior que o estoque da variante.", "error");
+      return;
+    }
+
+    const item: CartItem = {
+      productId: openProduto.id,
+      variantId: selectedVariant.id,
+      nome: openProduto.nome,
+      preco: Number(openProduto.preco || 0),
+      img: openProduto.img,
+      tamanho: selectedVariant.tamanho,
+      cor: selectedVariant.cor,
+      qtd,
+    };
+
+    try {
+      const raw = localStorage.getItem("cart");
+      const cart: CartItem[] = raw ? JSON.parse(raw) : [];
+      const idx = cart.findIndex((x) => x.productId === item.productId && x.variantId === item.variantId);
+
+      if (idx >= 0) {
+        cart[idx].qtd = Math.min(cart[idx].qtd + item.qtd, selectedVariantStock);
+      } else {
+        cart.push(item);
+      }
+
+      localStorage.setItem("cart", JSON.stringify(cart));
+      addToast("Adicionado ao carrinho!", "success");
+    } catch {
+      addToast("Não foi possível salvar no carrinho.", "error");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-10 selection:bg-emerald-500/30">
-      
-      {/* HEADER */}
-      <header className="p-4 sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md flex justify-between items-center border-b border-zinc-900">
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
+      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900">
-            <ArrowLeft size={24} />
+          <Link href="/" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition">
+            <ArrowLeft size={20} className="text-zinc-400" />
           </Link>
-          <h1 className="font-bold text-lg">Loja Oficial AAAKN</h1>
+          <div>
+            <h1 className="text-lg font-black text-white uppercase tracking-tighter">Loja</h1>
+            <p className="text-xs text-zinc-500 font-bold uppercase">Produtos oficiais</p>
+          </div>
         </div>
-        <Link href="/carrinho" className="relative p-2 bg-zinc-900 rounded-full text-emerald-500 hover:bg-emerald-500/10 transition">
-          <ShoppingCart size={20} />
-          {carrinhoCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full animate-bounce">
-              {carrinhoCount}
-            </span>
-          )}
-        </Link>
+
+        <div className="flex gap-2">
+          <Link
+            href="/carrinho"
+            className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95"
+          >
+            <ShoppingBag size={16} /> Carrinho
+          </Link>
+        </div>
       </header>
 
-      {/* NOTIFICAÇÃO TOAST */}
-      {showNotification && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-top-5 fade-in duration-300 w-[90%] max-w-md">
-          <div className="bg-zinc-800 border border-emerald-500/50 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-            <div className="bg-emerald-500 rounded-full p-1"><CheckCircle size={16} className="text-black" /></div>
-            <div>
-              <p className="text-sm font-bold">Adicionado ao carrinho!</p>
-              <p className="text-[10px] text-zinc-400">Continue comprando ou finalize o pedido.</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <main className="p-6">
+        {loading && <div className="text-zinc-500 text-sm">Carregando produtos</div>}
 
-      <main className="p-4 space-y-6">
-        {/* BANNER PROMO */}
-        <div className="w-full h-32 rounded-2xl overflow-hidden relative border border-zinc-800">
-          <img src="https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=800&q=80" className="w-full h-full object-cover opacity-60" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/50 to-transparent flex flex-col justify-center px-6">
-            <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-1">Oferta Relâmpago</span>
-            <h2 className="text-2xl font-black text-white w-2/3 leading-tight">Vista a camisa da sua Atlética</h2>
-          </div>
-        </div>
+        {!loading && !produtosComEstoque.length && (
+          <div className="text-zinc-500 text-sm">Nenhum produto disponível ainda.</div>
+        )}
 
-        {/* FILTROS */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {["todos", "KITS", "VESTUÁRIO", "ACESSÓRIOS"].map((cat) => (
-            <button key={cat} onClick={() => setCategoria(cat)} className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap border transition ${categoria === cat ? "bg-emerald-600 border-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-              {cat.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {produtosComEstoque.map((p: any) => {
+            const emEstoque = Number(p.estoqueTotal || 0) > 0;
 
-        {/* GRID DE PRODUTOS */}
-        <div className="grid grid-cols-2 gap-4">
-          {filtrados.map((item) => (
-            <div key={item.id} onClick={() => openModal(item)} className="bg-zinc-900 rounded-[1.5rem] overflow-hidden border border-zinc-800 group hover:border-emerald-500/50 transition cursor-pointer relative">
-              <div className="h-40 overflow-hidden relative">
-                <img src={item.img} className="w-full h-full object-cover group-hover:scale-110 transition duration-700 opacity-90 group-hover:opacity-100" />
-                {item.tag && <span className={`absolute top-2 left-2 text-[9px] font-black px-2 py-1 rounded shadow-lg ${item.tag.includes("%") ? "bg-red-500 text-white" : "bg-black/60 backdrop-blur-md text-white border border-white/10"}`}>{item.tag}</span>}
-              </div>
-              <div className="p-4">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase">{item.categoria}</span>
-                  <div className="flex items-center gap-0.5 text-yellow-500">
-                    <Star size={10} fill="currentColor" />
-                    <span className="text-[10px] font-bold text-zinc-300">{item.nota}</span>
+            return (
+              <button
+                key={p.id}
+                onClick={() => handleOpenProduto(p)}
+                className="text-left bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition group"
+              >
+                <div className="relative h-44 bg-black overflow-hidden">
+                  <img
+                    src={p.img}
+                    className="w-full h-full object-cover opacity-95 group-hover:scale-[1.02] transition"
+                  />
+
+                  {!!p.tagLabel && (
+                    <div
+                      className={`absolute top-3 left-3 px-3 py-1 rounded text-white text-[10px] font-black uppercase ${getTagColorClass(
+                        p.tagColor
+                      )} ${p.tagEffect === "pulse" ? "animate-pulse" : ""}`}
+                    >
+                      {p.tagLabel}
+                    </div>
+                  )}
+
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                    <span className="px-2 py-1 rounded bg-black/60 border border-white/10 text-[10px] font-bold uppercase text-zinc-200 flex items-center gap-1">
+                      <Package size={14} /> {Number(p.estoqueTotal || 0)}
+                    </span>
+                    <span className="px-2 py-1 rounded bg-black/60 border border-white/10 text-[10px] font-bold uppercase text-zinc-200 flex items-center gap-1">
+                      <MousePointer2 size={14} /> {Number(p.cliques || 0)}
+                    </span>
                   </div>
                 </div>
-                <h3 className="text-sm font-bold text-white truncate mb-2 leading-tight">{item.nome}</h3>
-                <div className="flex flex-col">
-                  {item.precoAntigo && <span className="text-[10px] text-zinc-500 line-through">R$ {item.precoAntigo.toFixed(2)}</span>}
-                  <div className="flex justify-between items-end">
-                    <span className="text-emerald-400 font-black text-lg">R$ {item.preco.toFixed(2)}</span>
-                    <div className="bg-white text-black p-1.5 rounded-full hover:bg-emerald-400 transition shadow-lg"><ShoppingBag size={14} /></div>
+
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-black text-white">{p.nome}</h3>
+                    <span className="text-[10px] font-bold uppercase text-zinc-500">{p.categoria}</span>
+                  </div>
+
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-emerald-400 font-black text-lg">
+                      R$ {Number(p.preco || 0).toFixed(2)}
+                    </span>
+                    {!!p.precoAntigo && Number(p.precoAntigo) > 0 && (
+                      <span className="text-zinc-500 text-xs line-through font-bold">
+                        R$ {Number(p.precoAntigo).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[10px] font-bold uppercase">
+                    {emEstoque ? (
+                      <span className="text-emerald-500">Em estoque</span>
+                    ) : (
+                      <span className="text-red-500">Esgotado</span>
+                    )}
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </main>
 
-      {/* --- MODAL --- */}
-      {selectedProduto && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onClick={closeModal}></div>
-          <div className="bg-[#0a0a0a] w-full sm:max-w-md h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-[2rem] border border-zinc-800 relative z-10 overflow-y-auto flex flex-col shadow-2xl">
-            
-            <button onClick={closeModal} className="absolute top-4 right-4 z-20 bg-black/50 p-2 rounded-full text-white backdrop-blur-md border border-white/10 hover:bg-white hover:text-black transition"><X size={20} /></button>
-
-            {/* Imagem */}
-            <div className="h-72 shrink-0 relative">
-              <img src={selectedProduto.img} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] to-transparent"></div>
-              <div className="absolute bottom-4 left-6">
-                {selectedProduto.lote && <span className="bg-emerald-500 text-black text-[10px] font-black px-2 py-1 rounded uppercase mb-2 inline-block">{selectedProduto.lote}</span>}
-                <h2 className="text-2xl font-black text-white leading-tight w-3/4">{selectedProduto.nome}</h2>
+      {openProduto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-zinc-950 w-full max-w-3xl rounded-2xl border border-zinc-800 p-6 space-y-6 my-10 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-black border border-zinc-800">
+                  <img src={openProduto.img} className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <h2 className="font-black text-white text-lg">{openProduto.nome}</h2>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase">
+                    {openProduto.categoria} • {openProduto.lote || "Lote"}
+                  </p>
+                </div>
               </div>
+
+              <button
+                onClick={closeModal}
+                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white"
+              >
+                <X size={22} />
+              </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Preço */}
-              <div className="flex justify-between items-center">
-                <div>
-                  {selectedProduto.precoAntigo && <span className="text-sm text-zinc-500 line-through block">R$ {selectedProduto.precoAntigo.toFixed(2)}</span>}
-                  <span className="text-3xl font-black text-emerald-400">R$ {selectedProduto.preco.toFixed(2)}</span>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-1 text-yellow-500 justify-end"><Star size={16} fill="currentColor" /><span className="text-lg font-bold text-white">{selectedProduto.nota}</span></div>
-                  <span className="text-xs text-zinc-500">{selectedProduto.avaliacoes} avaliações</span>
-                </div>
-              </div>
-
-              {/* Seletor Tamanho */}
-              {selectedProduto.tamanhos && (
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Tamanho</span>
-                  <div className="flex flex-wrap gap-3">
-                    {selectedProduto.tamanhos.map((tam) => (
-                      <button key={tam} onClick={() => setTamanhoSelecionado(tam)} className={`min-w-[3rem] h-12 px-3 rounded-xl font-bold text-sm border flex items-center justify-center transition ${tamanhoSelecionado === tam ? "bg-white text-black border-white" : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600"}`}>
-                        {tam}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Seletor Cor */}
-              {selectedProduto.cores && (
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Cor</span>
-                  <div className="flex gap-3">
-                    {selectedProduto.cores.map((cor) => (
-                      <button key={cor.nome} onClick={() => setCorSelecionada(cor.nome)} className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition shadow-lg ${corSelecionada === cor.nome ? "border-white scale-110" : "border-transparent"}`} style={{ backgroundColor: cor.hex }} title={cor.nome}>
-                        {corSelecionada === cor.nome && <CheckCircle size={16} className={["Branco", "#ffffff", "#fff"].includes(cor.nome) ? 'text-black' : 'text-white'} />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Descrição */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
-                <p className="text-sm text-zinc-300 leading-relaxed">{selectedProduto.descricao}</p>
-                <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800">
-                  <h4 className="text-xs font-bold text-white mb-2 uppercase">Detalhes</h4>
-                  <ul className="grid grid-cols-2 gap-2">
-                    {selectedProduto.caracteristicas.map((car, i) => (
-                      <li key={i} className="text-[11px] text-zinc-400 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>{car}</li>
-                    ))}
-                  </ul>
+                <div className="h-64 rounded-xl overflow-hidden bg-black border border-zinc-800">
+                  <img src={openProduto.img} className="w-full h-full object-cover" />
+                </div>
+
+                {!!openProduto.descricao && (
+                  <div className="bg-black/30 border border-white/5 rounded-xl p-4">
+                    <p className="text-sm text-zinc-200">{openProduto.descricao}</p>
+                  </div>
+                )}
+
+                {!!openProduto.caracteristicas?.length && (
+                  <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-2">
+                    <p className="text-[10px] font-black uppercase text-zinc-400">Características</p>
+                    <div className="flex flex-wrap gap-2">
+                      {openProduto.caracteristicas.map((c, idx) => (
+                        <span
+                          key={`${c}-${idx}`}
+                          className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-300"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-5">
+                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase">Preço</p>
+                      <p className="text-2xl font-black text-emerald-400">
+                        R$ {Number(openProduto.preco || 0).toFixed(2)}
+                      </p>
+                    </div>
+
+                    {!!openProduto.precoAntigo && Number(openProduto.precoAntigo) > 0 && (
+                      <p className="text-sm font-bold text-zinc-500 line-through">
+                        R$ {Number(openProduto.precoAntigo).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 space-y-3">
+                  <p className="text-[10px] text-zinc-500 font-black uppercase">Selecione a variante</p>
+
+                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
+                    {(openProduto.variantes || []).map((v) => {
+                      const active = v.id === selectedVariantId;
+                      const stock = Number(v.estoque || 0);
+
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => {
+                            setSelectedVariantId(v.id);
+                            setQtd(1);
+                          }}
+                          className={`flex items-center justify-between p-3 rounded-lg border text-left transition ${
+                            active
+                              ? "bg-emerald-600/10 border-emerald-500 text-white"
+                              : "bg-black/30 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
+                              {v.tamanho}
+                            </span>
+                            <span className="text-xs font-bold">{v.cor}</span>
+                          </div>
+                          <span className={`text-xs font-black ${stock > 0 ? "text-emerald-400" : "text-red-500"}`}>
+                            {stock} un
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!openProduto.variantes?.length && (
+                    <p className="text-xs text-zinc-500">Produto sem variantes cadastradas.</p>
+                  )}
+                </div>
+
+                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-zinc-500 font-black uppercase">Quantidade</p>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase">
+                      Estoque variante: {selectedVariantStock}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setQtd((q) => Math.max(1, q - 1))}
+                      className="w-10 h-10 rounded-lg bg-black/30 border border-zinc-800 hover:border-zinc-700 transition font-black"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      value={qtd}
+                      min={1}
+                      max={Math.max(1, selectedVariantStock)}
+                      onChange={(e) => setQtd(Number(e.target.value || 1))}
+                      className="flex-1 h-10 rounded-lg bg-black/30 border border-zinc-800 px-3 text-white font-bold outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      onClick={() => setQtd((q) => Math.min(Math.max(1, selectedVariantStock), q + 1))}
+                      className="w-10 h-10 rounded-lg bg-black/30 border border-zinc-800 hover:border-zinc-700 transition font-black"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={addToCart}
+                    disabled={!selectedVariant || selectedVariantStock <= 0}
+                    className={`w-full py-4 rounded-xl font-black text-xs uppercase transition flex items-center justify-center gap-2 ${
+                      !selectedVariant || selectedVariantStock <= 0
+                        ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                        : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20"
+                    }`}
+                  >
+                    <Check size={18} /> Adicionar ao carrinho
+                  </button>
+
+                  <p className="text-[10px] text-zinc-500">
+                    O clique é gravado com increment no Firestore (contador atômico).
+                  </p>
                 </div>
               </div>
-
-              {/* --- BOTÃO DE AÇÃO NO FLUXO (CORREÇÃO PEDIDA) --- */}
-              <div className="py-4 border-t border-zinc-800 flex gap-4 items-center">
-                  <div className="flex items-center gap-3 bg-zinc-900 px-4 py-3 rounded-xl border border-zinc-800">
-                    <button onClick={() => setQtd(Math.max(1, qtd - 1))} className="text-zinc-400 hover:text-white"><Minus size={18} /></button>
-                    <span className="font-bold text-white w-4 text-center">{qtd}</span>
-                    <button onClick={() => setQtd(qtd + 1)} className="text-zinc-400 hover:text-white"><Plus size={18} /></button>
-                  </div>
-                  <button onClick={addToCart} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm py-3.5 rounded-xl shadow-lg shadow-emerald-900/20 transition active:scale-95 flex justify-center items-center gap-2">
-                    <ShoppingBag size={18} />
-                    ADICIONAR • R$ {(selectedProduto.preco * qtd).toFixed(2)}
-                  </button>
-              </div>
-
-              {/* Seção Avaliações */}
-              <div className="pt-2">
-                  <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><Star size={14} className="text-yellow-500"/> O que a galera achou ({selectedProduto.avaliacoes})</h4>
-                  <div className="space-y-4">
-                      {selectedProduto.comentarios && selectedProduto.comentarios.length > 0 ? selectedProduto.comentarios.map((com, i) => (
-                          <div key={i} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
-                              <div className="flex justify-between mb-2">
-                                  <div>
-                                      <span className="text-xs font-bold text-white block">{com.user}</span>
-                                      <span className="text-[10px] text-zinc-500">{com.data}</span>
-                                  </div>
-                                  <div className="flex text-yellow-500">{[...Array(5)].map((_, idx) => <Star key={idx} size={10} fill={idx < com.nota ? "currentColor" : "none"} className={idx < com.nota ? "" : "text-zinc-700"}/>)}</div>
-                              </div>
-                              <p className="text-xs text-zinc-300 leading-relaxed">"{com.texto}"</p>
-                              
-                              {/* RESPOSTA DO ADMIN VISÍVEL */}
-                              {com.respostaAdmin && (
-                                  <div className="mt-3 ml-2 pl-3 border-l-2 border-emerald-500 bg-black/20 p-2 rounded-r-lg">
-                                      <div className="flex justify-between items-center mb-1">
-                                          <span className="text-[10px] font-bold text-emerald-500 uppercase flex items-center gap-1">
-                                              <CornerDownRight size={10}/> {com.respostaAutor}
-                                          </span>
-                                          <span className="text-[9px] text-zinc-600">{com.respostaData}</span>
-                                      </div>
-                                      <p className="text-[11px] text-zinc-400 italic">{com.respostaAdmin}</p>
-                                  </div>
-                              )}
-                          </div>
-                      )) : (
-                          <p className="text-xs text-zinc-500 italic text-center py-4">Ainda sem avaliações.</p>
-                      )}
-                  </div>
-              </div>
-              
-              <div className="h-10"></div>
             </div>
           </div>
         </div>

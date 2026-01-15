@@ -5,21 +5,15 @@ import { ArrowLeft, CheckCircle2, Tag, Type, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../../context/AuthContext";
+import { db, storage } from "../../../../lib/firebase";
+import { collection, addDoc, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 
-const WORKOUT_TYPES = [
-  "Musculação",
-  "Crossfit",
-  "Cardio / Corrida",
-  "Natação",
-  "Futevôlei",
-  "Luta / Artes Marciais",
-  "Dança",
-  "Outros",
-];
+const WORKOUT_TYPES = ["Musculação", "Crossfit", "Cardio / Corrida", "Natação", "Futevôlei", "Luta / Artes Marciais", "Dança", "Outros"];
 
 export default function CheckinDetailsPage() {
   const router = useRouter();
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("");
   const [customTitle, setCustomTitle] = useState("");
@@ -29,25 +23,61 @@ export default function CheckinDetailsPage() {
     const savedPhoto = localStorage.getItem("tempCheckinPhoto");
     if (savedPhoto) setPhoto(savedPhoto);
     else router.push("/gym/checkin");
-  }, []);
+  }, [router]);
 
-  const handleFinish = () => {
-    if (!selectedType || !customTitle.trim()) return;
+  const handleFinish = async () => {
+    if (!selectedType || !customTitle.trim() || !user || !photo) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      if (user) {
-        updateUser({ xp: (user.xp || 0) + 50 });
-      }
-      localStorage.removeItem("tempCheckinPhoto");
-      alert(`Treino Validado! +50 XP 🦈`);
-      router.push("/gym");
-    }, 1500);
+
+    try {
+        // 1. Upload da Imagem (Base64) para o Storage
+        const timestamp = Date.now();
+        const imageRef = ref(storage, `posts/${user.uid}/${timestamp}.jpg`);
+        
+        // uploadString é ideal para base64 (data_url)
+        await uploadString(imageRef, photo, 'data_url');
+        const downloadURL = await getDownloadURL(imageRef);
+
+        // 2. Criar o Post no Firestore
+        await addDoc(collection(db, "posts"), {
+            usuarioId: user.uid,
+            usuarioNome: user.nome || "Atleta AAAKN",
+            usuarioAvatar: user.foto || "https://github.com/shadcn.png",
+            titulo: customTitle,
+            modalidade: selectedType,
+            legenda: `Treino de ${selectedType} pago! 🔥`,
+            foto: downloadURL, // Link do Storage
+            isChallenge: false,
+            validado: true,
+            likes: 0,
+            likedBy: [], // Array vazio para controlar quem curtiu
+            comentarios: [],
+            createdAt: serverTimestamp(),
+            // Datas formatadas para exibição rápida
+            data: "Hoje", 
+            tempo: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        });
+
+        // 3. Atualizar XP do Usuário
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+            xp: increment(50)
+        });
+
+        localStorage.removeItem("tempCheckinPhoto");
+        alert(`Treino Validado! +50 XP 🦈`);
+        router.push("/gym");
+
+    } catch (error) {
+        console.error("Erro ao publicar:", error);
+        alert("Erro ao postar treino. Tente novamente.");
+        setIsSubmitting(false);
+    }
   };
 
   if (!photo) return null;
 
-  // Validação: Título obrigatório e Tipo obrigatório
   const isValid = selectedType !== "" && customTitle.trim().length > 0;
 
   return (
@@ -97,11 +127,7 @@ export default function CheckinDetailsPage() {
             <label className="flex items-center gap-2 text-xs font-bold text-[#4ade80] uppercase tracking-widest">
               <Type size={14} /> Título do Treino (Obrigatório)
             </label>
-            <span
-              className={`text-[10px] font-bold ${
-                customTitle.length === 20 ? "text-red-500" : "text-zinc-600"
-              }`}
-            >
+            <span className={`text-[10px] font-bold ${customTitle.length === 20 ? "text-red-500" : "text-zinc-600"}`}>
               {customTitle.length}/20
             </span>
           </div>
@@ -115,11 +141,6 @@ export default function CheckinDetailsPage() {
               !customTitle && "border-red-900/50 focus:border-red-500"
             } ${customTitle && "border-zinc-800 focus:border-[#4ade80]"}`}
           />
-          {!customTitle && (
-            <p className="text-[10px] text-red-500 flex items-center gap-1">
-              <AlertCircle size={10} /> O título é necessário para postar.
-            </p>
-          )}
         </div>
       </main>
 
@@ -134,7 +155,7 @@ export default function CheckinDetailsPage() {
           }`}
         >
           {isSubmitting ? (
-            "Validando..."
+            "Postando..."
           ) : (
             <>
               <CheckCircle2 size={20} /> Confirmar Check-in
