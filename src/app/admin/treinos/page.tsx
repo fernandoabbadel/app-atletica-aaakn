@@ -1,399 +1,756 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import {
-  ArrowLeft, Trophy, AlertTriangle, UserCheck, Search, Download, Plus, Edit, 
-  Trash2, Calendar, MapPin, X, UploadCloud, Users, CheckCircle, XCircle, Clock, 
-  CalendarRange, RefreshCw, MoreHorizontal, ExternalLink, Filter, Medal
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { 
+  ArrowLeft, Plus, Edit, Trash2, Calendar, MapPin, 
+  Dumbbell, Image as ImageIcon, CheckCircle, Clock, X, 
+  AlertTriangle, ChevronDown, ChevronUp, Save, 
+  Trophy, Users, Search, Download, Ban, LayoutDashboard, List, Loader2, Filter, ArrowUpDown, CalendarRange, User, Crown, UserCheck, ExternalLink, FileText
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
+import { db } from "../../../lib/firebase";
+import { uploadImage } from "../../../lib/upload";
+import { 
+    collection, addDoc, updateDoc, deleteDoc, doc, 
+    onSnapshot, query, orderBy, serverTimestamp, setDoc, 
+    getDocs, getDoc, where, collectionGroup 
+} from "firebase/firestore";
 
-// --- TIPOS ---
-interface Aluno {
-    id: number;
+// --- TIPAGEM ---
+interface UserBase {
+    uid: string;
     nome: string;
     turma: string;
-    status: "presente" | "falta" | "justificado" | "pendente";
-    handle: string;
-    foto?: string;
+    foto: string;
+    email: string;
 }
 
-interface TurmaDestaque {
+interface AlunoChamada {
+    id: string; 
+    userId: string;
+    nome: string;
+    avatar: string;
     turma: string;
-    count: number;
-    logo: string;
-    color: string;
+    status: "presente" | "falta" | "justificado" | "inscrito"; 
+    origem: "app" | "manual";
+    pagamento?: "pago" | "pendente";
 }
 
 interface Treino {
-    id: number;
-    esporte: string;
-    categoria: string;
-    dia: string;
-    horario: string;
-    local: string;
-    img: string;
-    chamada: Aluno[];
-    turmas_destaque: TurmaDestaque[];
+  id: string;
+  modalidade: string;
+  diaSemana: string;
+  dia: string; 
+  horario: string;
+  local: string;
+  treinador: string;
+  treinadorId?: string;
+  treinadorAvatar?: string;
+  descricao?: string; // 🦈 NOVO CAMPO
+  imagem: string;
+  ordemDia: number;
+  status: "ativo" | "cancelado";
 }
 
-// --- DADOS INICIAIS (MOCK) ---
-const MODALIDADES_INICIAIS = ["Futsal", "Vôlei", "Basquete", "Handebol"];
+interface RankingItem {
+    userId: string;
+    nome: string;
+    avatar: string;
+    turma: string;
+    count: number;
+}
 
-const TREINOS_MOCK: Treino[] = [
-    {
-        id: 1,
-        esporte: "Futsal",
-        categoria: "Masculino",
-        dia: "2026-10-12",
-        horario: "22:00",
-        local: "Ginásio Municipal",
-        img: "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=800&q=80",
-        turmas_destaque: [
-            { turma: "T5", count: 12, logo: "/turma5.jpeg", color: "border-emerald-500" },
-            { turma: "T1", count: 8, logo: "/turma1.jpeg", color: "border-yellow-500" }
-        ],
-        chamada: [
-            { id: 101, nome: "João Silva", turma: "T5", status: "presente", handle: "joaosilva", foto: "https://i.pravatar.cc/150?u=joao" },
-            { id: 102, nome: "Pedro Santos", turma: "T1", status: "falta", handle: "pedros", foto: "https://i.pravatar.cc/150?u=pedro" },
-        ]
-    },
-    {
-        id: 2,
-        esporte: "Vôlei",
-        categoria: "Misto",
-        dia: "2026-10-13",
-        horario: "19:00",
-        local: "Quadra da Orla",
-        img: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=800&q=80",
-        turmas_destaque: [
-            { turma: "T3", count: 15, logo: "/turma3.jpeg", color: "border-purple-500" },
-        ],
-        chamada: []
-    }
+interface VergonhaItem {
+    id: string;
+    nome: string;
+    avatar: string;
+    turma: string;
+    treinoData: string;
+    treinoMod: string;
+}
+
+const FERIADOS = ["2026-10-12", "2026-11-02", "2026-11-15", "2026-12-25"];
+
+const DIAS_SEMANA = [
+    { label: "Domingo", val: 0 },
+    { label: "Segunda-feira", val: 1 },
+    { label: "Terça-feira", val: 2 },
+    { label: "Quarta-feira", val: 3 },
+    { label: "Quinta-feira", val: 4 },
+    { label: "Sexta-feira", val: 5 },
+    { label: "Sábado", val: 6 },
 ];
 
-// Dados para as Tabelas de Histórico
-const HISTORICO_DATA: Record<string, { dates: string[], alunos: any[] }> = {
-    "Futsal": {
-        dates: ["05/OUT", "12/OUT", "19/OUT", "26/OUT"],
-        alunos: [
-            { nome: "João Silva", turma: "T5", handle: "joaosilva", presencas: [true, true, true, false] },
-            { nome: "Pedro Santos", turma: "T1", handle: "pedros", presencas: [false, true, false, true] },
-        ]
-    },
-    "Vôlei": {
-        dates: ["06/OUT", "13/OUT", "20/OUT", "27/OUT"],
-        alunos: [
-            { nome: "Ana Costa", turma: "T3", handle: "anacosta", presencas: [true, true, true, true] },
-            { nome: "Bia Souza", turma: "T2", handle: "biasouza", presencas: [true, false, true, true] },
-        ]
-    },
-    "Basquete": { dates: [], alunos: [] },
-    "Handebol": { dates: [], alunos: [] }
+const getResponsibleColor = (id: string = "") => {
+    const gradients = ["from-purple-600 to-blue-600", "from-pink-600 to-rose-600", "from-emerald-600 to-teal-600", "from-orange-500 to-amber-600", "from-indigo-600 to-violet-600"];
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    return gradients[Math.abs(hash) % gradients.length];
 };
 
 export default function AdminTreinosPage() {
   const { addToast } = useToast();
-  
-  // Estados Principais
-  const [treinos, setTreinos] = useState<Treino[]>(TREINOS_MOCK);
-  const [modalidades, setModalidades] = useState(MODALIDADES_INICIAIS);
-  const [abaAtiva, setAbaAtiva] = useState("Futsal");
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'grade'>('dashboard');
 
-  // Modais de Controle
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showChamadaModal, setShowChamadaModal] = useState<Treino | null>(null);
+  // Dados
+  const [treinos, setTreinos] = useState<Treino[]>([]);
+  const [allUsers, setAllUsers] = useState<UserBase[]>([]);
+  const [modalidades, setModalidades] = useState<string[]>([]);
+  
+  // Stats
+  const [rankings, setRankings] = useState<Record<string, RankingItem[]>>({});
+  const [listaVergonha, setListaVergonha] = useState<VergonhaItem[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Modais
+  const [showModal, setShowModal] = useState(false);
   const [showNovaModalidade, setShowNovaModalidade] = useState(false);
-
-  // Inputs Temporários
+  const [showRankingModal, setShowRankingModal] = useState<string | null>(null);
   const [novaModalidadeNome, setNovaModalidadeNome] = useState("");
-  const [novoTreino, setNovoTreino] = useState<Partial<Treino>>({ esporte: "Futsal", categoria: "Masculino", dia: "", horario: "", local: "", img: "" });
-  const [buscaAluno, setBuscaAluno] = useState(""); 
   
+  // Edição
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Tabela Expandida
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  
+  // FUSÃO DE LISTAS
+  const [chamadaReal, setChamadaReal] = useState<AlunoChamada[]>([]);
+  const [rsvpsAtuais, setRsvpsAtuais] = useState<any[]>([]);
+  
+  // Filtros
+  const [filtroModalidade, setFiltroModalidade] = useState("Todas");
+  const [ordemData, setOrdemData] = useState<'asc' | 'desc'>('desc');
+
+  // Buscas
+  const [buscaAluno, setBuscaAluno] = useState("");
+  const [resultadoBusca, setResultadoBusca] = useState<UserBase[]>([]);
+  const [buscaTreinador, setBuscaTreinador] = useState("");
+  const [resultadoTreinador, setResultadoTreinador] = useState<UserBase[]>([]);
+
+  // Form
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [recurrenceDate, setRecurrenceDate] = useState("");
 
-  // --- AÇÕES DO TUBARÃO ---
+  const [novoTreino, setNovoTreino] = useState<Partial<Treino>>({
+    modalidade: "Futsal", 
+    diaSemana: "Segunda-feira", 
+    dia: "", 
+    horario: "", 
+    local: "", 
+    treinador: "", 
+    descricao: "", // 🦈 Inicializado
+    imagem: "", 
+    ordemDia: 1, 
+    status: "ativo"
+  });
 
-  const handleCriarModalidade = () => {
+  // --- 1. LOADERS ---
+  useEffect(() => {
+      const fetchMods = async () => {
+          try {
+            const docSnap = await getDoc(doc(db, "settings", "treinos"));
+            if(docSnap.exists() && docSnap.data().modalidades) {
+                setModalidades(docSnap.data().modalidades);
+                setNovoTreino(prev => ({...prev, modalidade: docSnap.data().modalidades[0] || "Futsal"}));
+            } else {
+                setModalidades(["Futsal", "Vôlei"]); 
+                setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
+            }
+          } catch(e) { console.log("Configurações não encontradas."); }
+      };
+      fetchMods();
+  }, []);
+
+  useEffect(() => {
+      const q = query(collection(db, "treinos"));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Treino));
+          lista.sort((a, b) => new Date(b.dia).getTime() - new Date(a.dia).getTime());
+          setTreinos(lista);
+      });
+      return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+      getDocs(collection(db, "users")).then(snap => {
+          setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserBase)));
+      });
+  }, []);
+
+  useEffect(() => {
+      if (!expandedRow) return;
+      const unsubChamada = onSnapshot(collection(db, "treinos", expandedRow, "chamada"), (snap) => {
+          setChamadaReal(snap.docs.map(d => ({ id: d.id, ...d.data() } as AlunoChamada)));
+      });
+      const unsubRsvps = onSnapshot(collection(db, "treinos", expandedRow, "rsvps"), (snap) => {
+          setRsvpsAtuais(snap.docs.map(d => d.data()));
+      });
+      return () => { unsubChamada(); unsubRsvps(); };
+  }, [expandedRow]);
+
+  // 🦈 LISTA UNIFICADA
+  const listaChamadaUnificada = useMemo(() => {
+      const lista = [...chamadaReal];
+      rsvpsAtuais.forEach(rsvp => {
+          if (rsvp.status === 'going' && !lista.some(c => c.userId === rsvp.userId)) {
+              lista.push({
+                  id: rsvp.userId,
+                  userId: rsvp.userId,
+                  nome: rsvp.userName,
+                  avatar: rsvp.userAvatar,
+                  turma: rsvp.userTurma,
+                  status: 'inscrito',
+                  origem: 'app'
+              });
+          }
+      });
+      return lista.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [chamadaReal, rsvpsAtuais]);
+
+  // --- 2. BUSCAS INTELIGENTES ---
+  useEffect(() => {
+      if (!buscaAluno.trim()) { setResultadoBusca([]); return; }
+      const term = buscaAluno.toLowerCase();
+      const hits = allUsers.filter(u => (u.nome && u.nome.toLowerCase().includes(term))).slice(0, 5);
+      setResultadoBusca(hits);
+  }, [buscaAluno, allUsers]);
+
+  useEffect(() => {
+      if (!buscaTreinador.trim()) { setResultadoTreinador([]); return; }
+      const term = buscaTreinador.toLowerCase();
+      const hits = allUsers.filter(u => (u.nome && u.nome.toLowerCase().includes(term))).slice(0, 5);
+      setResultadoTreinador(hits);
+  }, [buscaTreinador, allUsers]);
+
+  // --- 3. DASHBOARD ---
+  useEffect(() => {
+      if (activeTab !== 'dashboard') return;
+      const calculateStats = async () => {
+          setLoadingStats(true);
+          try {
+              const chamadasSnap = await getDocs(collectionGroup(db, 'chamada'));
+              const rankingMap: Record<string, Record<string, RankingItem>> = {}; 
+              const mapTreinoModalidade = new Map(treinos.map(t => [t.id, t.modalidade]));
+
+              chamadasSnap.forEach(docSnap => {
+                  const data = docSnap.data();
+                  if (data.status !== 'presente') return; 
+                  const treinoRef = docSnap.ref.parent.parent;
+                  if (!treinoRef) return;
+                  const modalidade = mapTreinoModalidade.get(treinoRef.id) || "Geral";
+                  if (!rankingMap[modalidade]) rankingMap[modalidade] = {};
+                  if (!rankingMap[modalidade][data.userId]) {
+                      rankingMap[modalidade][data.userId] = {
+                          userId: data.userId, nome: data.nome, avatar: data.avatar, turma: data.turma, count: 0
+                      };
+                  }
+                  rankingMap[modalidade][data.userId].count++;
+              });
+
+              const finalRankings: Record<string, RankingItem[]> = {};
+              Object.keys(rankingMap).forEach(mod => {
+                  finalRankings[mod] = Object.values(rankingMap[mod]).sort((a, b) => b.count - a.count);
+              });
+              setRankings(finalRankings);
+
+              const treinosPassados = [...treinos]
+                .sort((a,b) => new Date(b.dia).getTime() - new Date(a.dia).getTime())
+                .filter(t => new Date(t.dia) < new Date())
+                .slice(0, 5);
+              const vergonhaTemp: VergonhaItem[] = [];
+              for (const treino of treinosPassados) {
+                  const rsvpsSnap = await getDocs(collection(db, "treinos", treino.id, "rsvps"));
+                  const chamadaSnap = await getDocs(collection(db, "treinos", treino.id, "chamada"));
+                  const presentesIds = new Set(chamadaSnap.docs.map(d => d.data().status === 'presente' ? d.data().userId : null));
+                  rsvpsSnap.docs.forEach(rDoc => {
+                      const rData = rDoc.data();
+                      if (rData.status === 'going' && !presentesIds.has(rData.userId)) {
+                          vergonhaTemp.push({
+                              id: rDoc.id, nome: rData.userName, avatar: rData.userAvatar, 
+                              turma: rData.userTurma, treinoData: formatDate(treino.dia), treinoMod: treino.modalidade
+                          });
+                      }
+                  });
+              }
+              setListaVergonha(vergonhaTemp);
+          } catch (error) { console.error("Stats error", error); } 
+          finally { setLoadingStats(false); }
+      };
+      if (treinos.length > 0) calculateStats();
+  }, [activeTab, treinos]);
+
+  // --- 4. FILTROS ---
+  const treinosProcessados = useMemo(() => {
+      let lista = [...treinos];
+      if (filtroModalidade !== 'Todas') lista = lista.filter(t => t.modalidade === filtroModalidade);
+      lista.sort((a, b) => {
+          const dateA = new Date(a.dia).getTime();
+          const dateB = new Date(b.dia).getTime();
+          return ordemData === 'asc' ? dateA - dateB : dateB - dateA;
+      });
+      return lista;
+  }, [treinos, filtroModalidade, ordemData]);
+
+  // --- ACTIONS ---
+
+  const handleCriarModalidade = async () => {
       if(!novaModalidadeNome.trim()) return;
-      if(modalidades.includes(novaModalidadeNome)) {
-        addToast("Essa modalidade já existe!", "error");
-        return;
-      }
-      setModalidades([...modalidades, novaModalidadeNome]);
-      HISTORICO_DATA[novaModalidadeNome] = { dates: [], alunos: [] };
-      setNovaModalidadeNome("");
-      setShowNovaModalidade(false);
-      addToast(`Modalidade ${novaModalidadeNome} criada! Os tubarões vão dominar.`, "success");
-  }
+      if(modalidades.includes(novaModalidadeNome)) return addToast("Já existe!", "error");
+      const novas = [...modalidades, novaModalidadeNome];
+      await setDoc(doc(db, "settings", "treinos"), { modalidades: novas }, { merge: true });
+      setModalidades(novas); setNovaModalidadeNome(""); setShowNovaModalidade(false);
+      addToast("Modalidade criada!", "success");
+  };
 
-  // Renovar Agenda
-  const handleRenovarAgenda = () => {
-      if(!novoTreino.dia) {
-          addToast("Selecione um dia de início primeiro!", "error");
+  const handleOpenCreate = () => {
+      const modPadrao = modalidades.length > 0 ? modalidades[0] : "Futsal";
+      setNovoTreino({ modalidade: modPadrao, diaSemana: "Segunda-feira", dia: "", horario: "", local: "", treinador: "", descricao: "", imagem: "", ordemDia: 1, status: "ativo" });
+      setEditingId(null); setIsEditing(false); setShowModal(true);
+  };
+
+  const handleOpenEdit = (treino: Treino) => {
+      setNovoTreino({ ...treino }); setEditingId(treino.id); setIsEditing(true); setShowModal(true);
+  };
+
+  const handleSelectTreinador = (user: UserBase) => {
+      setNovoTreino(prev => ({ ...prev, treinador: user.nome, treinadorId: user.uid, treinadorAvatar: user.foto }));
+      setBuscaTreinador(""); setResultadoTreinador([]);
+  };
+
+  const handleSave = async () => {
+    if (!novoTreino.modalidade || !novoTreino.dia) return addToast("Dados incompletos!", "error");
+    const diaObj = new Date(novoTreino.dia + "T12:00:00");
+    const basePayload = { ...novoTreino, diaSemana: DIAS_SEMANA[diaObj.getDay()].label, ordemDia: DIAS_SEMANA[diaObj.getDay()].val, updatedAt: serverTimestamp() };
+    try {
+        if (isEditing && editingId) {
+            await updateDoc(doc(db, "treinos", editingId), basePayload);
+            addToast("Atualizado!", "success");
+        } else {
+            if (recurrenceDate) {
+                let current = new Date(novoTreino.dia + "T12:00:00");
+                const stop = new Date(recurrenceDate + "T12:00:00");
+                let count = 0;
+                while (current <= stop && count < 20) {
+                    const dataIso = current.toISOString().split('T')[0];
+                    const diaLoop = new Date(dataIso + "T12:00:00");
+                    await addDoc(collection(db, "treinos"), { ...basePayload, dia: dataIso, diaSemana: DIAS_SEMANA[diaLoop.getDay()].label, createdAt: serverTimestamp() });
+                    current.setDate(current.getDate() + 7); count++;
+                }
+                addToast(`${count} treinos criados!`, "success");
+            } else {
+                await addDoc(collection(db, "treinos"), { ...basePayload, createdAt: serverTimestamp() });
+                addToast("Criado!", "success");
+            }
+        }
+        setShowModal(false); setRecurrenceDate("");
+    } catch (e) { addToast("Erro ao salvar.", "error"); }
+  };
+
+  const handleTogglePresenca = async (aluno: AlunoChamada) => {
+      if(!expandedRow) return;
+      if (aluno.status === 'inscrito') {
+          await setDoc(doc(db, "treinos", expandedRow, "chamada", aluno.userId), {
+              userId: aluno.userId, nome: aluno.nome, turma: aluno.turma, avatar: aluno.avatar, status: 'presente', origem: 'app', timestamp: serverTimestamp()
+          });
           return;
       }
-      if(confirm(`Criar treinos recorrentes de ${novoTreino.esporte} por 3 meses a partir de ${novoTreino.dia}?`)) {
-          setShowCreateModal(false);
-          addToast("Agenda renovada até Janeiro de 2027! 📅", "success");
-      }
+      const novoStatus = aluno.status === "presente" ? "falta" : "presente";
+      await updateDoc(doc(db, "treinos", expandedRow, "chamada", aluno.id), { status: novoStatus });
   };
 
-  const handleSaveTreino = () => {
-      if(!novoTreino.esporte || !novoTreino.dia) { 
-          addToast("Ops — Faltou preencher os dados!", "error"); 
-          return; 
-      }
-      
-      const novoId = Date.now();
-      
-      // Criando objeto explicitamente para evitar spread de props indesejadas
-      const treinoCriado: Treino = {
-          id: novoId,
-          esporte: novoTreino.esporte || "Futsal",
-          categoria: novoTreino.categoria || "Masculino",
-          dia: novoTreino.dia || "",
-          horario: novoTreino.horario || "",
-          local: novoTreino.local || "",
-          img: novoTreino.img || "",
-          chamada: [],
-          turmas_destaque: []
-      };
-
-      setTreinos([...treinos, treinoCriado]);
-      
-      if(HISTORICO_DATA[treinoCriado.esporte]) {
-          HISTORICO_DATA[treinoCriado.esporte].dates.push(treinoCriado.dia.split("-").slice(1).reverse().join("/") || "DATA");
-      }
-
-      setShowCreateModal(false);
-      setNovoTreino({ esporte: "Futsal", categoria: "Masculino", dia: "", horario: "", local: "", img: "" });
-      addToast("Treino agendado! Bora suar a camisa.", "success");
+  const handleAddUserToChamada = async (user: UserBase) => {
+      if(!expandedRow) return;
+      if (chamadaReal.some(a => a.userId === user.uid)) return addToast("Já na lista.", "info");
+      await setDoc(doc(db, "treinos", expandedRow, "chamada", user.uid), {
+          userId: user.uid, nome: user.nome, turma: user.turma || "Geral", avatar: user.foto || "", status: "presente", origem: "manual", timestamp: serverTimestamp()
+      });
+      addToast("Adicionado!", "success"); setBuscaAluno(""); setResultadoBusca([]);
   };
 
-  const handleAddAlunoChamada = () => {
-      if(!showChamadaModal || !buscaAluno.trim()) return;
-      
-      const novoAluno: Aluno = {
-          id: Date.now(),
-          nome: buscaAluno,
-          turma: "Avulso", 
-          status: "presente", 
-          handle: "user_not_found", 
-          foto: "https://github.com/shadcn.png"
-      };
-
-      const treinoAtualizado = { 
-          ...showChamadaModal, 
-          chamada: [novoAluno, ...showChamadaModal.chamada]
-      };
-      
-      setTreinos(prev => prev.map(t => t.id === showChamadaModal.id ? treinoAtualizado : t));
-      setShowChamadaModal(treinoAtualizado);
-      setBuscaAluno("");
-      addToast("Atleta adicionado na lista!", "success");
-  };
-
-  const handleTogglePresenca = (alunoId: number) => {
-      if(!showChamadaModal) return;
-      const novaLista = showChamadaModal.chamada.map(a => 
-          a.id === alunoId ? { ...a, status: a.status === 'presente' ? 'falta' : 'presente' as any } : a
-      );
-      const treinoAtualizado = { ...showChamadaModal, chamada: novaLista };
-      setTreinos(prev => prev.map(t => t.id === showChamadaModal.id ? treinoAtualizado : t));
-      setShowChamadaModal(treinoAtualizado);
+  const handleDeleteAluno = async (alunoId: string) => {
+      if(!expandedRow) return;
+      if(confirm("Remover da lista oficial?")) {
+          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch(e) { console.log("Removido visualmente ou apenas RSVP"); }
+      }
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleToggleStatusTreino = async (treino: Treino) => {
+      const novo = treino.status === 'ativo' ? 'cancelado' : 'ativo';
+      await updateDoc(doc(db, "treinos", treino.id), { status: novo });
+  };
+
+  const handleDeleteTreino = async (id: string) => {
+      if(confirm("Apagar tudo?")) await deleteDoc(doc(db, "treinos", id));
+  };
+
+  const handleExportCSV = () => {
+      if(!chamadaReal.length) return addToast("Lista vazia.", "info");
+      const headers = ["Nome", "Turma", "Status", "Origem"];
+      const rows = chamadaReal.map(a => [a.nome, a.turma, a.status, a.origem]);
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "chamada.csv");
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-        if(file.size > 2 * 1024 * 1024) { addToast("Imagem muito pesada (Max 2MB)", "error"); return; }
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (ev) => {
-            if (ev.target?.result) {
-                setNovoTreino(prev => ({ ...prev, img: ev.target!.result as string }));
-                addToast("Foto carregada com sucesso!", "success");
-            }
-        };
+        setUploading(true);
+        const { url } = await uploadImage(file, "treinos");
+        if (url) setNovoTreino(prev => ({ ...prev, imagem: url }));
+        setUploading(false);
     }
   };
 
-  const handleDeleteTreino = (id: number) => {
-      if(confirm("Cancelar este treino?")) {
-          setTreinos(prev => prev.filter(t => t.id !== id));
-          addToast("Treino cancelado.", "info");
-      }
-  }
-
-  const formatData = (isoDate: string) => {
-      if(!isoDate) return "";
-      const [ano, mes, dia] = isoDate.split("-");
-      return `${dia}/${mes}`;
-  }
+  const formatDate = (d: string) => d ? d.split('-').reverse().join('/') : "-";
+  const isFeriado = (d: string) => FERIADOS.includes(d);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
-      
-      {/* --- HEADER --- */}
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
+      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <h1 className="text-lg font-black text-white uppercase tracking-tighter">Gestão de Treinos</h1>
+            <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
+            <h1 className="text-lg font-black uppercase tracking-tighter">Gestão Treinos</h1>
         </div>
-        
-        <div className="flex flex-wrap gap-2">
-            <button onClick={() => setShowNovaModalidade(true)} className="bg-zinc-900 border border-zinc-700 px-3 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800 transition flex items-center gap-2 text-xs font-bold uppercase">
-                <Trophy size={14} className="text-yellow-500" /> Nova Modalidade
-            </button>
-            <button onClick={() => setShowCreateModal(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20">
-                <Plus size={16} /> Novo Treino
-            </button>
+        <div className="flex gap-2">
+            {activeTab === 'grade' && (
+                <>
+                    <button onClick={() => setShowNovaModalidade(true)} className="bg-zinc-800 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold uppercase hover:bg-zinc-700 flex items-center gap-2 border border-zinc-700">
+                        <Trophy size={14}/> Add Esporte
+                    </button>
+                    <button onClick={handleOpenCreate} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 shadow-lg">
+                        <Plus size={16} /> Novo Treino
+                    </button>
+                </>
+            )}
         </div>
       </header>
 
-      <main className="p-6 space-y-10">
-        
-        {/* 1. DASHBOARD DE KPIs */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KpiCard title="Presença Média" value="85%" icon={<CheckCircle size={14} className="text-emerald-500"/>} color="text-white" barColor="bg-emerald-500" percent={85} />
-            <KpiCard title="Modalidade Top" value="Futsal" icon={<Trophy size={14} className="text-yellow-500"/>} color="text-yellow-400" />
-            <KpiCard title="Turma + Ativa" value="T5" icon={<Users size={14} className="text-blue-500"/>} color="text-white" subInfo="45 presenças" />
-            <KpiCard title="Total Treinos" value="12" icon={<Calendar size={14} className="text-purple-500"/>} color="text-purple-400" subInfo="Neste mês" />
-        </section>
+      <div className="px-6 pt-4">
+          <div className="flex gap-6 border-b border-zinc-800">
+              <button onClick={() => setActiveTab('dashboard')} className={`pb-3 text-xs font-bold uppercase flex items-center gap-2 transition ${activeTab === 'dashboard' ? 'text-emerald-500 border-b-2 border-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
+                  <LayoutDashboard size={14}/> Dashboard
+              </button>
+              <button onClick={() => setActiveTab('grade')} className={`pb-3 text-xs font-bold uppercase flex items-center gap-2 transition ${activeTab === 'grade' ? 'text-emerald-500 border-b-2 border-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
+                  <List size={14}/> Grade & Chamada
+              </button>
+          </div>
+      </div>
 
-        {/* 2. PRÓXIMOS TREINOS */}
-        <section>
-            <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Calendar size={16} /> Agenda de Treinos
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {treinos.map(treino => (
-                    <div key={treino.id} className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden group hover:border-emerald-500/30 transition shadow-lg">
-                        <div className="relative h-24 bg-black/50">
-                            <img src={treino.img} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition" />
-                            <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
-                                <span className="text-[10px] font-black uppercase text-white tracking-wider">{treino.esporte}</span>
-                            </div>
-                            <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
-                                <div className="text-white">
-                                    <p className="text-xs font-medium flex items-center gap-1"><Calendar size={10} className="text-emerald-500"/> {formatData(treino.dia)}</p>
-                                    <p className="text-xs font-medium flex items-center gap-1"><Clock size={10} className="text-emerald-500"/> {treino.horario}</p>
+      <main className="p-6">
+        {activeTab === 'dashboard' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-300">
+                {loadingStats && <div className="text-emerald-500 flex items-center gap-2 text-xs font-bold uppercase"><Loader2 className="animate-spin" size={14}/> Calculando Rankings...</div>}
+                
+                <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Rankings por Esporte</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {modalidades.map((mod) => {
+                        const ranking = rankings[mod] || [];
+                        const topPlayer = ranking[0];
+                        return (
+                            <div key={mod} onClick={() => setShowRankingModal(mod)} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 relative group overflow-hidden cursor-pointer hover:border-emerald-500/50 transition shadow-lg">
+                                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><Trophy size={64}/></div>
+                                <h3 className="text-lg font-black text-white uppercase italic">{mod}</h3>
+                                <div className="mt-4 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
+                                        {topPlayer ? <img src={topPlayer.avatar} className="w-full h-full object-cover"/> : <Users size={18} className="text-zinc-600"/>}
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] text-zinc-500 uppercase font-bold">MVP</p>
+                                        <p className="text-sm font-bold text-white">{topPlayer ? `${topPlayer.nome.split(' ')[0]} (${topPlayer.count})` : "Sem dados"}</p>
+                                    </div>
                                 </div>
-                                <span className="text-[9px] font-bold uppercase bg-white/10 px-2 py-1 rounded text-zinc-300">{treino.categoria}</span>
+                                <div className="mt-3 text-[10px] text-emerald-500 font-bold uppercase text-right group-hover:underline">Ver Ranking &rarr;</div>
                             </div>
+                        )
+                    })}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+                        <div className="p-4 border-b border-zinc-800 bg-red-900/10 flex items-center gap-2">
+                            <Ban size={18} className="text-red-500"/>
+                            <h3 className="font-bold text-red-500 uppercase text-sm">Lista da Vergonha (Ghosting)</h3>
                         </div>
-
-                        <div className="p-4">
-                            <div className="mb-4">
-                                <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2">Presença por Turma</p>
-                                <div className="flex items-center gap-2">
-                                    {treino.turmas_destaque.length > 0 ? treino.turmas_destaque.map((td, i) => (
-                                        <div key={i} className={`flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-zinc-950 border ${td.color} border-opacity-30`}>
-                                            <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-700">
-                                                <img src={td.logo} className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'} />
-                                            </div>
-                                            <span className="text-[10px] font-bold text-white">+{td.count}</span>
-                                        </div>
-                                    )) : (
-                                        <span className="text-[10px] text-zinc-600 italic">Sem confirmações ainda</span>
-                                    )}
+                        <div className="p-4 space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                            {listaVergonha.map((item, i) => (
+                                <div key={i} className="flex justify-between items-center p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/30 transition rounded-lg">
+                                    <div className="flex items-center gap-3">
+                                        <img src={item.avatar || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full grayscale"/>
+                                        <div><p className="font-bold text-white text-sm">{item.nome}</p><p className="text-xs text-zinc-500">{item.treinoMod} • {item.treinoData}</p></div>
+                                    </div>
+                                    <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-1 rounded uppercase font-bold">Faltou</span>
                                 </div>
-                            </div>
-
-                            <div className="flex gap-2 border-t border-zinc-800 pt-3">
-                                <button onClick={() => setShowChamadaModal(treino)} className="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-[10px] font-bold uppercase hover:bg-emerald-500 transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
-                                    <UserCheck size={14}/> Chamada ({treino.chamada.length})
-                                </button>
-                                <button onClick={() => handleDeleteTreino(treino.id)} className="px-3 bg-zinc-800 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition"><Trash2 size={14}/></button>
-                            </div>
+                            ))}
+                            {listaVergonha.length === 0 && !loadingStats && <p className="text-emerald-500 text-xs italic text-center py-4">Nenhum furo registrado recentemente! 🎉</p>}
                         </div>
                     </div>
-                ))}
+                </div>
             </div>
-        </section>
+        )}
 
-        {/* 3. TABELA DE HISTÓRICO */}
-        <section>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 gap-4">
-                <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <CalendarRange size={16} /> Painel de Frequência
-                </h2>
-                
-                <div className="flex flex-wrap gap-1 bg-black p-1 rounded-2xl border border-zinc-800">
-                    {modalidades.map(esporte => (
-                        <button 
-                            key={esporte}
-                            onClick={() => setAbaAtiva(esporte)}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${abaAtiva === esporte ? 'bg-zinc-800 text-white shadow-md border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                        >
-                            {esporte}
-                        </button>
-                    ))}
+        {activeTab === 'grade' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex justify-between items-center bg-zinc-900 p-2 rounded-xl border border-zinc-800">
+                    <div className="flex items-center gap-2">
+                        <Filter size={14} className="text-zinc-500 ml-2"/>
+                        <select className="bg-zinc-950 text-xs text-white p-2 rounded-lg border border-zinc-700 outline-none" value={filtroModalidade} onChange={(e) => setFiltroModalidade(e.target.value)}>
+                            <option className="bg-zinc-950" value="Todas">Todas Modalidades</option>
+                            {modalidades.map(m => <option className="bg-zinc-950" key={m} value={m}>{m}</option>)}
+                        </select>
+                    </div>
+                    <button onClick={() => setOrdemData(ordemData === 'asc' ? 'desc' : 'asc')} className="text-xs text-zinc-400 font-bold uppercase hover:text-white px-3 py-1 flex items-center gap-1">
+                        <ArrowUpDown size={14}/> {ordemData === 'asc' ? 'Mais Antigos' : 'Mais Recentes'}
+                    </button>
+                </div>
+
+                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-zinc-950/50 text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
+                                <tr><th className="p-4">Data</th><th className="p-4">Modalidade</th><th className="p-4">Local</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Ações</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800 text-sm">
+                                {treinosProcessados.map((treino) => {
+                                    const expanded = expandedRow === treino.id;
+                                    const isHoliday = isFeriado(treino.dia);
+                                    return (
+                                        <React.Fragment key={treino.id}>
+                                            <tr className={`transition-colors ${expanded ? 'bg-zinc-800/30' : 'hover:bg-zinc-800/20'} ${treino.status === 'cancelado' ? 'opacity-50 grayscale' : ''}`}>
+                                                <td className="p-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-white flex items-center gap-2">
+                                                            {formatDate(treino.dia)}
+                                                            {isHoliday && <span className="bg-red-500 text-white text-[9px] px-2 py-0.5 rounded-full font-black flex items-center gap-1 animate-pulse"><AlertTriangle size={10}/> FERIADO</span>}
+                                                        </span>
+                                                        <span className="text-xs text-zinc-500">{treino.diaSemana} • {treino.horario}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 font-bold flex items-center gap-2">
+                                                    <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 overflow-hidden shrink-0">{treino.imagem ? <img src={treino.imagem} className="w-full h-full object-cover"/> : <Dumbbell className="p-1 text-zinc-600"/>}</div>
+                                                    {treino.modalidade}
+                                                </td>
+                                                <td className="p-4 text-zinc-400 text-xs">{treino.local}</td>
+                                                <td className="p-4 text-center"><button onClick={() => handleToggleStatusTreino(treino)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${treino.status === 'ativo' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>{treino.status}</button></td>
+                                                <td className="p-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button onClick={() => setExpandedRow(expanded ? null : treino.id)} className={`p-2 rounded-lg transition ${expanded ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`} title="Expandir Chamada">{expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                                                        <button onClick={() => handleOpenEdit(treino)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"><Edit size={16}/></button>
+                                                        <button onClick={() => handleDeleteTreino(treino.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500"><Trash2 size={16}/></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {expanded && (
+                                                <tr className="bg-black/20 shadow-inner">
+                                                    <td colSpan={5} className="p-0">
+                                                        <div className="p-4 border-l-4 border-emerald-500 bg-zinc-900/50">
+                                                            
+                                                            {/* RESPONSÁVEL CARD */}
+                                                            {treino.treinador && (
+                                                                <div className={`mb-4 p-3 rounded-xl bg-gradient-to-r ${getResponsibleColor(treino.treinadorId)} border border-white/10 flex items-center gap-4 shadow-lg w-fit`}>
+                                                                    <div className="relative">
+                                                                        <div className="w-12 h-12 rounded-full border-2 border-white/20 bg-black/30 overflow-hidden flex items-center justify-center">
+                                                                            {treino.treinadorAvatar ? <img src={treino.treinadorAvatar} className="w-full h-full object-cover"/> : <Crown size={20} className="text-white"/>}
+                                                                        </div>
+                                                                        <div className="absolute -bottom-1 -right-1 bg-white text-black p-0.5 rounded-full"><Crown size={10} fill="black"/></div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-[9px] font-black uppercase text-white/80 tracking-widest">Treinador Responsável</p>
+                                                                        <p className="text-sm font-bold text-white">{treino.treinador}</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex justify-between items-center mb-4">
+                                                                <h3 className="font-bold text-white text-sm uppercase flex items-center gap-2"><CheckCircle size={16} className="text-emerald-500"/> Lista de Presença ({listaChamadaUnificada.length})</h3>
+                                                                <div className="flex gap-2 items-center">
+                                                                    <div className="relative">
+                                                                        <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg px-2">
+                                                                            <Search size={14} className="text-zinc-500"/>
+                                                                            <input type="text" placeholder="Adicionar aluno..." className="bg-transparent border-none text-xs text-white focus:ring-0 p-2 w-48 outline-none" value={buscaAluno} onChange={e => setBuscaAluno(e.target.value)} />
+                                                                        </div>
+                                                                        {resultadoBusca.length > 0 && (
+                                                                            <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 rounded-lg mt-1 shadow-xl z-50 overflow-hidden">
+                                                                                {resultadoBusca.map(u => (
+                                                                                    <button key={u.uid} onClick={() => handleAddUserToChamada(u)} className="w-full text-left p-2 hover:bg-zinc-800 flex items-center gap-2 border-b border-zinc-800/50 last:border-0 text-xs text-white">
+                                                                                        <img src={u.foto || "https://github.com/shadcn.png"} className="w-5 h-5 rounded-full"/><span>{u.nome}</span>
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <button onClick={handleExportCSV} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg" title="CSV"><Download size={16}/></button>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* 🦈 LISTA UNIFICADA (CLIQUE SEPARADO) */}
+                                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                                                {listaChamadaUnificada.map(aluno => (
+                                                                    <div 
+                                                                        key={aluno.id} 
+                                                                        className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer select-none ${aluno.status === 'inscrito' ? 'bg-yellow-500/10 border-yellow-500/30' : aluno.status === 'presente' ? 'bg-emerald-900/10 border-emerald-500/20' : 'bg-red-900/10 border-red-500/20 opacity-60'}`}
+                                                                        onClick={() => handleTogglePresenca(aluno)} // CLIQUE GERAL (TOGGLE)
+                                                                    >
+                                                                        <div className="flex items-center gap-2 w-full">
+                                                                            <img src={aluno.avatar || "https://github.com/shadcn.png"} className="w-6 h-6 rounded-full border border-white/10"/>
+                                                                            <div className="flex flex-col">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <p className="text-xs font-bold text-white">{aluno.nome}</p>
+                                                                                    {/* 🦈 LINK DE PERFIL COM STOP PROPAGATION */}
+                                                                                    <Link 
+                                                                                        href={`/admin/users/${aluno.userId}`} 
+                                                                                        onClick={(e) => e.stopPropagation()} 
+                                                                                        className="text-zinc-500 hover:text-emerald-400 transition p-1"
+                                                                                        title="Ver Perfil"
+                                                                                    >
+                                                                                        <ExternalLink size={12}/>
+                                                                                    </Link>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <span className="text-[9px] text-zinc-500">{aluno.turma}</span>
+                                                                                    {aluno.status === 'inscrito' && <span className="text-[8px] bg-yellow-500 text-black px-1 rounded font-bold uppercase">Inscrito (App)</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        <div className="flex items-center gap-2">
+                                                                            {/* Botão de Check/X Dependendo do status */}
+                                                                            <button onClick={() => handleTogglePresenca(aluno)} title="Confirmar Presença/Falta">
+                                                                                {aluno.status === 'presente' ? <CheckCircle size={16} className="text-emerald-500"/> 
+                                                                                 : aluno.status === 'inscrito' ? <UserCheck size={16} className="text-yellow-500 animate-pulse"/> 
+                                                                                 : <X size={16} className="text-red-500"/>}
+                                                                            </button>
+                                                                            {/* Deletar */}
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteAluno(aluno.id || aluno.userId); }} className="text-zinc-600 hover:text-red-500 p-1"><Trash2 size={14}/></button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {listaChamadaUnificada.length === 0 && <div className="col-span-full text-center py-4 text-zinc-500 text-xs italic">Nenhum aluno na lista ainda.</div>}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        )}
+      </main>
+
+      {/* MODAIS (Ranking, Create, etc - Mantidos iguais) */}
+      {showRankingModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4" onClick={() => setShowRankingModal(null)}>
+              <div className="bg-zinc-900 w-full max-w-md rounded-2xl border border-zinc-800 p-6 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-4">
+                      <h2 className="font-bold text-white text-lg flex items-center gap-2"><Trophy className="text-yellow-500" size={20}/> Ranking: {showRankingModal}</h2>
+                      <button onClick={() => setShowRankingModal(null)}><X size={20}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                      {rankings[showRankingModal]?.map((item, idx) => (
+                          <div key={item.userId} className="flex items-center gap-3 p-3 bg-zinc-950 rounded-xl border border-zinc-800">
+                              <span className={`text-lg font-black w-6 text-center ${idx === 0 ? 'text-yellow-500' : idx === 1 ? 'text-zinc-300' : idx === 2 ? 'text-orange-700' : 'text-zinc-600'}`}>{idx + 1}</span>
+                              <img src={item.avatar} className="w-8 h-8 rounded-full bg-zinc-800"/>
+                              <div className="flex-1"><p className="text-sm font-bold text-white">{item.nome}</p><p className="text-[10px] text-zinc-500">{item.turma}</p></div>
+                              <div className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-xs font-bold">{item.count}xp</div>
+                          </div>
+                      ))}
+                      {!rankings[showRankingModal] && <p className="text-center text-zinc-500">Sem dados.</p>}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-zinc-950 w-full max-w-lg rounded-2xl border border-zinc-800 p-6 space-y-4">
+            <h2 className="font-bold text-white text-lg flex items-center gap-2"><Dumbbell size={20} className="text-emerald-500"/> {isEditing ? "Editar" : "Novo"} Treino</h2>
+            <div className="flex gap-4">
+                <div onClick={() => fileInputRef.current?.click()} className="w-24 h-24 border-2 border-dashed border-zinc-700 rounded-xl flex items-center justify-center cursor-pointer hover:border-emerald-500 transition bg-black/20 shrink-0 relative group">
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
+                    {novoTreino.imagem ? <img src={novoTreino.imagem} className="w-full h-full object-cover rounded-lg"/> : <ImageIcon className="text-zinc-600"/>}
+                </div>
+                <div className="flex-1 space-y-3">
+                    <select className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novoTreino.modalidade} onChange={(e) => setNovoTreino({ ...novoTreino, modalidade: e.target.value })}>
+                        {modalidades.map(m => <option className="bg-zinc-900" key={m} value={m}>{m}</option>)}
+                    </select>
+                    
+                    <div className="relative">
+                        <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-xl p-3">
+                            <User size={16} className="text-zinc-500 mr-2"/>
+                            <input 
+                                type="text" 
+                                placeholder="Buscar Responsável..." 
+                                className="bg-transparent text-sm text-white outline-none w-full"
+                                value={novoTreino.treinador || buscaTreinador}
+                                onChange={e => {
+                                    setBuscaTreinador(e.target.value);
+                                    if(novoTreino.treinador && e.target.value !== novoTreino.treinador) {
+                                        setNovoTreino(prev => ({...prev, treinador: "", treinadorId: "", treinadorAvatar: ""}));
+                                    }
+                                }}
+                            />
+                            {novoTreino.treinador && <CheckCircle size={16} className="text-emerald-500"/>}
+                        </div>
+                        {resultadoTreinador.length > 0 && !novoTreino.treinador && (
+                            <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 rounded-lg mt-1 shadow-xl z-50 overflow-hidden">
+                                {resultadoTreinador.map(u => (
+                                    <button key={u.uid} onClick={() => handleSelectTreinador(u)} className="w-full text-left p-2 hover:bg-zinc-800 flex items-center gap-2 border-b border-zinc-800/50 last:border-0 text-xs text-white">
+                                        <img src={u.foto || "https://github.com/shadcn.png"} className="w-5 h-5 rounded-full"/><span>{u.nome}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
             
-            <div className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl">
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left text-xs whitespace-nowrap">
-                        <thead className="bg-black/40 text-zinc-500 font-bold uppercase">
-                            <tr>
-                                <th className="p-4 sticky left-0 bg-zinc-900 z-10 border-r border-zinc-800 min-w-[180px]">Atleta / Turma</th>
-                                {HISTORICO_DATA[abaAtiva]?.dates.map((date, i) => (
-                                    <th key={i} className="p-4 text-center min-w-[80px] border-r border-zinc-800/50">{date}</th>
-                                ))}
-                                {(!HISTORICO_DATA[abaAtiva]?.dates || HISTORICO_DATA[abaAtiva]?.dates.length === 0) && <th className="p-4 text-center text-zinc-600 font-normal normal-case italic">Nenhum treino realizado ainda.</th>}
-                                <th className="p-4 text-center text-emerald-500 min-w-[80px]">% Freq.</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800 text-zinc-300">
-                            {HISTORICO_DATA[abaAtiva]?.alunos.map((aluno, idx) => {
-                                const totalPresencas = aluno.presencas.filter(Boolean).length;
-                                const percent = Math.round((totalPresencas / Math.max(HISTORICO_DATA[abaAtiva].dates.length, 1)) * 100);
-                                
-                                return (
-                                    <tr key={idx} className="hover:bg-zinc-800/40 group transition">
-                                        <td className="p-4 font-bold text-white sticky left-0 bg-zinc-900 group-hover:bg-zinc-900 border-r border-zinc-800">
-                                            <Link href={`/perfil/${aluno.handle}`} className="flex items-center gap-2 hover:text-emerald-400 transition">
-                                                <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] border border-zinc-700">{aluno.nome.charAt(0)}</div>
-                                                <div className="flex flex-col">
-                                                    <span>{aluno.nome}</span>
-                                                    <span className="text-[9px] text-zinc-500 font-normal uppercase">{aluno.turma}</span>
-                                                </div>
-                                            </Link>
-                                        </td>
-                                        {aluno.presencas.map((presente: boolean, i: number) => (
-                                            <td key={i} className="p-4 text-center border-r border-zinc-800/30">
-                                                {presente ? 
-                                                    <div className="w-6 h-6 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-500"><CheckCircle size={12}/></div> : 
-                                                    <div className="w-6 h-6 bg-red-500/5 rounded-full flex items-center justify-center mx-auto text-red-500/50"><XCircle size={12}/></div>
-                                                }
-                                            </td>
-                                        ))}
-                                        <td className="p-4 text-center font-black text-white">{percent}%</td>
-                                    </tr>
-                                )
-                            })}
-                            {(!HISTORICO_DATA[abaAtiva]?.alunos || HISTORICO_DATA[abaAtiva]?.alunos.length === 0) && (
-                                <tr><td colSpan={10} className="p-8 text-center text-zinc-600">Nenhum dado registrado para {abaAtiva}.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            {/* 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 */}
+            {/* 🦈 CAMPO DE DESCRIÇÃO ADICIONADO AQUI 🦈 */}
+            <textarea
+                placeholder="Descrição do Treino (Opcional - Ex: Trazer colete, Foco em defesa)"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none h-20 resize-none"
+                value={novoTreino.descricao || ""}
+                onChange={(e) => setNovoTreino({ ...novoTreino, descricao: e.target.value })}
+            />
+            {/* 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 🦈 */}
+
+            <div className="grid grid-cols-2 gap-3">
+                <input type="date" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novoTreino.dia} onChange={(e) => setNovoTreino({ ...novoTreino, dia: e.target.value })} />
+                <input type="text" placeholder="20:00" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novoTreino.horario} onChange={(e) => setNovoTreino({ ...novoTreino, horario: e.target.value })} />
             </div>
-        </section>
-      </main>
+            <input type="text" placeholder="Local" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novoTreino.local} onChange={(e) => setNovoTreino({ ...novoTreino, local: e.target.value })} />
+            {!isEditing && (
+                <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center gap-3">
+                    <CalendarRange size={16} className="text-zinc-500"/>
+                    <span className="text-xs text-zinc-400">Repetir até:</span>
+                    <input type="date" className="bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-xs text-white outline-none" value={recurrenceDate} onChange={e => setRecurrenceDate(e.target.value)} />
+                </div>
+            )}
+            <div className="flex gap-3 pt-2 border-t border-zinc-800">
+              <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold text-xs uppercase hover:bg-zinc-800 transition">Cancelar</button>
+              <button onClick={handleSave} className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase hover:bg-emerald-500 shadow-lg transition flex items-center justify-center gap-2"><Save size={16}/> Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* --- MODAIS --- */}
-
-      {/* MODAL NOVA MODALIDADE */}
       {showNovaModalidade && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4">
               <div className="bg-zinc-900 w-full max-w-sm rounded-2xl border border-zinc-800 p-6 space-y-4">
                   <h2 className="font-bold text-white text-lg">Criar Esporte</h2>
-                  <input type="text" placeholder="Nome (ex: Natação)" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={novaModalidadeNome} onChange={e => setNovaModalidadeNome(e.target.value)} />
+                  <input type="text" placeholder="Nome (ex: Natação)" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novaModalidadeNome} onChange={e => setNovaModalidadeNome(e.target.value)} />
                   <div className="flex gap-2">
                       <button onClick={() => setShowNovaModalidade(false)} className="flex-1 py-3 text-zinc-500 text-xs uppercase font-bold hover:text-white">Cancelar</button>
                       <button onClick={handleCriarModalidade} className="flex-1 bg-emerald-600 text-white rounded-xl py-3 text-xs font-bold uppercase hover:bg-emerald-500">Criar</button>
@@ -401,149 +758,6 @@ export default function AdminTreinosPage() {
               </div>
           </div>
       )}
-
-      {/* MODAL CHAMADA */}
-      {showChamadaModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-              <div className="bg-zinc-900 w-full max-w-md h-[85vh] rounded-2xl border border-zinc-800 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 shadow-2xl">
-                  <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-black/40">
-                      <div>
-                          <h3 className="font-bold text-white text-lg flex items-center gap-2"><UserCheck size={18} className="text-emerald-500"/> Chamada</h3>
-                          <p className="text-xs text-zinc-400">{showChamadaModal.esporte} • {formatData(showChamadaModal.dia)}</p>
-                      </div>
-                      <button onClick={() => setShowChamadaModal(null)} className="text-zinc-500 hover:text-white p-2 hover:bg-zinc-800 rounded-full"><X size={20}/></button>
-                  </div>
-                  
-                  <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex gap-2">
-                      <div className="relative flex-1">
-                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"/>
-                          <input 
-                            type="text" 
-                            placeholder="Buscar ou adicionar avulso..." 
-                            className="w-full bg-black border border-zinc-700 rounded-xl pl-9 pr-3 py-3 text-xs text-white focus:border-emerald-500 outline-none placeholder:text-zinc-600" 
-                            value={buscaAluno} 
-                            onChange={e => setBuscaAluno(e.target.value)} 
-                          />
-                      </div>
-                      <button onClick={handleAddAlunoChamada} className="bg-zinc-800 border border-zinc-700 px-3 rounded-xl hover:bg-emerald-600 hover:text-white hover:border-emerald-500 transition text-zinc-400">
-                          <Plus size={18}/>
-                      </button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {showChamadaModal.chamada.map(aluno => (
-                          <div key={aluno.id} className={`flex justify-between items-center p-3 rounded-xl border transition-all ${aluno.status === 'presente' ? 'bg-emerald-950/10 border-emerald-500/20' : 'bg-black/20 border-zinc-800/50'}`}>
-                              <Link href={`/perfil/${aluno.handle}`} className="flex items-center gap-3 group flex-1">
-                                  <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700">
-                                      <img src={aluno.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover" />
-                                  </div>
-                                  <div>
-                                      <p className="text-sm font-bold text-white group-hover:text-emerald-400 transition flex items-center gap-1">
-                                          {aluno.nome}
-                                          <ExternalLink size={10} className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500" />
-                                      </p>
-                                      <p className="text-[10px] text-zinc-500 font-bold uppercase">{aluno.turma}</p>
-                                  </div>
-                              </Link>
-                              <div className="flex gap-2">
-                                  <button onClick={() => handleTogglePresenca(aluno.id)} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${aluno.status === 'presente' ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-zinc-800 text-zinc-600 hover:bg-zinc-700'}`}>
-                                      <CheckCircle size={18} />
-                                  </button>
-                                  <button className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${aluno.status === 'falta' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-600 hover:bg-zinc-700'}`}>
-                                      <XCircle size={18} />
-                                  </button>
-                              </div>
-                          </div>
-                      ))}
-                      {showChamadaModal.chamada.length === 0 && (
-                          <div className="flex flex-col items-center justify-center h-full text-zinc-600 gap-2 py-10">
-                              <Users size={32} className="opacity-20"/>
-                              <p className="text-xs">Nenhum atleta na lista.</p>
-                          </div>
-                      )}
-                  </div>
-                  <div className="p-4 border-t border-zinc-800 bg-zinc-900/90 backdrop-blur-sm">
-                      <div className="flex justify-between items-center text-xs text-zinc-400 mb-3 px-1">
-                          <span>Confirmados: <strong className="text-white">{showChamadaModal.chamada.filter(a => a.status === 'presente').length}</strong></span>
-                          <span>Total: {showChamadaModal.chamada.length}</span>
-                      </div>
-                      <button onClick={() => { setShowChamadaModal(null); addToast("Chamada finalizada! Rankings atualizados.", "success") }} className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-bold text-xs uppercase hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 tracking-wide">
-                          Salvar Chamada
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* MODAL CRIAR TREINO */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-zinc-900 w-full max-w-sm rounded-2xl border border-zinc-800 p-6 space-y-4 animate-in fade-in zoom-in duration-200">
-            <h2 className="font-bold text-white text-lg">Novo Treino</h2>
-            
-            <div className="border-2 border-dashed border-zinc-700 rounded-xl p-4 text-center cursor-pointer relative bg-black/20 group hover:border-emerald-500/50 transition" onClick={() => fileInputRef.current?.click()}>
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                {novoTreino.img ? (
-                    <div className="relative h-24 rounded-lg overflow-hidden group">
-                        <img src={novoTreino.img} className="w-full h-full object-cover" />
-                        <button onClick={(e) => { e.stopPropagation(); setNovoTreino({...novoTreino, img: ""}) }} className="absolute top-1 right-1 bg-red-500 p-1 rounded-full text-white hover:bg-red-600 transition"><X size={12}/></button>
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center gap-1 text-zinc-500 group-hover:text-emerald-500 transition">
-                        <UploadCloud size={20} />
-                        <span className="text-[10px] font-bold uppercase">Foto do Treino</span>
-                    </div>
-                )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-                <select className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" value={novoTreino.esporte} onChange={e => setNovoTreino({...novoTreino, esporte: e.target.value})}>
-                    {modalidades.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <select className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-zinc-400 focus:border-emerald-500 outline-none transition" value={novoTreino.categoria} onChange={e => setNovoTreino({...novoTreino, categoria: e.target.value})}>
-                    <option value="Masculino">Masculino</option>
-                    <option value="Feminino">Feminino</option>
-                    <option value="Misto">Misto</option>
-                </select>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-                <input 
-                    type="date" 
-                    className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" 
-                    value={novoTreino.dia} 
-                    onChange={e => setNovoTreino({...novoTreino, dia: e.target.value})} 
-                />
-                <input type="text" placeholder="Horário (Ex: 22:00)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" value={novoTreino.horario} onChange={e => setNovoTreino({...novoTreino, horario: e.target.value})} />
-            </div>
-            <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none transition" value={novoTreino.local} onChange={e => setNovoTreino({...novoTreino, local: e.target.value})} />
-
-            <div className="bg-zinc-800/50 p-3 rounded-xl border border-zinc-700 flex justify-between items-center">
-                <span className="text-[10px] text-zinc-400 font-bold uppercase w-1/2">Repetir por 3 meses?</span>
-                <button onClick={handleRenovarAgenda} className="bg-zinc-900 border border-zinc-600 text-xs px-3 py-1.5 rounded-lg text-emerald-400 hover:text-emerald-300 hover:border-emerald-500 transition font-bold uppercase flex items-center gap-1">
-                    <RefreshCw size={12}/> Renovar
-                </button>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowCreateModal(false)} className="flex-1 py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold text-xs uppercase hover:bg-zinc-800 transition">Cancelar</button>
-              <button onClick={handleSaveTreino} className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 transition">Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-// Componente Auxiliar KPI
-function KpiCard({ title, value, icon, color, barColor, subInfo, percent }: any) {
-    return (
-        <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 group hover:border-emerald-500/30 transition">
-            <p className="text-[10px] text-zinc-500 font-bold uppercase flex items-center gap-2">{icon} {title}</p>
-            <p className={`text-2xl font-black mt-1 ${color}`}>{value}</p>
-            {subInfo && <p className="text-[9px] text-zinc-500 mt-1">{subInfo}</p>}
-            {percent && <div className="w-full h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden"><div className={`h-full ${barColor}`} style={{ width: `${percent}%` }}></div></div>}
-        </div>
-    )
 }

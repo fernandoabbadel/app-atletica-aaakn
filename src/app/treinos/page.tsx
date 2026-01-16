@@ -1,199 +1,332 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  ArrowLeft, MapPin, Clock, CalendarCheck, ChevronLeft, ChevronRight, Users,
-} from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { db } from "../../lib/firebase";
+import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
-// --- DADOS MOCKADOS (Sincronizados com o Admin) ---
-const TREINOS_DATA = [
-  {
-    id: 1,
-    esporte: "Futsal",
-    categoria: "Masculino",
-    dia: "Segunda",
-    dia_num: 12,
-    mes: "OUT",
-    horario: "22:00",
-    local: "Ginásio Municipal",
-    responsavel: "Dudu",
-    img: "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=800&q=80",
-    cor: "bg-emerald-600",
-    confirmados: 18,
-    meta: 24,
-    turmas_destaque: [
-      { turma: "T5", count: 8, color: "bg-emerald-500" },
-      { turma: "T1", count: 5, color: "bg-yellow-500" },
-    ],
-  },
-  {
-    id: 2,
-    esporte: "Vôlei",
-    categoria: "Misto",
-    dia: "Terça",
-    dia_num: 13,
-    mes: "OUT",
-    horario: "19:00",
-    local: "Quadra da Orla",
-    responsavel: "Bia",
-    img: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=800&q=80",
-    cor: "bg-purple-600",
-    confirmados: 24,
-    meta: 30,
-    turmas_destaque: [
-      { turma: "T3", count: 10, color: "bg-purple-500" },
-      { turma: "T5", count: 6, color: "bg-emerald-500" },
-    ],
-  },
+// --- 1. CONFIGURAÇÃO DE FERIADOS (UNITAU 2026) ---
+const FERIADOS = [
+    "2026-02-16", "2026-02-17", "2026-02-18",
+    "2026-04-03", "2026-04-21",
+    "2026-05-01", "2026-06-04",
+    "2026-06-13", "2026-07-09",
+    "2026-09-07", "2026-10-12",
+    "2026-10-28", "2026-11-02", "2026-11-15", "2026-11-20",
+    "2026-12-25"
 ];
 
-// Gerador de Dias do Mês (Simulado)
-const DAYS_IN_MONTH = Array.from({ length: 31 }, (_, i) => {
-  const day = i + 1;
-  const hasTraining = [2, 5, 9, 12, 13, 16, 19, 23, 26, 30].includes(day);
-  return {
-    day,
-    hasTraining,
-    trainings: hasTraining
-      ? ["bg-emerald-500", day % 2 === 0 ? "bg-purple-500" : null].filter(Boolean)
-      : [],
-  };
-});
+// Mapa de Imagens das Turmas
+const TURMA_IMAGENS: Record<string, string> = {
+    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
+    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
+};
 
+// Helpers
+const formatDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+// --- 2. CARD DE TREINO SUPERCHARGED ---
+function TreinoCard({ treino }: { treino: any }) {
+    const { user } = useAuth();
+    const { addToast } = useToast();
+    const router = useRouter(); // Para navegação manual se precisar
+    
+    const [userRsvp, setUserRsvp] = useState<"going" | null>(null);
+    const [stats, setStats] = useState({ confirmados: 0, avatares: [] as string[], turmas: [] as any[] });
+    const [loadingAction, setLoadingAction] = useState(false);
+
+    useEffect(() => {
+        const unsub = onSnapshot(collection(db, "treinos", treino.id, "rsvps"), (snap) => {
+            const rsvps = snap.docs.map(d => d.data());
+            
+            if (user) {
+                const me = rsvps.find((r: any) => r.userId === user.uid);
+                setUserRsvp(me ? me.status : null);
+            }
+
+            // Pega os últimos 4 avatares
+            const avatares = rsvps.filter((r:any) => r.status === 'going').map((r:any) => r.userAvatar).slice(0, 4);
+
+            // Ranking de Turmas
+            const counts: Record<string, number> = {};
+            rsvps.forEach((r: any) => {
+                if (r.status === 'going' && r.userTurma) {
+                    const t = r.userTurma.toUpperCase();
+                    counts[t] = (counts[t] || 0) + 1;
+                }
+            });
+            const ranking = Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([turma, count]) => ({ turma, count, img: TURMA_IMAGENS[turma] }));
+
+            setStats({ confirmados: rsvps.length, avatares, turmas: ranking });
+        });
+        return () => unsub();
+    }, [treino.id, user]);
+
+    const handleRSVP = async (e: React.MouseEvent, status: "going" | "not_going") => {
+        e.preventDefault(); // 🦈 IMPEDE DE ENTRAR NA PÁGINA AO CLICAR NO BOTÃO
+        e.stopPropagation();
+
+        if (!user) return addToast("Faça login!", "error");
+        if (loadingAction) return;
+        setLoadingAction(true);
+
+        try {
+            await runTransaction(db, async (t) => {
+                const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
+                
+                if (status === "not_going") {
+                    t.delete(rsvpRef);
+                } else {
+                    t.set(rsvpRef, {
+                        userId: user.uid,
+                        userName: user.nome,
+                        userAvatar: user.foto || "",
+                        userTurma: user.turma || "Geral",
+                        status: 'going',
+                        timestamp: serverTimestamp()
+                    });
+                }
+            });
+        } catch (e) { console.error(e); addToast("Erro ao atualizar.", "error"); }
+        finally { setLoadingAction(false); }
+    };
+
+    const getColors = () => {
+        const m = treino.modalidade.toLowerCase();
+        if (m.includes("volei") || m.includes("vôlei")) return { 
+            gradient: "from-yellow-500/40 via-black/80 to-black",
+            badge: "bg-yellow-500 text-black border-yellow-400",
+            text: "text-yellow-400"
+        };
+        if (m.includes("hand")) return {
+            gradient: "from-blue-600/40 via-black/80 to-black",
+            badge: "bg-blue-600 text-white border-blue-500",
+            text: "text-blue-400"
+        };
+        if (m.includes("bateria")) return {
+            gradient: "from-purple-600/40 via-black/80 to-black",
+            badge: "bg-purple-600 text-white border-purple-500",
+            text: "text-purple-400"
+        };
+        return {
+            gradient: "from-emerald-600/40 via-black/80 to-black",
+            badge: "bg-emerald-600 text-white border-emerald-500",
+            text: "text-emerald-400"
+        };
+    };
+
+    const theme = getColors();
+
+    return (
+        <Link href={`/treinos/${treino.id}`} className="block w-full">
+            <div className="relative w-full min-h-[320px] rounded-[2.5rem] overflow-hidden border border-zinc-800 bg-[#09090b] group shadow-2xl hover:shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500 hover:-translate-y-1">
+                
+                {/* 1. IMAGEM DE CAPA (EXPANDIDA E VISÍVEL) */}
+                <div className="absolute inset-0 z-0 h-full">
+                    <img src={treino.imagem || "https://placehold.co/800x600/111/333"} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 group-hover:scale-105 transition duration-1000" />
+                    <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient}`}></div>
+                </div>
+
+                {/* 2. CONTEÚDO SUPERIOR */}
+                <div className="absolute top-0 left-0 w-full p-6 z-10 flex justify-between items-start">
+                    <div className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg ${theme.badge}`}>
+                        {treino.modalidade}
+                    </div>
+                    
+                    {/* Contador Flutuante */}
+                    <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+                        <Users size={14} className="text-white"/>
+                        <span className="text-xs font-bold text-white">{stats.confirmados}</span>
+                    </div>
+                </div>
+
+                {/* 3. CONTEÚDO INFERIOR */}
+                <div className="absolute bottom-0 left-0 w-full p-6 z-10 flex flex-col gap-6">
+                    
+                    {/* Título e Info */}
+                    <div>
+                        <h3 className="text-5xl font-black text-white italic uppercase tracking-tighter leading-[0.9] drop-shadow-xl mb-3">
+                            {treino.modalidade}
+                        </h3>
+                        <div className="flex items-center gap-4 text-zinc-300 font-bold uppercase text-xs tracking-wider">
+                            <span className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-lg border border-white/5"><Clock size={14} className={theme.text}/> {treino.horario}</span>
+                            <span className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-lg border border-white/5"><MapPin size={14} className={theme.text}/> {treino.local}</span>
+                        </div>
+                    </div>
+
+                    {/* Área de Ação e Social Proof */}
+                    <div className="flex flex-col xl:flex-row items-end justify-between gap-4 pt-4 border-t border-white/10">
+                        
+                        {/* Esquerda: Quem vai + Turmas */}
+                        <div className="flex flex-col gap-3 w-full xl:w-auto">
+                            {/* Ranking de Turmas (Destaque Maior) */}
+                            <div className="flex flex-wrap gap-2">
+                                {stats.turmas.length > 0 ? stats.turmas.map((t, i) => (
+                                    <div key={i} className="flex items-center gap-2 bg-black/50 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
+                                        <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-500 shrink-0">
+                                            {t.img ? <img src={t.img} className="w-full h-full object-cover"/> : <span className="text-[9px] flex items-center justify-center h-full text-white font-bold">{t.turma}</span>}
+                                        </div>
+                                        <span className="text-xs font-black text-white tracking-tight">{t.turma} <span className={theme.text}>+{t.count}</span></span>
+                                    </div>
+                                )) : (
+                                    <span className="text-zinc-500 text-[10px] font-bold uppercase flex items-center gap-1"><Trophy size={12}/> Seja a primeira turma!</span>
+                                )}
+                            </div>
+
+                            {/* Avatares Pequenos */}
+                            <div className="flex -space-x-2 pl-1">
+                                {stats.avatares.map((src, i) => (
+                                    <div key={i} className="w-6 h-6 rounded-full border border-black bg-zinc-800 overflow-hidden opacity-80">
+                                        <img src={src} className="w-full h-full object-cover" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Direita: Botões de Decisão */}
+                        <div className="flex gap-2 w-full xl:w-auto">
+                            <button 
+                                onClick={(e) => handleRSVP(e, 'not_going')}
+                                className="flex-1 xl:flex-none h-12 px-5 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/10 font-black text-[10px] uppercase tracking-widest transition-colors backdrop-blur-sm"
+                            >
+                                Não Vou
+                            </button>
+                            <button 
+                                onClick={(e) => handleRSVP(e, 'going')}
+                                disabled={loadingAction}
+                                className={`flex-1 xl:flex-none h-12 px-8 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${userRsvp === 'going' ? 'bg-emerald-500 text-black shadow-emerald-500/30' : 'bg-white text-black hover:bg-zinc-200'}`}
+                            >
+                                {loadingAction ? <span className="animate-spin">⌛</span> : userRsvp === 'going' ? <><CheckCircle size={16}/> Confirmado</> : "Eu Vou!"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Link>
+    );
+}
+
+// --- 3. PÁGINA PRINCIPAL ---
 export default function TreinosPage() {
-  const [selectedDay, setSelectedDay] = useState(12);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState(new Date().getDate());
+  const [treinosDoMes, setTreinosDoMes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const treinosFiltrados = TREINOS_DATA.filter(
-    (t) => t.dia_num === selectedDay || t.dia_num > selectedDay
-  );
+  // Buscar Treinos
+  useEffect(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const startOfMonth = formatDateString(new Date(year, month, 1));
+    const endOfMonth = formatDateString(new Date(year, month + 1, 0));
+
+    const q = query(
+        collection(db, "treinos"),
+        where("dia", ">=", startOfMonth),
+        where("dia", "<=", endOfMonth),
+        orderBy("dia", "asc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+        const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setTreinosDoMes(lista);
+        setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [currentDate]);
+
+  // Calendário
+  const calendarDays = useMemo(() => {
+      const daysInMonth = getDaysInMonth(currentDate);
+      const firstDayIndex = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+      const days = [];
+      for (let i = 0; i < firstDayIndex; i++) days.push({ day: null });
+      for (let i = 1; i <= daysInMonth; i++) {
+          const dateStr = formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), i));
+          const treinosDia = treinosDoMes.filter((t: any) => t.dia === dateStr && t.status !== 'cancelado');
+          const isHoliday = FERIADOS.includes(dateStr);
+          const tooltip = isHoliday ? "Feriado" : treinosDia.map((t:any) => `${t.modalidade}`).join(', ');
+          days.push({ day: i, dateStr, treinos: treinosDia, isHoliday, tooltip });
+      }
+      return days;
+  }, [currentDate, treinosDoMes]);
+
+  // Lista Filtrada
+  const treinosSelecionados = useMemo(() => {
+      const targetStr = formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay));
+      return treinosDoMes.filter((t: any) => t.dia === targetStr && t.status !== 'cancelado');
+  }, [treinosDoMes, selectedDay, currentDate]);
+
+  const isSelectedDateHoliday = FERIADOS.includes(formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay)));
+  const monthLabel = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-32 selection:bg-emerald-500/30">
-      {/* HEADER */}
-      <header className="p-4 flex items-center justify-between sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5">
-        <Link href="/" className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900">
-          <ArrowLeft size={24} />
-        </Link>
-        <h1 className="font-black text-lg uppercase tracking-widest text-white">
-          Agenda Outubro
-        </h1>
-        <div className="w-8"></div>
-      </header>
-
-      {/* CALENDÁRIO MENSAL */}
-      <div className="p-4 border-b border-white/5 bg-zinc-900/30">
-        <div className="flex justify-between items-center mb-4">
-          <button className="text-zinc-400 hover:text-white"><ChevronLeft /></button>
-          <span className="text-sm font-bold uppercase tracking-widest">Outubro 2026</span>
-          <button className="text-zinc-400 hover:text-white"><ChevronRight /></button>
+      
+      <header className="fixed top-0 left-0 w-full z-30 bg-[#050505]/90 backdrop-blur-xl border-b border-white/5">
+        <div className="p-4 flex items-center justify-between max-w-lg mx-auto">
+            <Link href="/" className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-white/10 group"><ArrowLeft size={24}/></Link>
+            <h1 className="font-black text-lg uppercase tracking-widest text-white italic">Agenda Tubarão 🦈</h1>
+            <div className="w-8"></div>
         </div>
+      </header>
+      <div className="h-20"></div>
 
-        <div className="grid grid-cols-7 gap-2 text-center">
-          {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
-            <span key={i} className="text-[10px] font-bold text-zinc-600 mb-2">{d}</span>
-          ))}
-
-          {DAYS_IN_MONTH.map((d) => {
-            const isSelected = selectedDay === d.day;
+      {/* Calendário */}
+      <div className="p-4 bg-zinc-900/30 border-b border-white/5 max-w-lg mx-auto rounded-b-3xl mb-8">
+        <div className="flex justify-between items-center mb-6 px-2">
+          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()-1, 1))}><ChevronLeft size={20} className="text-zinc-400 hover:text-white"/></button>
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-white">{monthLabel}</span>
+          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 1))}><ChevronRight size={20} className="text-zinc-400 hover:text-white"/></button>
+        </div>
+        <div className="grid grid-cols-7 gap-y-4 gap-x-2 text-center">
+          {WEEKDAYS.map((d, i) => <span key={i} className="text-[10px] font-bold text-zinc-600 uppercase mb-1">{d}</span>)}
+          {calendarDays.map((item, idx) => {
+            if (!item.day) return <div key={idx}></div>;
+            const isSelected = selectedDay === item.day;
             return (
-              <button
-                key={d.day}
-                onClick={() => setSelectedDay(d.day)}
-                className={`relative w-10 h-10 mx-auto flex flex-col items-center justify-center rounded-full transition-all group ${
-                  isSelected ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 scale-110 z-10" : "bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800"
-                }`}
-              >
-                <span className="text-xs font-bold">{d.day}</span>
-                {/* Bolinhas de Treino */}
-                <div className="flex gap-0.5 mt-0.5 absolute bottom-1.5">
-                  {d.trainings.map((cor:any, i) => (
-                    <div key={i} className={`w-1 h-1 rounded-full ${cor}`}></div>
-                  ))}
-                </div>
+              <button key={idx} onClick={() => setSelectedDay(item.day)} title={item.tooltip} className={`relative w-9 h-10 mx-auto flex flex-col items-center justify-center rounded-xl transition-all duration-300 group ${isSelected ? "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.4)] scale-110 z-10 font-black" : item.isHoliday ? "bg-red-500/10 text-red-500 border border-red-500/30" : "bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+                <span className="text-xs">{item.day}</span>
+                <div className="flex gap-0.5 mt-1 absolute bottom-1.5 px-1">{item.treinos && item.treinos.slice(0, 3).map((t:any, i:number) => <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-black' : 'bg-emerald-500'} shadow-sm`}></div>)}</div>
+                {item.isHoliday && !item.treinos?.length && <div className="absolute top-0 right-0 -mt-1 -mr-1"><AlertCircle size={8} className="text-red-500 fill-red-900/50"/></div>}
               </button>
             );
           })}
         </div>
       </div>
 
-      <main className="p-4 space-y-6">
-        <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">
-          Treinos a partir do dia {selectedDay}
-        </h2>
-
-        <div className="grid gap-6">
-          {treinosFiltrados.map((treino) => (
-            <Link
-              key={treino.id}
-              href={`/treinos/${treino.id}`}
-              className="group relative w-full aspect-[16/9] block rounded-3xl overflow-hidden border border-white/5 cursor-pointer shadow-lg hover:border-white/20 transition-all active:scale-95"
-            >
-              {/* IMAGEM E GRADIENTE */}
-              <div className="absolute inset-0 h-full w-full">
-                <img src={treino.img} alt={treino.esporte} className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-700" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 to-transparent"></div>
-              </div>
-
-              {/* BADGES NO TOPO */}
-              <div className="absolute top-3 left-3 flex gap-2">
-                <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase text-white ${treino.cor} shadow-lg`}>
-                  {treino.categoria}
-                </div>
-                <div className="bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-[9px] font-bold uppercase text-white border border-white/10 flex items-center gap-1">
-                  <CalendarCheck size={10} /> {treino.dia_num} {treino.mes}
-                </div>
-              </div>
-
-              {/* CONTEÚDO INFERIOR */}
-              <div className="absolute bottom-0 left-0 w-full p-5">
-                <div className="flex items-center justify-end gap-1 mb-2">
-                  {treino.turmas_destaque.map((t, idx) => (
-                    <div key={idx} className={`${t.color} text-black text-[8px] font-black w-6 h-6 rounded-full flex items-center justify-center shadow-lg border-2 border-black/50 -ml-2 first:ml-0 z-10`}>
-                      {t.turma}
-                    </div>
-                  ))}
-                </div>
-
-                <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-2 drop-shadow-md">
-                  {treino.esporte}
-                </h3>
-
-                <div className="space-y-1 mb-3">
-                  <div className="flex justify-between text-[8px] font-bold text-zinc-300 uppercase">
-                    <span>Lotação</span>
-                    <span>{treino.confirmados}/{treino.meta}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className={`h-full ${treino.cor} shadow-[0_0_10px_currentColor]`} style={{ width: `${Math.min((treino.confirmados / treino.meta) * 100, 100)}%` }}></div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-end">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-zinc-300 text-[10px] font-bold uppercase tracking-wider mb-1">
-                      <Clock size={12} className="text-emerald-500" /> {treino.horario}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                      <MapPin size={12} className="text-emerald-500" /> {treino.local}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex -space-x-2">
-                      {[1, 2, 3].map((_, i) => (
-                        <div key={i} className="w-6 h-6 rounded-full bg-zinc-800 border-2 border-black flex items-center justify-center text-[8px] text-zinc-500">
-                          <Users size={10} />
-                        </div>
-                      ))}
-                    </div>
-                    <span className="text-[9px] text-zinc-400 font-bold">+{treino.confirmados - 3}</span>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ))}
+      {/* Lista de Treinos */}
+      <main className="p-4 space-y-6 max-w-4xl mx-auto">
+        <div className="flex items-center justify-between px-2">
+            <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                <CalendarIcon size={14} className="text-emerald-500"/> {selectedDay} DE {currentDate.toLocaleString('pt-BR', { month: 'long' }).toUpperCase()}
+            </h2>
+            {isSelectedDateHoliday && <span className="text-[9px] font-black text-red-500 uppercase bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20 flex items-center gap-1"><AlertCircle size={12}/> Feriado</span>}
         </div>
+
+        {loading ? <div className="text-center py-20 text-zinc-600 animate-pulse text-xs font-bold uppercase">Carregando grade...</div> : 
+         treinosSelecionados.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 border border-dashed border-zinc-800 rounded-[2rem] bg-zinc-900/20"><Dumbbell className="text-zinc-700 mb-2" size={32}/><p className="text-zinc-500 text-xs font-bold uppercase">Sem treino</p></div>
+        ) : (
+            <div className="grid gap-10">
+                {treinosSelecionados.map((treino: any) => <TreinoCard key={treino.id} treino={treino} />)}
+            </div>
+        )}
       </main>
     </div>
   );
