@@ -18,6 +18,8 @@ export interface User {
   uid: string;
   nome: string;
   email: string;
+  idade?: number;          // 🦈 Adicionado
+  cidadeOrigem?: string;   // 🦈 Adicionado
   foto: string;
   role: UserRole;
   
@@ -36,7 +38,14 @@ export interface User {
   dailyMatchesPlayed?: number;
   turmaPhoto?: string;
   whatsappPublico?: boolean;
-  
+  statusRelacionamento?: string; // Adicionado
+  relacionamentoPublico?: boolean; // Adicionado
+  dataNascimento?: string; // Adicionado
+  esportes?: string[];
+  pets?: string; // 🦈 Novo campo adicionado
+  apelido?: string; // 🦈 Novo campo
+  idadePublica?: boolean; // 🦈 Novo campo
+
   // Visuais
   plano?: string;
   patente?: string;

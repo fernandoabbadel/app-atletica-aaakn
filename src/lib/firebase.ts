@@ -1,8 +1,6 @@
-// 📁 lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-// ADICIONEI: initializeFirestore (para configurar o modo de conexão)
-import { getFirestore, initializeFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -14,18 +12,27 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Singleton para não duplicar conexões
+// 1. Singleton do App (Evita erro de "App already exists" no Next.js)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
+// 2. Autenticação
 const auth = getAuth(app);
 
-// 🔴 MUDANÇA CRÍTICA AQUI 🔴
-// Trocamos getFirestore(app) por isso aqui para funcionar no Wi-Fi da faculdade:
+// 3. Banco de Dados (Configuração Tática Anti-Bloqueio) 🦈🛡️
+// Usamos initializeFirestore em vez de getFirestore para passar configurações personalizadas.
 const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true, // <--- O PULO DO GATO 🐈🦈
+  // Força o uso de Long Polling em vez de WebSockets.
+  // Essencial para rodar em Wi-Fi de faculdade/empresas que bloqueiam portas não-padrão.
+  experimentalForceLongPolling: true,
+  
+  // (Opcional) Evita erros chatos se você tentar salvar algo como undefined
+  ignoreUndefinedProperties: true, 
 });
 
+// 4. Storage (Imagens)
 const storage = getStorage(app);
+
+// 5. Provedor Google
 const googleProvider = new GoogleAuthProvider();
 
 export { app, auth, db, storage, googleProvider };
