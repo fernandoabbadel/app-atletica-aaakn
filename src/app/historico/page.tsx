@@ -1,53 +1,105 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Calendar, MapPin, Trophy, ChevronRight, CalendarRange } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Trophy, ChevronRight, CalendarRange, Loader2 } from "lucide-react";
+import { db } from "../../lib/firebase";
+import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
 
-// MOCK: Apontando para a pasta local public/historico
-const EVENTS_MOCK = [
-    {
-        id: "1", titulo: "Fundação da AAAKN", data: "2018-03-15", ano: "2018",
-        descricao: "O início de tudo. A primeira gestão reuniu os alunos para criar a maior do litoral. Foi um dia histórico onde assinamos a ata de fundação.",
-        local: "Campus Unitau", foto: "/historico/fundacao.jpg" // Nome exemplo
-    },
-    {
-        id: "2", titulo: "Primeiro Título no JIMESP", data: "2022-11-02", ano: "2022",
-        descricao: "Contra todas as probabilidades, trouxemos o caneco pra casa no Futsal Masculino. Uma final emocionante decidida nos pênaltis.",
-        local: "Ginásio Municipal", foto: "/historico/titulo_2022.jpg"
-    },
-    {
-        id: "3", titulo: "A Maior Calourada", data: "2024-02-20", ano: "2024",
-        descricao: "Recorde de público com mais de 500 pessoas. O Tubarão dominou a cidade e mostrou quem manda no litoral.",
-        local: "Arena Show", foto: "/historico/calourada_2024.jpg"
-    }
-];
+// Interface para garantir tipagem forte
+interface HistoricEvent {
+  id: string;
+  titulo: string;
+  data: string; // YYYY-MM-DD
+  ano: string;
+  descricao: string;
+  local: string;
+  foto: string;
+}
+
+interface PageConfig {
+  tituloPagina: string;
+  subtituloPagina: string;
+  fotoCapa: string;
+}
 
 export default function HistoricoPage() {
-  const timelineEvents = [...EVENTS_MOCK].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+  const [events, setEvents] = useState<HistoricEvent[]>([]);
+  const [config, setConfig] = useState<PageConfig>({
+    tituloPagina: "Nossa História",
+    subtituloPagina: "Carregando legado...",
+    fotoCapa: ""
+  });
+  const [loading, setLoading] = useState(true);
+
+  // 1. Buscar Configurações da Página (Capa, Título)
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const docRef = doc(db, "app_config", "historico");
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          setConfig(snap.data() as PageConfig);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar config:", error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // 2. Buscar Eventos em Tempo Real
+  useEffect(() => {
+    // Ordena pela data do evento (mais antigo primeiro para timeline cronológica)
+    const q = query(collection(db, "historic_events"), orderBy("data", "asc"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as HistoricEvent[];
+      setEvents(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-emerald-500 gap-4">
+        <Loader2 className="animate-spin" size={48} />
+        <p className="text-xs font-black uppercase tracking-widest animate-pulse">Resgatando Arquivos...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500">
       
-      {/* HEADER COM LOGO AAAKN */}
-      <div className="relative h-72 w-full overflow-hidden flex items-center justify-center bg-zinc-900">
-          {/* Background Abstrato */}
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/50 to-[#050505] z-10"></div>
+      {/* HEADER DINÂMICO */}
+      <div className="relative h-72 w-full overflow-hidden flex items-center justify-center bg-zinc-900 group">
+          {/* Imagem de Capa do Banco */}
+          {config.fotoCapa && (
+            <div className="absolute inset-0 z-0">
+               <img src={config.fotoCapa} className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-1000" alt="Capa" />
+            </div>
+          )}
           
-          {/* LOGO CENTRALIZADA */}
-          <div className="relative z-20 flex flex-col items-center animate-in zoom-in-50 duration-700">
-              <div className="w-32 h-32 bg-black/50 backdrop-blur-xl rounded-full border-4 border-emerald-500/30 p-4 shadow-[0_0_40px_rgba(16,185,129,0.2)]">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/60 to-[#050505] z-10"></div>
+          
+          <div className="relative z-20 flex flex-col items-center animate-in zoom-in-50 duration-700 px-4 text-center">
+              <div className="w-24 h-24 md:w-32 md:h-32 bg-black/50 backdrop-blur-xl rounded-full border-4 border-emerald-500/30 p-4 shadow-[0_0_40px_rgba(16,185,129,0.2)] mb-4">
                 <img src="/logo.png" className="w-full h-full object-contain drop-shadow-xl" alt="Logo AAAKN" />
               </div>
-              <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white mt-4 drop-shadow-xl">
-                  Nossa <span className="text-emerald-500">História</span>
+              <h1 className="text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white drop-shadow-xl">
+                  {config.tituloPagina.split(' ').slice(0, -1).join(' ')} <span className="text-emerald-500">{config.tituloPagina.split(' ').slice(-1)}</span>
               </h1>
+              <p className="text-zinc-400 text-xs md:text-sm font-medium mt-2 max-w-lg">{config.subtituloPagina}</p>
           </div>
           
-          {/* Botão Voltar */}
           <div className="absolute top-6 left-6 z-30">
-              <Link href="/menu" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10">
+              <Link href="/menu" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10 active:scale-95">
                 <ArrowLeft size={20}/>
               </Link>
           </div>
@@ -56,61 +108,67 @@ export default function HistoricoPage() {
       {/* TIMELINE CONTAINER */}
       <div className="max-w-4xl mx-auto px-4 mt-8 relative">
           
-          {/* LINHA CENTRAL VERTICAL */}
+          {/* LINHA CENTRAL */}
           <div className="absolute left-4 md:left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-500 via-zinc-800 to-transparent"></div>
 
           <div className="space-y-12">
-              {timelineEvents.map((event, index) => {
-                  const isEven = index % 2 === 0;
-                  return (
-                      <div key={event.id} className={`relative flex flex-col md:flex-row items-start md:items-center ${isEven ? 'md:flex-row-reverse' : ''}`}>
-                          
-                          {/* BOLINHA DA TIMELINE */}
-                          <div className="absolute left-4 md:left-1/2 -translate-x-[5px] md:-translate-x-1/2 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black shadow-[0_0_10px_rgba(16,185,129,0.8)] z-10 mt-1.5 md:mt-0"></div>
+              {events.length === 0 ? (
+                  <div className="text-center py-20 text-zinc-600 font-bold uppercase italic">
+                      Nenhuma história contada ainda...
+                  </div>
+              ) : (
+                  events.map((event, index) => {
+                      const isEven = index % 2 === 0;
+                      return (
+                          <div key={event.id} className={`relative flex flex-col md:flex-row items-start md:items-center ${isEven ? 'md:flex-row-reverse' : ''}`}>
+                              
+                              {/* BOLINHA */}
+                              <div className="absolute left-4 md:left-1/2 -translate-x-[5px] md:-translate-x-1/2 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black shadow-[0_0_10px_rgba(16,185,129,0.8)] z-10 mt-1.5 md:mt-0"></div>
 
-                          {/* CONTEÚDO (CARD) */}
-                          <div className={`pl-10 md:pl-0 w-full md:w-1/2 ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
-                              <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-hidden group hover:border-emerald-500/50 transition duration-300 shadow-xl">
-                                  
-                                  {/* Imagem do Evento (Public Folder) */}
-                                  <div className="h-40 w-full overflow-hidden relative bg-black">
-                                      <img 
-                                        src={event.foto} 
-                                        onError={(e) => e.currentTarget.src = "https://via.placeholder.com/400x200?text=Sem+Foto"} // Fallback se não achar a foto na pasta
-                                        className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
-                                      />
-                                      <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1 rounded-full border border-white/10">
-                                          <span className="text-xs font-black text-emerald-400">{event.ano}</span>
+                              {/* CARD */}
+                              <div className={`pl-10 md:pl-0 w-full md:w-1/2 ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
+                                  <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-hidden group hover:border-emerald-500/50 transition duration-300 shadow-xl">
+                                      
+                                      {/* FOTO DO EVENTO */}
+                                      <div className="h-40 w-full overflow-hidden relative bg-black">
+                                          <img 
+                                            src={event.foto || "https://via.placeholder.com/400x200?text=Sem+Foto"} 
+                                            alt={event.titulo}
+                                            className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
+                                            onError={(e) => e.currentTarget.src = "/logo.png"}
+                                          />
+                                          <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1 rounded-full border border-white/10 shadow-lg">
+                                              <span className="text-xs font-black text-emerald-400">{event.ano}</span>
+                                          </div>
                                       </div>
-                                  </div>
 
-                                  <div className="p-5">
-                                      <h3 className="text-xl font-black uppercase text-white mb-2 leading-tight">{event.titulo}</h3>
-                                      <div className="flex items-center gap-4 text-[10px] font-bold text-zinc-500 uppercase mb-3">
-                                          <span className="flex items-center gap-1"><Calendar size={12}/> {event.data}</span>
-                                          <span className="flex items-center gap-1"><MapPin size={12}/> {event.local}</span>
+                                      <div className="p-5">
+                                          <h3 className="text-xl font-black uppercase text-white mb-2 leading-tight">{event.titulo}</h3>
+                                          <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold text-zinc-500 uppercase mb-3">
+                                              <span className="flex items-center gap-1"><Calendar size={12} className="text-emerald-600"/> {new Date(event.data).toLocaleDateString('pt-BR')}</span>
+                                              <span className="flex items-center gap-1"><MapPin size={12} className="text-emerald-600"/> {event.local}</span>
+                                          </div>
+                                          <p className="text-sm text-zinc-400 leading-relaxed border-t border-zinc-800 pt-3 line-clamp-4">
+                                              {event.descricao}
+                                          </p>
                                       </div>
-                                      <p className="text-sm text-zinc-400 leading-relaxed border-t border-zinc-800 pt-3">
-                                          {event.descricao}
-                                      </p>
                                   </div>
                               </div>
-                          </div>
 
-                          {/* ESPAÇO VAZIO (Para alinhar no desktop) */}
-                          <div className="w-full md:w-1/2 hidden md:block"></div>
-                      </div>
-                  );
-              })}
+                              {/* Espaçador Desktop */}
+                              <div className="w-full md:w-1/2 hidden md:block"></div>
+                          </div>
+                      );
+                  })
+              )}
           </div>
 
-          {/* FIM DA LINHA E BOTÃO GLOWING */}
+          {/* FOOTER */}
           <div className="mt-16 mb-8 flex flex-col items-center gap-6">
               <div className="inline-block p-4 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-500 animate-bounce">
                   <Trophy size={24} className="text-yellow-500"/>
               </div>
               
-              {/* BOTÃO FLOATING COOL PARA EVENTOS */}
               <Link href="/eventos" className="relative group w-full max-w-sm">
                   <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl blur opacity-40 group-hover:opacity-100 transition duration-500 animate-pulse"></div>
                   <button className="relative w-full bg-zinc-900 ring-1 ring-white/10 rounded-xl px-6 py-4 flex items-center justify-between overflow-hidden">
