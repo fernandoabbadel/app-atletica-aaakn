@@ -1,17 +1,18 @@
 "use client";
 
 import React, { use, useEffect, useState } from "react";
-import { ArrowLeft, Users, Trophy } from "lucide-react";
+import { ArrowLeft, Users, Trophy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { db } from "../../../lib/firebase";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 
 interface User {
-    id: string;
-    nome: string;
-    xp: number;
-    foto: string;
-    turma: string;
+  id: string;
+  nome: string;
+  xp: number;
+  foto: string;
+  turma: string;
+  apelido?: string;
 }
 
 export default function TurmaRankingPage({
@@ -31,7 +32,7 @@ export default function TurmaRankingPage({
       async function fetchTurmaData() {
           try {
               // 🦈 Query com Índice Composto Necessário!
-              // O Firebase vai pedir para criar índice: 'turma' Ascending + 'xp' Descending
+              // Se der erro, verifique o console para criar o índice no Firebase
               const q = query(
                   collection(db, "users"),
                   where("turma", "==", turmaReal),
@@ -42,6 +43,7 @@ export default function TurmaRankingPage({
               const data = snapshot.docs.map(doc => ({
                   id: doc.id,
                   nome: doc.data().nome || "Anônimo",
+                  apelido: doc.data().apelido,
                   xp: doc.data().xp || 0,
                   foto: doc.data().foto || "https://github.com/shadcn.png",
                   turma: doc.data().turma
@@ -49,7 +51,7 @@ export default function TurmaRankingPage({
 
               setAlunos(data);
           } catch (error) {
-              console.error("Erro ao carregar turma:", error);
+              console.error("Erro ao carregar turma. Verifique índices do Firestore.", error);
           } finally {
               setLoading(false);
           }
@@ -62,7 +64,11 @@ export default function TurmaRankingPage({
   const totalPontos = alunos.reduce((acc, curr) => acc + curr.xp, 0);
 
   if (loading) {
-      return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-bold animate-pulse">Carregando Turma...</div>;
+      return (
+        <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500 gap-2 font-bold">
+            <Loader2 className="animate-spin"/> Carregando Turma...
+        </div>
+      );
   }
 
   return (
@@ -111,7 +117,7 @@ export default function TurmaRankingPage({
 
         {/* Lista de Alunos */}
         <div className="space-y-2">
-          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest ml-1">
+          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest ml-1 mb-3">
             Classificação Interna
           </h3>
 
@@ -143,9 +149,9 @@ export default function TurmaRankingPage({
                   onError={(e) => (e.currentTarget.src = "https://github.com/shadcn.png")}
                 />
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-white">{item.nome}</p>
+                  <p className="text-sm font-bold text-white">{item.apelido || item.nome}</p>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">
-                    Sócio Atleta
+                    Atleta da {item.turma}
                   </p>
                 </div>
                 <div className="text-right">

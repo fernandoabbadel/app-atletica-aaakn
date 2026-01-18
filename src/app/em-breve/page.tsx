@@ -44,34 +44,16 @@ export default function ComingSoonPage() {
         "{frase}"
       </p>
       <Link
-        href="/"
+        href="/dashboard"
         className="border border-zinc-800 bg-zinc-900 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-amber-500 hover:text-black transition shadow-lg flex items-center gap-2"
       >
         <ArrowLeft size={18} /> Voltar para o Início
       </Link>
       <style jsx>{`
-        @keyframes wave-slow {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-        @keyframes wave-reverse {
-          0% {
-            transform: rotate(360deg);
-          }
-          100% {
-            transform: rotate(0deg);
-          }
-        }
-        .animate-wave-slow {
-          animation: wave-slow 8s linear infinite;
-        }
-        .animate-wave-reverse {
-          animation: wave-reverse 10s linear infinite;
-        }
+        @keyframes wave-slow { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes wave-reverse { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
+        .animate-wave-slow { animation: wave-slow 8s linear infinite; }
+        .animate-wave-reverse { animation: wave-reverse 10s linear infinite; }
       `}</style>
     </div>
   );

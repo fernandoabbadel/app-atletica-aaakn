@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LogOut, LayoutDashboard, Settings, ShieldAlert, Trophy, Calendar,
   Star, Gamepad2, BookOpen, Dumbbell, History, ShoppingBag, Megaphone,
-  Lock, Crown, BarChart3, Users,
+  Lock, Crown, BarChart3, Users, Camera
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -20,7 +20,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Treinos", path: "/admin/treinos", icon: <BarChart3 size={18} /> },
     { name: "Loja", path: "/admin/loja", icon: <ShoppingBag size={18} /> },
     { name: "Usuários", path: "/admin/usuarios", icon: <Users size={18} /> },
-    { name: "Gym Champ", path: "/admin/gym", icon: <Dumbbell size={18} /> },
+    { name: "Álbum da Galera", path: "/admin/album", icon: <Camera size={18} /> }, // 🦈 NOVO
+    { name: "Gym Champ", path: "/em-breve", icon: <Dumbbell size={18} />, badge: "Em Breve" }, // 🦈 BADGE EM BREVE
     { name: "Arena Games", path: "/admin/games", icon: <Gamepad2 size={18} /> },
     { name: "Fidelidade", path: "/admin/fidelidade", icon: <Star size={18} /> },
     { name: "Conquistas", path: "/admin/conquistas", icon: <Trophy size={18} /> },
@@ -29,7 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Histórico", path: "/admin/historico", icon: <History size={18} /> },
     { name: "Guia do App", path: "/admin/guia", icon: <BookOpen size={18} /> },
     { name: "Denúncias", path: "/admin/denuncias", icon: <ShieldAlert size={18} /> },
-    { name: "Configurações", path: "/admin/configuracoes", icon: <Settings size={18} /> }, // NOVO BOTÃO AQUI
+    { name: "Configurações", path: "/admin/configuracoes", icon: <Settings size={18} /> },
     { name: "Permissões", path: "/admin/permissoes", icon: <Lock size={18} />, isDanger: true },
   ];
 
@@ -50,9 +51,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           <nav className="space-y-1">
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest px-2 mb-2">Menu Principal</p>
-            {sidebarItems.map((item) => (
-              <Link key={item.path} href={item.path} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${pathname === item.path ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 font-bold" : item.isDanger ? "text-red-500 hover:bg-red-500/10" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
-                {item.icon}<span className="text-xs font-medium uppercase tracking-wide">{item.name}</span>
+            {sidebarItems.map((item: any) => (
+              <Link key={item.path} href={item.path} className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-all group ${pathname === item.path ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 font-bold" : item.isDanger ? "text-red-500 hover:bg-red-500/10" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+                <div className="flex items-center gap-3">
+                    {item.icon}<span className="text-xs font-medium uppercase tracking-wide">{item.name}</span>
+                </div>
+                {item.badge && <span className="bg-emerald-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded">{item.badge}</span>}
               </Link>
             ))}
           </nav>

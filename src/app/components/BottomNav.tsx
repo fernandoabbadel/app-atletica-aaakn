@@ -7,7 +7,7 @@ import {
   Home, Calendar, Dumbbell, CreditCard, Menu, X, Wallet,
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
-  Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout
+  Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout, Camera
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -28,6 +28,7 @@ interface NavItemProps {
     icon: React.ReactNode; 
     action?: () => void;
     isMain?: boolean;
+    badge?: string; // 🦈 Badge verde para "Em Breve"
 }
 
 const TierBadge = ({ tier }: { tier: string }) => {
@@ -107,7 +108,7 @@ export default function BottomNavbar() {
   const bottomItems: NavItemProps[] = [
       { id: 'home', label: 'Início', icon: <Home size={22}/>, path: '/dashboard' },
       { id: 'eventos', label: 'Eventos', icon: <Calendar size={22}/>, path: '/eventos' },
-      { id: 'gym', label: 'Gym Rats', icon: <Dumbbell size={28}/>, path: '/gym', isMain: true },
+      { id: 'gym', label: 'Gym Rats', icon: <Dumbbell size={28}/>, path: '/em-breve', isMain: true }, // 🦈 Redireciona para /em-breve
       { id: 'carteira', label: 'Carteira', icon: <Wallet size={22}/>, path: '/carteirinha' },
       { id: 'menu', label: 'Menu', icon: <Menu size={22}/>, action: () => setIsSidebarOpen(true) },
   ];
@@ -117,11 +118,12 @@ export default function BottomNavbar() {
       { id: 'carteira_side', label: 'Carteirinha', icon: <CreditCard size={18} />, path: '/carteirinha' },
       { id: 'parceiros', label: 'Parceiros', icon: <Handshake size={18} />, path: '/parceiros' },
       { id: 'comunidade', label: 'Comunidade', icon: <MessageCircle size={18} />, path: '/comunidade' },
+      { id: 'album', label: 'Álbum da Galera', icon: <Camera size={18} />, path: '/album' }, // 🦈 NOVO BOTÃO
   ];
 
   const sidebarItemsAtleta: NavItemProps[] = [
       { id: 'treinos', label: 'Treinos', icon: <CalendarRange size={18} />, path: '/treinos' },
-      { id: 'gym_side', label: 'Treinando com Tubarão', icon: <Dumbbell size={18} />, path: '/gym' },
+      { id: 'gym_side', label: 'Treinando com Tubarão', icon: <Dumbbell size={18} />, path: '/em-breve', badge: "Em Breve" }, // 🦈 BADGE VERDE
       { id: 'ranking', label: 'Ranking', icon: <Trophy size={18} />, path: '/ranking' },
       { id: 'arena', label: 'Arena Games', icon: <Gamepad2 size={18} />, path: '/games' },
   ];
@@ -168,9 +170,12 @@ export default function BottomNavbar() {
             <div className="px-2 pt-4 pb-2 border-t border-zinc-800/50 mt-2"><h3 className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-2 tracking-widest"><Dumbbell size={10}/> Área do Atleta</h3></div>
             <div className="space-y-1.5 pb-2">
                 {sidebarItemsAtleta.map((item) => (
-                    <button key={item.id} onClick={() => handleNavigation(item.path!)} className={`w-full flex items-center gap-3 p-3.5 rounded-xl transition-all group ${pathname === item.path ? "bg-zinc-900 border border-zinc-800" : "hover:bg-zinc-900/50"}`}>
-                        <div className={`p-2 rounded-lg flex items-center justify-center ${pathname === item.path ? "bg-emerald-500 text-black" : "bg-zinc-900 text-zinc-500"}`}>{item.icon}</div>
-                        <span className={`text-sm font-bold ${pathname === item.path ? "text-white" : "text-zinc-400"}`}>{item.label}</span>
+                    <button key={item.id} onClick={() => handleNavigation(item.path!)} className={`w-full flex items-center justify-between p-3.5 rounded-xl transition-all group ${pathname === item.path ? "bg-zinc-900 border border-zinc-800" : "hover:bg-zinc-900/50"}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg flex items-center justify-center ${pathname === item.path ? "bg-emerald-500 text-black" : "bg-zinc-900 text-zinc-500"}`}>{item.icon}</div>
+                            <span className={`text-sm font-bold ${pathname === item.path ? "text-white" : "text-zinc-400"}`}>{item.label}</span>
+                        </div>
+                        {item.badge && <span className="bg-emerald-500 text-black text-[9px] font-black px-2 py-0.5 rounded uppercase">{item.badge}</span>}
                     </button>
                 ))}
             </div>
