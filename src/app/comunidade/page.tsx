@@ -15,6 +15,8 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+// 🦈 IMPORT DA SEGURANÇA
+import { Security } from "../../lib/security";
 
 // Kit de Emergência
 const MODALIDADES_PADRAO = ["Futebol", "Vôlei", "Handebol", "Basquete", "Tênis de Mesa", "Natação", "Bateria", "Cheerleading"];
@@ -99,7 +101,18 @@ export default function ComunidadePage() {
   }, [commentModal]);
 
   const handlePublish = async () => {
-    if (!user) return addToast("Faça login!", "error");
+    if (!user) {
+        addToast("Faça login!", "error");
+        return;
+    }
+    
+    // 🦈 VERIFICAÇÃO DE SEGURANÇA (ANTI-SPAM)
+    const securityCheck = await Security.canUserPost(user.uid);
+    if (!securityCheck.allowed) {
+        addToast(securityCheck.reason || "Aguarde para postar.", "error");
+        return;
+    }
+
     if (!newPostText.trim() && !imageFile) return;
     
     const isTreinador = user.role?.includes("treinador") || user.role?.includes("admin");
@@ -139,13 +152,8 @@ export default function ComunidadePage() {
     finally { setIsPublishing(false); }
   };
 
-  // 🦈 CORREÇÃO: GUARD CLAUSE PARA EVITAR ERRO DE TYPE
   const handleReport = async () => {
-      if (!user) {
-          addToast("Faça login para denunciar.", "error");
-          return;
-      }
-
+      if (!user) return addToast("Faça login!", "error");
       if (!reportReason) return addToast("Selecione um motivo!", "error");
       
       const finalReason = reportReason === "Outros" ? `Outros: ${otherReasonText}` : reportReason;
@@ -173,13 +181,8 @@ export default function ComunidadePage() {
       setOtherReasonText("");
   };
 
-  // 🦈 CORREÇÃO: GUARD CLAUSE PARA COMENTÁRIOS
   const handleComment = async () => {
-      if (!user) {
-          addToast("Faça login para comentar.", "error");
-          return;
-      }
-
+      if (!user) return addToast("Faça login!", "error");
       if (!newComment.trim()) return;
       try {
           await addDoc(collection(db, `posts/${commentModal}/comments`), {
@@ -206,7 +209,6 @@ export default function ComunidadePage() {
 
   const currentPostCommentsDisabled = posts.find(p => p.id === commentModal)?.commentsDisabled;
 
-  // ... (RESTANTE DO JSX MANTIDO IGUAL - COPIAR ABAIXO PARA FINALIZAR O ARQUIVO)
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
       {/* CAPA & HEADER */}
