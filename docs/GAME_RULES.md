@@ -1,4 +1,4 @@
-# 🦈 SHARK LEGENDS - REGRAS DE PROGRESSÃO E ECONOMIA V2.0
+# 🦈 SHARK LEGENDS - REGRAS DE PROGRESSÃO E ECONOMIA V2.1
 
 ## 1. Visão Geral
 O Shark Legends é um "Real Life RPG". O objetivo é criar um ciclo onde o engajamento com a Atlética na vida real gera poder no jogo.
@@ -9,60 +9,60 @@ O Shark Legends é um "Real Life RPG". O objetivo é criar um ciclo onde o engaj
 
 | Atributo | Símbolo | Fonte Principal (Vida Real) | Impacto na Batalha (Jogo) |
 | :--- | :---: | :--- | :--- |
-| **FORÇA (STR)** | 💪 | **Gym / Treinos / GymRats** | Aumenta o Dano Físico Bruto (Golpe "Esmagar"). |
-| **DEFESA (DEF)** | 🛡️ | **Loja / Sócio / Fidelidade** | Reduz o Dano Recebido e aumenta chance de Esquiva. |
-| **INTELIGÊNCIA (INT)** | 🧠 | **Eventos / Social / Sugestões** | Aumenta a Chance de Crítico e o Dano do Golpe "Tática". |
-| **ATAQUE (ATK)** | ⚔️ | **Games / Conquistas / Vitórias** | Aumenta a Precisão e o Dano do Golpe "Combo". |
-| **STAMINA** | ⚡ | **Login Diário / Nível** | Energia usada para realizar ações em combate. |
-| **HP (VIDA)** | ❤️ | **Nível do Usuário** | Resistência antes de ser derrotado. |
+| **FORÇA** | 💪 | **Gym / Treinos** | Aumenta o Dano Físico Bruto. |
+| **DEFESA** | 🛡️ | **Loja / Sócio** | Reduz o Dano Recebido e aumenta chance de Esquiva (Miss). |
+| **INTELIGÊNCIA** | 🧠 | **Social / Álbum** | Aumenta a Chance de Crítico e revela stats inimigos. |
+| **ATAQUE** | ⚔️ | **PvP / Conquistas** | Aumenta a Precisão e Dano base. |
+| **STAMINA** | ⚡ | **Login / Eventos** | Energia usada para realizar ações. |
+| **HP (VIDA)** | ❤️ | **Nível / XP** | Resistência antes de ser derrotado. |
 
 ---
 
-## 3. Tabela Completa de XP e Recompensas (Economy)
+## 3. Progressão de Nível (Curva Exponencial)
 
-### 🏋️ GYM & ESPORTES (Foco: Força)
-1.  **Presença no Treino:** +30 XP | +2 Força | +1 Stamina (Máx 1x/dia).
-2.  **Post no Campeonato Gym:** +15 XP | +1 Força.
-3.  **Finalizar GymRats (Top 10):** +500 XP | +10 Força | +10 Stamina (Recompensa de Temporada).
-
-### 🛍️ FINANCEIRO (Foco: Defesa)
-4.  **Compra na Loja:** +50 XP a cada R$ 10,00 | +1 Defesa a cada R$ 10,00.
-5.  **Completar Fidelidade (Cartela Cheia):** +300 XP | +5 Defesa.
-6.  **Plano de Sócio (Assinatura):**
-    * *Plano Básico:* +200 XP/mês | +2 Defesa.
-    * *Plano Premium:* +500 XP/mês | +5 Defesa | +2 Stamina.
-
-### 🧠 SOCIAL & GESTÃO (Foco: Inteligência)
-7.  **Check-in em Evento/Festa:** +100 XP | +3 Inteligência.
-8.  **Enviar Sugestão de Melhoria (Aprovada):** +200 XP | +5 Inteligência (Valoriza quem pensa na Atlética).
-9.  **Denúncia Válida (Moderação):** +10 XP (Pequeno incentivo para manter a ordem).
-10. **Compartilhar App/Conquista:** +20 XP (Meta de viralização).
-
-### ⚔️ GAME & CONSISTÊNCIA (Foco: Ataque/Stamina)
-11. **Login Diário (Streaks):**
-    * 7 Dias: +50 XP | +2 Stamina.
-    * 15 Dias: +150 XP | +5 Stamina.
-    * 30 Dias: +500 XP | +10 Stamina.
-12. **Meta de Vitórias (PvP):** A cada 10 vitórias = +100 XP | +2 Ataque.
-13. **Completar Conquistas (Badges):** Varia de +50 a +1000 XP dependendo da dificuldade.
-14. **Meta da Turma (Coletivo):** Se a turma bater a meta de XP/Doações = Todos ganham +200 XP.
+| Nível | XP Necessário (Total) | Delta (XP p/ Próximo) |
+| :--- | :--- | :--- |
+| 1 | 0 | 50 |
+| 2 | 50 | 100 |
+| 3 | 150 | 200 |
+| 4 | 350 | 400 |
+| 5 | 750 | 600 |
+| 6 | 1350 | 800 |
+| 7+ | ... | +1000 fixo |
 
 ---
 
-## 4. Sistema de Batalha (Math & Logic)
+## 4. Tabela de Recompensas (Economy)
 
-### Os 4 Golpes
-1.  **Esmagar (Força):** Dano alto (80 base), gasta muita stamina (40).
-2.  **Tática (Inteligência):** Dano médio (50 base), **ignora 50% da defesa inimiga**.
-3.  **Combo (Ataque):** Dano baixo (35 base), gasta pouca stamina (15), alta precisão.
-4.  **Postura (Defesa):** Não ataca. Recupera Vida/Stamina e reduz dano recebido em 80%.
+### 🏋️ FORÇA
+* **Check-in Gym:** +0.1 Força.
+* **Treino Presença:** +1.0 Força.
 
-### Fórmula de Dano
-`DanoFinal = (PoderDoGolpe + AtributoDoAtacante) * ( 100 / (100 + DefesaDoInimigo) )`
+### 🧠 INTELIGÊNCIA
+* **Post:** +0.1 Int.
+* **Comentário:** +0.1 Int.
+* **Figurinha Álbum:** +0.1 Int.
+* **Seguir Alguém:** +0.1 Int.
+
+### ⚡ STAMINA
+* **Login Diário:** +0.1 Stamina.
+* **Streak 7 Dias:** +1.0 Stamina.
+* **Streak 30 Dias:** +5.0 Stamina.
+* **Evento Presença:** +5.0 Stamina.
+
+### 🛡️ DEFESA
+* **Gasto Loja (R$ 1):** +0.1 Defesa.
+* **Seguidor:** +0.1 Defesa.
+
+### ⚔️ ATAQUE
+* **Vitória Arena:** +0.1 Ataque.
+* **Derrota Arena:** -0.05 Ataque.
 
 ---
 
-## 5. Progressão de Nível
-* **Nível 0:** O começo.
-* **XP Necessário:** `Nível Atual * 100 * 1.5` (Curva exponencial).
-* **Evolução Visual:** Lv 1 (Slime) -> Lv 20 (Shark Jovem) -> Lv 50 (Lendário).
+## 5. Dinâmica de Batalha (Espelho)
+* O inimigo sempre tenta revidar com o mesmo atributo que você usou.
+* Se você atacar com Força, ele revida com Força.
+* Se ele não tiver Stamina, ele usa Postura (Recuperar).
+* **Crítico:** Se sua Inteligência > Inimigo, chance de Crítico (2x Dano).
+* **Visibilidade:** Inteligência maior revela HP/Stamina do oponente.

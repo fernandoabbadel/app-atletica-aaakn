@@ -1,0 +1,485 @@
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { 
+  Dice5, MapPin, Building2, AlertTriangle, CheckCircle2, XCircle, Stethoscope, Lock, 
+  Users, TrendingUp, DollarSign, Siren, ArrowLeft, Trash2, PlusCircle, HelpCircle, 
+  Wrench, Info, Trophy, Heart, ChevronLeft, ChevronRight, Edit3, Loader2, Gem, User as UserIcon
+} from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useToast } from "../../context/ToastContext"; 
+import { useAuth } from "../../context/AuthContext";
+import { db } from "../../lib/firebase";
+import { collection, query, getDocs, where, orderBy, limit, doc, updateDoc, increment } from "firebase/firestore";
+
+// --- TIPAGENS ---
+type TipoCasa = 'LIGA' | 'SORTE' | 'AZAR' | 'PRISAO' | 'INICIO';
+type NivelConstrucao = 'TERRENO' | 'CLINICA_GERAL' | 'CENTRO_ESPECIALIDADES' | 'CENTRO_MULTIPROFISSIONAL' | 'HOSPITAL_UNIVERSITARIO' | 'CENTRO_EXCELENCIA' | 'MINISTERIO_SAUDE';
+
+interface Pergunta { id: string; texto: string; alternativas: string[]; respostaCorreta: number; nomeLiga?: string; imagemBase64?: string; }
+interface Jogador { id: string; nome: string; avatar: string; posicao: number; tubas: number; jogadasRestantes: number; preso: boolean; rodadasPreso: number; questoesAcertadasCiclo: number; coracoes: number; }
+interface OutroJogador { id: string; nome: string; avatar: string; posicao: number; preso: boolean; coracoes: number; }
+interface Socio { uid: string; nome: string; nivel: NivelConstrucao; }
+interface CasaTabuleiro { index: number; tipo: TipoCasa; titulo: string; sigla?: string; descricao?: string; cor: string; donoId?: string; socios?: Socio[]; nivel?: NivelConstrucao; backgroundImage?: string; }
+interface RankingItem { id: string; nome: string; foto: string; tubas: number; }
+
+const BOARD_SIZE = 40;
+
+export default function SharkRoundPage() {
+  const { addToast } = useToast(); 
+  const { user, loading } = useAuth(); 
+  const router = useRouter();
+
+  // Configuração
+  const [boardSide, setBoardSide] = useState(11);
+  const [boardSizeTotal, setBoardSizeTotal] = useState(40);
+
+  // Estados do Jogo
+  const [tabuleiro, setTabuleiro] = useState<CasaTabuleiro[]>([]);
+  const [jogador, setJogador] = useState<Jogador>({ 
+      id: 'guest', nome: 'Visitante', avatar: 'https://github.com/shadcn.png', 
+      posicao: 0, tubas: 100, jogadasRestantes: 5, preso: false, rodadasPreso: 0, questoesAcertadasCiclo: 0, coracoes: 0
+  });
+  const [outrosJogadores, setOutrosJogadores] = useState<OutroJogador[]>([]);
+  
+  // UI & Modais
+  const [dadoRolando, setDadoRolando] = useState(false);
+  const [valorDado, setValorDado] = useState(1);
+  const [modalPergunta, setModalPergunta] = useState<Pergunta | null>(null);
+  const [modalEvento, setModalEvento] = useState<any>(null);
+  const [modalRegras, setModalRegras] = useState(false);
+  const [modalDetalhes, setModalDetalhes] = useState<CasaTabuleiro | null>(null);
+  
+  // Ranking (ID 45)
+  const [modalRanking, setModalRanking] = useState(false);
+  const [rankingData, setRankingData] = useState<RankingItem[]>([]);
+  const [semanaRanking, setSemanaRanking] = useState(0); 
+  
+  const [isDebugMode, setIsDebugMode] = useState(false);
+
+  // --- 1. INICIALIZAÇÃO E CONEXÃO FIREBASE (ID 47) ---
+  useEffect(() => {
+    const initGame = async () => {
+        // Carrega Ligas
+        let ligasAtivas: any[] = []; 
+        try {
+            const q = query(collection(db, "ligas_config"), where("ativa", "==", true));
+            const snap = await getDocs(q);
+            ligasAtivas = snap.docs.map(d => ({...d.data()}));
+        } catch(e) { console.log("Offline/Erro Ligas"); }
+
+        const ligasPool = ligasAtivas.length > 0 ? ligasAtivas : [{nome: "Liga Genérica", sigla: "LIGA", logoBase64: null}];
+        
+        // Monta Tabuleiro
+        const novoTab: CasaTabuleiro[] = [];
+        const cores = ['bg-red-600', 'bg-blue-600', 'bg-green-600', 'bg-yellow-600', 'bg-purple-600', 'bg-pink-600', 'bg-indigo-600', 'bg-orange-600'];
+        let ligaIdx = 0;
+
+        for (let i = 0; i < boardSizeTotal; i++) {
+            let tipo: TipoCasa = 'LIGA';
+            let titulo = "", sigla = "", cor = 'bg-zinc-800', desc = "Domine esta área!", bg = undefined;
+
+            if (i === 0) { tipo = 'INICIO'; titulo = "Partida"; sigla="START"; cor = 'bg-emerald-600'; desc="Início"; }
+            else if (i === 10) { tipo = 'PRISAO'; titulo = "DP Anatomia"; sigla="DP"; cor = 'bg-zinc-900'; desc="Reprovou? Peça ajuda!"; }
+            else if (i === 20) { tipo = 'SORTE'; titulo = "Intermed"; sigla="FESTA"; cor = 'bg-yellow-600'; desc="Sorte ou Azar?"; }
+            else if (i === 30) { tipo = 'AZAR'; titulo = "Sem Café"; sigla="ZOMBIE"; cor = 'bg-red-700'; desc="Volte 3 casas"; }
+            else if ([5, 15, 25, 35].includes(i)) {
+                tipo = Math.random() > 0.5 ? 'SORTE' : 'AZAR';
+                titulo = tipo === 'SORTE' ? "Carimbo!" : "Plantão";
+                sigla = tipo === 'SORTE' ? "SORT" : "AZAR";
+                cor = tipo === 'SORTE' ? 'bg-cyan-600' : 'bg-orange-700';
+            } else {
+                tipo = 'LIGA';
+                const l = ligasPool[ligaIdx % ligasPool.length];
+                titulo = l.nome;
+                sigla = l.sigla || l.nome.substring(0,4).toUpperCase();
+                bg = l.logoBase64;
+                cor = cores[ligaIdx % cores.length];
+                ligaIdx++;
+            }
+            novoTab.push({ index: i, tipo, titulo, sigla, descricao: desc, cor, backgroundImage: bg, socios: [] });
+        }
+        setTabuleiro(novoTab);
+
+        // Carrega Usuários Reais para o Tabuleiro (ID 47)
+        try {
+            const usersQ = query(collection(db, "users"), limit(20)); // Pega 20 randoms
+            const usersSnap = await getDocs(usersQ);
+            const players = usersSnap.docs.map(d => ({
+                id: d.id,
+                nome: d.data().nome || "Calouro",
+                avatar: d.data().foto || "https://github.com/shadcn.png",
+                posicao: Math.floor(Math.random() * 40), // Mock posição
+                preso: Math.random() > 0.8, // Mock status
+                coracoes: Math.floor(Math.random() * 4)
+            }));
+            setOutrosJogadores(players);
+        } catch (e) {
+            // Fallback se não tiver users
+            setOutrosJogadores([
+                { id: 'p2', nome: 'Vivian', avatar: 'https://github.com/shadcn.png', posicao: 10, preso: true, coracoes: 2 },
+                { id: 'p3', nome: 'Fernando', avatar: 'https://github.com/shadcn.png', posicao: 5, preso: false, coracoes: 0 }
+            ]);
+        }
+    };
+
+    initGame();
+    if (user && !loading) {
+        setJogador(prev => ({...prev, id: user.uid, nome: user.nome || "Atleta", avatar: user.foto || prev.avatar}));
+        fetchRanking();
+    }
+  }, [user, loading, boardSizeTotal]);
+
+  // ID 47: Ranking Real
+  const fetchRanking = async () => {
+      try {
+          const q = query(collection(db, "users"), orderBy("tubas", "desc"), limit(10));
+          const snap = await getDocs(q);
+          if(!snap.empty) {
+              setRankingData(snap.docs.map(d => ({
+                  id: d.id, 
+                  nome: d.data().nome, 
+                  foto: d.data().foto, 
+                  tubas: d.data().tubas || 0
+              })));
+          } else { throw new Error("No data"); }
+      } catch (e) {
+          setRankingData([{ id: '1', nome: 'Dr. Tubarão', foto: 'https://github.com/shadcn.png', tubas: 5400 }, { id: '2', nome: 'Vivian', foto: 'https://github.com/shadcn.png', tubas: 4200 }]);
+      }
+  };
+
+  // --- MECÂNICA ---
+
+  const jogarDado = async () => {
+    if (jogador.jogadasRestantes <= 0) return addToast("Sem fichas! Volte amanhã! 🌙", "error");
+    
+    // Verifica Prisão
+    if (jogador.preso) {
+        if (jogador.coracoes >= 5) {
+            setJogador(p => ({...p, preso: false, coracoes: 0}));
+            addToast("Você conseguiu 5 corações! Está livre!", "success");
+        } else {
+            return setModalEvento({ titulo: "Preso na DP", msg: `Você tem ${jogador.coracoes}/5 ❤️. Pague 50 Tubas ou espere ajuda.`, tipo: 'error', isJail: true });
+        }
+        return;
+    }
+
+    // Verifica Punição (ID 21)
+    if (jogador.rodadasPreso > 0) { 
+        setJogador(p => ({ ...p, rodadasPreso: p.rodadasPreso - 1, jogadasRestantes: p.jogadasRestantes - 1 })); 
+        return addToast(`De castigo! Faltam ${jogador.rodadasPreso} rodadas.`, "error"); 
+    }
+
+    setDadoRolando(true);
+    let rolls = 0;
+    const interval = setInterval(() => {
+      setValorDado(Math.floor(Math.random() * 6) + 1);
+      rolls++;
+      if (rolls > 10) {
+        clearInterval(interval);
+        const res = Math.floor(Math.random() * 6) + 1;
+        setValorDado(res);
+        setDadoRolando(false);
+        moverJogador(res);
+      }
+    }, 100);
+  };
+
+  const moverJogador = (passos: number) => {
+    let novaPos = jogador.posicao + passos;
+    
+    // ID 43: Bônus de Ciclo
+    if (novaPos >= boardSizeTotal) { 
+        novaPos %= boardSizeTotal; 
+        
+        let bonusPredios = 0;
+        tabuleiro.forEach(t => {
+            if (t.donoId === jogador.id && t.nivel) {
+                if (t.nivel === 'CLINICA_GERAL') bonusPredios += 10;
+                if (t.nivel === 'HOSPITAL_UNIVERSITARIO') bonusPredios += 20;
+                if (t.nivel === 'CENTRO_EXCELENCIA') bonusPredios += 30;
+                if (t.nivel === 'MINISTERIO_SAUDE') bonusPredios += 50;
+            }
+        });
+        const bonusQuestoes = jogador.questoesAcertadasCiclo * 10;
+        const total = 50 + bonusPredios + bonusQuestoes;
+
+        addToast(`Volta Completa! +${total} Tubas 🤑`, "success"); 
+        setJogador(p => ({...p, tubas: p.tubas + total, questoesAcertadasCiclo: 0})); 
+    }
+
+    setJogador(prev => ({ ...prev, posicao: novaPos, jogadasRestantes: Math.max(0, prev.jogadasRestantes - 1) }));
+    setTimeout(() => analisarCasa(novaPos), 600);
+  };
+
+  const analisarCasa = (index: number) => {
+    const casa = tabuleiro[index];
+
+    // ID 42: Pagamento na ordem
+    if (casa.donoId && casa.donoId !== jogador.id) { 
+        const aluguel = 5; 
+        const quemRecebe = casa.socios?.[0]?.nome || "Dono"; 
+        addToast(`Pagou ${aluguel} Tubas para ${quemRecebe}!`, "info"); 
+        setJogador(p => ({...p, tubas: Math.max(0, p.tubas - aluguel)})); 
+    }
+
+    if (casa.tipo === 'PRISAO') { 
+        setJogador(p => ({ ...p, preso: true, coracoes: 0 })); 
+        addToast("Vish! Caiu na DP! 🚨", "error"); 
+    } 
+    else if (casa.tipo === 'SORTE') { 
+        const bonus = Math.floor(Math.random() * 3) + 1; 
+        setModalEvento({ titulo: "Sorte Grande!", msg: `Ganhou carimbo! Avance ${bonus} casas.`, tipo: 'success', move: bonus }); 
+    } 
+    else if (casa.tipo === 'AZAR') { 
+        const penalty = Math.floor(Math.random() * 3) + 1; 
+        setModalEvento({ titulo: "Sem Café!", msg: `Volte ${penalty} casas.`, tipo: 'error', move: -penalty }); 
+    }
+    else if (casa.tipo === 'LIGA') { 
+        setModalPergunta({ id: 'q1', texto: `Questão de ${casa.titulo}: Qual a conduta?`, alternativas: ['Opção A', 'Opção B', 'Opção C', 'Opção D'], respostaCorreta: 0, nomeLiga: casa.titulo }); 
+    }
+  };
+
+  const responderQuiz = (idx: number) => {
+    if (!modalPergunta) return;
+    if (idx === modalPergunta.respostaCorreta) {
+      addToast("Resposta Certa! 🦈✅", "success");
+      const novoTab = [...tabuleiro];
+      const casa = novoTab[jogador.posicao];
+      
+      if (!casa.donoId) { 
+          casa.donoId = jogador.id; 
+          casa.nivel = 'TERRENO'; 
+          casa.socios = [{ uid: jogador.id, nome: jogador.nome, nivel: 'TERRENO' }];
+          addToast(`Conquistou o Terreno!`, "success"); 
+      } else if (casa.donoId === jogador.id) { 
+          if (casa.nivel === 'TERRENO') casa.nivel = 'CLINICA_GERAL';
+          else if (casa.nivel === 'CLINICA_GERAL') casa.nivel = 'HOSPITAL_UNIVERSITARIO';
+          addToast("Evoluiu construção!", "success");
+      }
+      setTabuleiro(novoTab);
+      setJogador(p => ({...p, questoesAcertadasCiclo: p.questoesAcertadasCiclo + 1}));
+    } else { 
+        addToast("Errou! Perdeu a vez e 1 rodada.", "error"); 
+        setJogador(p => ({...p, rodadasPreso: 1})); 
+    }
+    setModalPergunta(null);
+  };
+
+  // ID 41: Dar Coração para outro jogador (+5 Tubas para mim)
+  const darCoracao = (targetId: string) => {
+      setOutrosJogadores(prev => prev.map(p => {
+          if (p.id === targetId && p.coracoes < 5) {
+              addToast(`Você ajudou ${p.nome}! +5 Tubas`, "success");
+              setJogador(j => ({...j, tubas: j.tubas + 5})); // Recompensa
+              return { ...p, coracoes: p.coracoes + 1 };
+          }
+          return p;
+      }));
+  };
+
+  const getBoardPosition = (i: number) => { 
+      if (i < boardSide) return { gridRow: 1, gridColumn: i + 1 }; 
+      if (i < boardSide * 2 - 1) return { gridRow: (i - boardSide) + 2, gridColumn: boardSide }; 
+      if (i < boardSide * 3 - 2) return { gridRow: boardSide, gridColumn: boardSide - (i - (boardSide * 2 - 2)) - 1 }; 
+      return { gridRow: boardSide - (i - (boardSide * 3 - 2)) - 1, gridColumn: 1 }; 
+  };
+
+  if (loading) return <div className="h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-24 overflow-hidden selection:bg-emerald-500/30">
+      
+      {/* HEADER */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 p-4 flex justify-between items-center shadow-lg">
+         <div className="flex items-center gap-3"><Link href="/menu" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition"><ArrowLeft size={24}/></Link><div><h1 className="font-black text-lg italic uppercase text-white">SharkRound</h1><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">O Jogo da Atlética</p></div></div>
+         <div className="flex gap-3">
+             <button onClick={() => setModalRanking(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-yellow-500 hover:bg-zinc-700 transition"><Trophy size={18}/></button>
+             <button onClick={() => setModalRegras(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-blue-400 hover:bg-zinc-700 transition"><HelpCircle size={18}/></button>
+             <div className="flex flex-col items-end"><span className="text-zinc-500 text-[9px] font-bold uppercase">Tubas</span><span className="text-blue-400 flex items-center gap-1 font-black"><DollarSign size={12}/> {jogador.tubas}</span></div>
+         </div>
+      </header>
+
+      {/* DADO */}
+      <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50">
+          <button onClick={jogarDado} disabled={dadoRolando || jogador.jogadasRestantes === 0} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black shadow-[0_0_30px_rgba(16,185,129,0.3)] border-b-8 transition-all active:scale-95 active:border-b-0 active:translate-y-2 ${dadoRolando ? 'bg-zinc-800 border-zinc-600 text-zinc-500' : 'bg-white border-zinc-300 text-black'}`}>
+              {dadoRolando ? <Dice5 size={32} className="animate-spin"/> : valorDado}
+          </button>
+      </div>
+
+      {/* DEBUG */}
+      <div className="fixed top-24 right-4 z-50"><button onClick={() => setIsDebugMode(!isDebugMode)} className="text-[9px] text-zinc-600 uppercase font-bold hover:text-white"><Wrench size={14}/></button></div>
+      {isDebugMode && <div className="fixed top-32 right-4 z-50 bg-zinc-900 p-2 rounded border border-zinc-800"><button onClick={() => setJogador(p=>({...p, tubas: p.tubas+100}))} className="text-xs">+100 Tubas</button></div>}
+
+      {/* TABULEIRO */}
+      <div className="pt-40 pb-32 px-2 flex justify-center items-center min-h-screen">
+          <div className={`relative w-full max-w-[800px] aspect-square bg-[#0a0a0a] rounded-3xl border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.8)] p-2 grid gap-1 overflow-hidden`} style={{ gridTemplateColumns: `repeat(${boardSide}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${boardSide}, minmax(0, 1fr))` }}>
+              {/* Logo Central */}
+              <div className="col-start-3 col-end-10 row-start-3 row-end-10 flex flex-col items-center justify-center relative z-0">
+                  <div className="absolute inset-0 bg-emerald-900/10 blur-3xl rounded-full animate-pulse"></div>
+                  <div className="w-40 h-40 md:w-64 md:h-64 relative mb-4 opacity-100 hover:scale-105 transition duration-500 animate-float"><Image src="/logo.png" alt="AAAKN" fill className="object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]"/></div>
+              </div>
+
+              {tabuleiro.map((casa) => {
+                  const style = getBoardPosition(casa.index);
+                  if (!style) return null;
+                  const isHere = jogador.posicao === casa.index;
+                  const othersHere = outrosJogadores.filter(p => p.posicao === casa.index);
+
+                  return (
+                      <div key={casa.index} onClick={() => setModalDetalhes(casa)} className={`relative rounded-md flex flex-col items-center justify-center text-center transition-all duration-300 border border-black/20 overflow-hidden cursor-pointer hover:brightness-125 ${isHere ? 'z-20 scale-110 shadow-[0_0_15px_rgba(255,255,255,0.3)] ring-1 ring-white' : ''}`} style={{ ...style, backgroundColor: isHere ? '#10b981' : undefined }}>
+                          {casa.backgroundImage && <div className="absolute inset-0 opacity-40 z-0"><img src={casa.backgroundImage} className="w-full h-full object-cover grayscale mix-blend-overlay"/></div>}
+                          <div className={`absolute inset-0 opacity-80 ${casa.cor} transition-opacity -z-10`}></div>
+                          
+                          <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-0.5">
+                              <div className="text-white drop-shadow-md transform scale-75 md:scale-100">{casa.tipo === 'PRISAO' ? <Lock size={14}/> : casa.tipo === 'SORTE' ? <TrendingUp size={14}/> : casa.tipo === 'AZAR' ? <AlertTriangle size={14}/> : casa.tipo === 'INICIO' ? <MapPin size={14}/> : null}</div>
+                              {casa.tipo === 'LIGA' && <span className="text-[7px] font-black text-white/90 drop-shadow-md leading-tight">{casa.sigla}</span>}
+                              {casa.nivel && <div className="absolute top-0.5 right-0.5 text-yellow-300 drop-shadow-md bg-black/50 rounded-full p-0.5">{casa.nivel === 'TERRENO' && <span className="text-[6px]">🚩</span>}{casa.nivel !== 'TERRENO' && <Building2 size={8}/>}</div>}
+                          </div>
+
+                          {isHere && <div className="absolute inset-0 flex items-center justify-center z-30"><div className="w-6 h-6 rounded-full border-[2px] border-white shadow-xl overflow-hidden bg-black relative animate-bounce-slow"><img src={jogador.avatar} alt="Me" className="w-full h-full object-cover"/></div></div>}
+                          
+                          {/* ID 44: Max 3 users */}
+                          {othersHere.length > 0 && !isHere && (
+                              <div className="absolute bottom-0 right-0 flex -space-x-1 z-20 p-0.5">
+                                  {othersHere.slice(0,3).map((other, i) => (<div key={i} className="w-3 h-3 rounded-full border border-white bg-black overflow-hidden relative"><img src={other.avatar} className="w-full h-full object-cover"/></div>))}
+                                  {othersHere.length > 3 && <div className="w-3 h-3 rounded-full bg-zinc-800 text-[5px] flex items-center justify-center border border-white text-white font-bold">+{othersHere.length-3}</div>}
+                              </div>
+                          )}
+                      </div>
+                  )
+              })}
+            </div>
+      </div>
+
+      {/* --- MODAIS --- */}
+
+      {/* DETALHES DA CASA */}
+      {modalDetalhes && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
+              <div className="bg-zinc-900 w-full max-w-sm rounded-2xl border border-zinc-700 p-6 text-center relative shadow-2xl">
+                  <button onClick={() => setModalDetalhes(null)} className="absolute top-3 right-3 text-zinc-500 hover:text-white"><XCircle size={20}/></button>
+                  <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${modalDetalhes.cor} shadow-lg`}>{modalDetalhes.tipo === 'PRISAO' ? <Lock size={32} className="text-white"/> : <MapPin size={32} className="text-white"/>}</div>
+                  <h3 className="text-xl font-black text-white uppercase">{modalDetalhes.titulo}</h3>
+                  <p className="text-zinc-400 text-sm mt-2">{modalDetalhes.descricao || "Território da Liga"}</p>
+                  
+                  {/* ID 42: Lista de Sócios */}
+                  {modalDetalhes.socios && modalDetalhes.socios.length > 0 && (
+                      <div className="mt-4 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-left">
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Ordem de Pagamento</p>
+                          {modalDetalhes.socios.map((socio, i) => (
+                              <div key={i} className="flex justify-between items-center text-xs text-zinc-300 py-1 border-b border-zinc-800 last:border-0">
+                                  <span>{i+1}. {socio.nome}</span><span className="text-emerald-500 font-bold">{socio.nivel.replace('_', ' ')}</span>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+
+                  {/* ID 35/41: Presos na DP */}
+                  {modalDetalhes.tipo === 'PRISAO' && (
+                      <div className="mt-4 text-left">
+                          <p className="text-xs font-bold text-zinc-500 uppercase mb-2">Presos na DP</p>
+                          {outrosJogadores.filter(p => p.preso).map(p => (
+                              <div key={p.id} className="flex items-center justify-between bg-zinc-950 p-2 rounded-lg border border-zinc-800 mb-2">
+                                  <div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-zinc-800 overflow-hidden"><img src={p.avatar} className="w-full h-full object-cover"/></div><span className="text-xs text-white font-bold">{p.nome}</span></div>
+                                  <div className="flex gap-1 items-center">
+                                      {/* Corações que ele já tem */}
+                                      <div className="flex">{[1,2,3,4,5].map(i => (<Heart key={i} size={10} className={`${i <= (p.coracoes || 0) ? 'fill-red-500 text-red-500' : 'text-zinc-800'}`}/>))}</div>
+                                      {/* Botão de Dar Ajuda */}
+                                      <button onClick={() => darCoracao(p.id)} className="bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-black p-1 rounded-full ml-1"><Heart size={12}/></button>
+                                  </div>
+                              </div>
+                          ))}
+                          <p className="text-[9px] text-zinc-500 italic mt-2">* Clique no botão verde para dar 1 coração e ganhar 5 Tubas!</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+      )}
+
+      {/* EVENTO / MINHA PRISÃO */}
+      {modalEvento && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
+            <div className="bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl">
+                <h3 className="text-xl font-black text-white mb-2 uppercase">{modalEvento.titulo}</h3>
+                <p className="text-zinc-400 text-sm mb-6">{modalEvento.msg}</p>
+                {modalEvento.isJail ? (
+                   <div className="flex flex-col gap-3">
+                       <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                           <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Seus Corações ({jogador.coracoes}/5)</p>
+                           <div className="flex justify-center gap-2 mb-3">{[1,2,3,4,5].map(i => (<Heart key={i} size={20} className={`${i <= jogador.coracoes ? 'fill-red-500 text-red-500' : 'text-zinc-700'}`}/>))}</div>
+                           <p className="text-xs text-zinc-600">Espere ajuda dos amigos...</p>
+                       </div>
+                       <button onClick={() => { if(jogador.tubas>=50){setJogador(p=>({...p, tubas:p.tubas-50, preso:false, coracoes:0})); setModalEvento(null);} else {addToast("Sem grana!", "error")} }} className="w-full bg-zinc-800 text-zinc-400 hover:text-white py-3 rounded-xl font-bold uppercase text-xs border border-zinc-700">Pagar Fiança (50 Tubas)</button>
+                   </div>
+                ) : (
+                    <button onClick={() => modalEvento.move ? moverJogador(modalEvento.move) : setModalEvento(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl uppercase text-xs shadow-lg">Continuar</button>
+                )}
+            </div>
+        </div>
+      )}
+
+      {/* ID 45 & 37: RANKING MODAL COM SLIDER & LINK PERFIL */}
+      {modalRanking && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
+              <div className="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-800 p-6 relative">
+                  <button onClick={() => setModalRanking(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><XCircle/></button>
+                  <div className="text-center mb-6">
+                      <h3 className="text-xl font-black text-white uppercase flex items-center justify-center gap-2"><Trophy className="text-yellow-500"/> Ranking Semanal</h3>
+                      {/* ID 45: Slider */}
+                      <div className="flex items-center justify-center gap-4 mt-2">
+                          <button onClick={() => setSemanaRanking(s => s - 1)} className="text-zinc-500 hover:text-white"><ChevronLeft/></button>
+                          <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Semana {semanaRanking === 0 ? "Atual" : -semanaRanking}</span>
+                          <button onClick={() => setSemanaRanking(s => Math.min(0, s + 1))} className={`text-zinc-500 ${semanaRanking === 0 ? 'opacity-30' : 'hover:text-white'}`}><ChevronRight/></button>
+                      </div>
+                  </div>
+                  <div className="space-y-2">
+                      {rankingData.map((user, i) => (
+                          // ID 46: Link para Perfil
+                          <div key={user.id} onClick={() => router.push(`/perfil/${user.id}`)} className="flex items-center gap-3 p-3 bg-zinc-800 rounded-xl border border-zinc-700 cursor-pointer hover:bg-zinc-700 transition">
+                              <span className={`font-black w-6 text-center ${i===0?'text-yellow-500':i===1?'text-gray-400':i===2?'text-orange-500':'text-zinc-500'}`}>#{i+1}</span>
+                              <div className="w-8 h-8 rounded-full bg-black overflow-hidden"><img src={user.foto} className="w-full h-full object-cover"/></div>
+                              <div className="flex-1"><p className="text-sm font-bold text-white">{user.nome}</p></div>
+                              <span className="text-xs font-bold text-emerald-500 flex items-center gap-1"><DollarSign size={10}/> {user.tubas}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* PERGUNTA */}
+      {modalPergunta && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
+            <div className="bg-zinc-900 border border-emerald-500/30 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+                <div className="h-24 bg-gradient-to-r from-emerald-900 to-black relative flex items-center justify-center"><div className="absolute top-2 right-2 bg-black/50 px-2 py-1 rounded text-[10px] font-bold uppercase text-emerald-400 border border-emerald-900">Valendo Ponto</div></div>
+                <div className="p-6">
+                  <h3 className="text-lg font-bold text-white mb-6">{modalPergunta.texto}</h3>
+                  <div className="space-y-3">{modalPergunta.alternativas.map((alt, i) => (<button key={i} onClick={() => responderQuiz(i)} className="w-full text-left p-4 rounded-xl bg-zinc-800 hover:bg-emerald-600 hover:text-white transition border border-zinc-700 font-medium text-sm text-zinc-300">{alt}</button>))}</div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* ID 39: REGRAS */}
+      {modalRegras && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
+            <div className="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-800 p-6 relative h-[80vh] overflow-y-auto custom-scrollbar">
+                <button onClick={() => setModalRegras(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><XCircle/></button>
+                <h3 className="text-xl font-black text-white mb-6 flex items-center gap-2"><HelpCircle className="text-emerald-500"/> Regras do Jogo</h3>
+                <ul className="space-y-4 text-sm text-zinc-400 text-left">
+                    <li><strong className="text-emerald-500">Objetivo:</strong> Dominar as Ligas e juntar Tubas.</li>
+                    <li><strong className="text-emerald-500">Evolução (ID 9):</strong> Terreno &rarr; Clínica &rarr; Hospital &rarr; Ministério.</li>
+                    <li><strong className="text-emerald-500">Ciclo (ID 43):</strong> +50 Tubas + Bônus por prédios construídos.</li>
+                    <li><strong className="text-red-500">Prisão (ID 41):</strong> Saia com 50 Tubas ou 5 Corações.</li>
+                    <li><strong>Aluguel (ID 42):</strong> O pagamento segue a fila de quem construiu primeiro.</li>
+                </ul>
+                <button onClick={() => setModalRegras(false)} className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl uppercase text-xs">Entendi</button>
+            </div>
+        </div>
+      )}
+    </div>
+  );
+}

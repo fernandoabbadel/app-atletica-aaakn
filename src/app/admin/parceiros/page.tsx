@@ -1,24 +1,39 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft, Plus, Trash2, Megaphone, Percent, ExternalLink,
   LayoutDashboard, QrCode, FileText, Crown, Store, TrendingUp,
   Users, CheckCircle, Search, X, Camera, DollarSign, Wallet,
   Edit, Save, Image as ImageIcon, Instagram, Phone, Globe, Clock, MapPin, Tag,
-  FileBadge, User, BarChart3, PieChart, Power, AlertTriangle, Eye, Shield, Star
+  FileBadge, User, BarChart3, PieChart, Power, AlertTriangle, Eye, EyeOff, Shield, Star, Loader2, Lock
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
+import { db } from "../../../lib/firebase";
+import { 
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy 
+} from "firebase/firestore";
+
+// --- HELPERS ---
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
 
 // --- TIPAGEM ---
 interface Cupom { id: string; titulo: string; regra: string; valor: string; imagem: string; }
+
 interface Parceiro {
-    id: number;
+    id: string; 
     nome: string;
     categoria: string;
     tier: 'ouro' | 'prata' | 'standard';
-    status: 'active' | 'pending' | 'disabled'; // Status adicionado
+    status: 'active' | 'pending' | 'disabled';
     cnpj: string;
     responsavel: string;
     email: string;
@@ -34,52 +49,40 @@ interface Parceiro {
     vendasTotal: number;
     totalScans: number;
     cupons: Cupom[];
+    senha?: string;
 }
 
-// --- MOCKS ---
-const PARCEIROS_MOCK: Parceiro[] = [
-  { 
-      id: 1, nome: "Academia Ironberg", categoria: "Saúde", tier: "ouro", status: "active",
-      cnpj: "12.345.678/0001-90", responsavel: "Renato Cariani", email: "contato@ironberg.com", telefone: "12 99999-9999",
-      descricao: "A maior rede...", endereco: "Av. da Praia, 1000", horario: "06h - 23h", insta: "@ironberg", site: "iron.com", 
-      imgCapa: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80", 
-      imgLogo: "https://i.pravatar.cc/150?u=iron",
-      mensalidade: 500, vendasTotal: 15400, totalScans: 450,
-      cupons: [{ id: "c1", titulo: "15% OFF Mensalidade", regra: "Planos Semestrais", valor: "15%", imagem: "" }]
-  },
-  { 
-      id: 2, nome: "Lanchonete do Zé (Pendente)", categoria: "Alimentação", tier: "standard", status: "pending",
-      cnpj: "99.999.999/0001-99", responsavel: "Zé da Silva", email: "ze@lanche.com", telefone: "12 98888-7777",
-      descricao: "Lanches rápidos.", endereco: "Rua 2", horario: "18h - 23h", insta: "@ze_lanches", site: "", 
-      imgCapa: "", imgLogo: "", mensalidade: 0, vendasTotal: 0, totalScans: 0,
-      cupons: []
-  },
-];
+interface ScanHistory {
+    id: string;
+    data: string;
+    hora: string;
+    empresa: string;
+    usuario: string;
+    userId: string;
+    cupom: string;
+    valorEconomizado: string;
+}
 
-const SCAN_HISTORY_MOCK = [
-    { id: "SCAN-992", data: "12/01", hora: "14:30", empresa: "Ironberg", usuario: "João (T5)", userId: "u123", cupom: "15% OFF" },
-    { id: "SCAN-993", data: "12/01", hora: "12:15", empresa: "Açaí Monstro", usuario: "Maria (T1)", userId: "u456", cupom: "Toppings Free" },
-];
-
-const CATEGORIAS_MOCK = ["Alimentação", "Saúde", "Lazer", "Serviços"];
+const CATEGORIAS_PADRAO = ["Alimentação", "Saúde", "Lazer", "Serviços", "Vestuário"];
 
 export default function AdminParceirosPage() {
   const { addToast } = useToast();
   
   // Estados Principais
   const [activeTab, setActiveTab] = useState<"dashboard" | "parceiros" | "cadastros" | "historico">("dashboard");
-  const [parceiros, setParceiros] = useState<Parceiro[]>(PARCEIROS_MOCK);
-  const [categorias, setCategorias] = useState(CATEGORIAS_MOCK);
+  const [parceiros, setParceiros] = useState<Parceiro[]>([]);
+  const [scans, setScans] = useState<ScanHistory[]>([]);
+  const [categorias, setCategorias] = useState(CATEGORIAS_PADRAO);
+  const [loading, setLoading] = useState(true);
   
-  // Modais
+  // UI States
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [showTierModal, setShowTierModal] = useState(false); // Modal de Detalhe do Plano
+  const [showTierModal, setShowTierModal] = useState(false);
   const [tierModalData, setTierModalData] = useState<{tier: string, list: Parceiro[]}>({ tier: "", list: [] });
+  const [showPassword, setShowPassword] = useState<{ [key: string]: boolean }>({}); 
   
   const [isEditing, setIsEditing] = useState(false);
-  
-  // Forms
   const [currentPartner, setCurrentPartner] = useState<Partial<Parceiro>>({});
   const [newCupom, setNewCupom] = useState<Cupom>({ id: "", titulo: "", regra: "", valor: "", imagem: "" });
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -89,37 +92,67 @@ export default function AdminParceirosPage() {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const cupomInputRef = useRef<HTMLInputElement>(null);
 
+  // --- FETCH DATA ---
+  useEffect(() => {
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const parceirosRef = collection(db, "parceiros");
+            const pSnap = await getDocs(parceirosRef);
+            const pList = pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Parceiro));
+            setParceiros(pList);
+
+            const scansRef = collection(db, "scans");
+            const qScans = query(scansRef, orderBy("timestamp", "desc"));
+            const sSnap = await getDocs(qScans);
+            
+            if (!sSnap.empty) {
+                const sList = sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ScanHistory));
+                setScans(sList);
+            } 
+
+        } catch (error) {
+            console.error(error);
+            addToast("Erro ao carregar dados.", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+    fetchData();
+  }, []);
+
   // --- LÓGICA DE NEGÓCIO ---
 
-  // Aprovar Parceiro Pendente
-  const handleApprove = (id: number) => {
-      setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
-      addToast("Parceiro aprovado e ativado!", "success");
+  const handleApprove = async (id: string) => {
+      try {
+          await updateDoc(doc(db, "parceiros", id), { status: 'active' });
+          setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
+          addToast("Parceiro aprovado!", "success");
+      } catch (e) { addToast("Erro ao aprovar.", "error"); }
   };
 
-  // Alternar Status (Habilitar/Desabilitar)
-  const handleToggleStatus = (id: number, currentStatus: string) => {
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
       const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
-      setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as any } : p));
-      addToast(newStatus === 'active' ? "Empresa Habilitada!" : "Empresa Desabilitada.", newStatus === 'active' ? "success" : "info");
+      try {
+          await updateDoc(doc(db, "parceiros", id), { status: newStatus });
+          setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as any } : p));
+          addToast("Status atualizado.", "success");
+      } catch (e) { addToast("Erro.", "error"); }
   };
 
-  // Abrir Modal de Drill-down do Dashboard
-  const handleViewTier = (tierName: string, tierKey: string) => {
-      const list = parceiros.filter(p => p.tier === tierKey);
-      setTierModalData({ tier: tierName, list });
-      setShowTierModal(true);
+  const togglePasswordVisibility = (id: string) => {
+      setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // --- CÁLCULOS DO DASHBOARD ---
-  const totalFaturamento = parceiros.reduce((acc, p) => acc + (p.status === 'active' ? p.mensalidade : 0), 0);
-  const totalScans = parceiros.reduce((acc, p) => acc + p.totalScans, 0);
+  // Cálculos Dashboard
+  const totalFaturamento = parceiros.reduce((acc, p) => acc + (p.status === 'active' ? (Number(p.mensalidade) || 0) : 0), 0);
+  const totalScansValue = scans.length;
   const parceirosOuro = parceiros.filter(p => p.tier === 'ouro');
   const parceirosPrata = parceiros.filter(p => p.tier === 'prata');
   const parceirosStandard = parceiros.filter(p => p.tier === 'standard');
-  const topParceiro = [...parceiros].sort((a,b) => b.totalScans - a.totalScans)[0];
+  const topParceiro = [...parceiros].sort((a,b) => (b.totalScans || 0) - (a.totalScans || 0))[0];
 
-  // --- HANDLERS PADRÃO ---
+  // Forms Handlers
   const handleOpenEdit = (partner: Parceiro) => { setCurrentPartner({ ...partner }); setIsEditing(true); setShowPartnerModal(true); };
   
   const handleOpenNew = () => { 
@@ -131,12 +164,14 @@ export default function AdminParceirosPage() {
       setShowPartnerModal(true); 
   };
 
+  // ID 83: Adicionar Nova Categoria
   const handleAddCategory = () => {
       if(!newCategoryName) return;
-      setCategorias([...categorias, newCategoryName]);
+      // Adiciona localmente (em um app real, salvaria em uma collection 'configs')
+      setCategorias(prev => [...prev, newCategoryName]);
       setNewCategoryName("");
       setShowCategoryModal(false);
-      addToast("Categoria adicionada!", "success");
+      addToast(`Categoria "${newCategoryName}" criada!`, "success");
   };
 
   const handleAddCupom = () => {
@@ -144,42 +179,75 @@ export default function AdminParceirosPage() {
       const cupom = { ...newCupom, id: Date.now().toString() };
       setCurrentPartner(prev => ({ ...prev, cupons: [...(prev.cupons || []), cupom] }));
       setNewCupom({ id: "", titulo: "", regra: "", valor: "", imagem: "" });
-      addToast("Cupom adicionado à lista", "success");
+      addToast("Cupom adicionado.", "success");
   };
 
   const handleRemoveCupom = (id: string) => {
       setCurrentPartner(prev => ({ ...prev, cupons: prev.cupons?.filter(c => c.id !== id) }));
   };
 
-  const handleSavePartner = () => {
+  const handleSavePartner = async () => {
       if (!currentPartner.nome) return addToast("Nome da empresa obrigatório", "error");
-      if (isEditing) {
-          setParceiros(prev => prev.map(p => p.id === currentPartner.id ? { ...p, ...currentPartner } as Parceiro : p));
-          addToast("Dados atualizados!", "success");
-      } else {
-          // Se criado pelo admin, já nasce ativo. Se fosse pelo form externo, nasceria 'pending'.
-          const novoId = Date.now();
-          setParceiros(prev => [...prev, { ...currentPartner, id: novoId, status: 'active', vendasTotal: 0, totalScans: 0 } as Parceiro]);
-          addToast("Novo parceiro cadastrado!", "success");
-      }
-      setShowPartnerModal(false);
+      
+      try {
+          if (isEditing && currentPartner.id) {
+              const { id, ...dataToUpdate } = currentPartner;
+              await updateDoc(doc(db, "parceiros", id), dataToUpdate);
+              setParceiros(prev => prev.map(p => p.id === id ? { ...p, ...dataToUpdate } as Parceiro : p));
+              addToast("Dados atualizados!", "success");
+          } else {
+              const newPartnerData = { 
+                  ...currentPartner, 
+                  status: 'active', 
+                  vendasTotal: 0, 
+                  totalScans: 0,
+                  createdAt: new Date().toISOString()
+              };
+              const docRef = await addDoc(collection(db, "parceiros"), newPartnerData);
+              setParceiros(prev => [...prev, { ...newPartnerData, id: docRef.id } as Parceiro]);
+              addToast("Novo parceiro cadastrado!", "success");
+          }
+          setShowPartnerModal(false);
+      } catch (e) { console.error(e); addToast("Erro ao salvar.", "error"); }
   };
 
-  const handleDelete = (id: number) => { if (confirm("Remover?")) setParceiros(prev => prev.filter(p => p.id !== id)); };
+  const handleDelete = async (id: string) => { 
+      if (confirm("Remover permanentemente?")) {
+          try {
+              await deleteDoc(doc(db, "parceiros", id));
+              setParceiros(prev => prev.filter(p => p.id !== id));
+              addToast("Parceiro removido.", "success");
+          } catch(e) { addToast("Erro ao remover.", "error"); }
+      }
+  };
   
   const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => { ref.current?.click(); };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: string, isCupom = false) => {
+  
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: string, isCupom = false) => {
       if (e.target.files?.[0]) {
-          const url = URL.createObjectURL(e.target.files[0]);
-          if (isCupom) { setNewCupom(prev => ({ ...prev, imagem: url })); addToast("Foto cupom ok!", "success"); }
-          else { setCurrentPartner(prev => ({ ...prev, [field]: url })); addToast("Imagem ok!", "success"); }
+          try {
+              const base64 = await fileToBase64(e.target.files[0]);
+              if (isCupom) { setNewCupom(prev => ({ ...prev, imagem: base64 })); }
+              else { setCurrentPartner(prev => ({ ...prev, [field]: base64 })); }
+              addToast("Imagem carregada!", "success");
+          } catch (e) { addToast("Erro na imagem", "error"); }
       }
   };
 
+  // ID 84: Função para abrir modal de Tier
+  const handleViewTier = (tierName: string, tierKey: string) => {
+      const list = parceiros.filter(p => p.tier === tierKey);
+      setTierModalData({ tier: tierName, list });
+      setShowTierModal(true);
+  };
+
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 pt-24 selection:bg-emerald-500">
       
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4 items-center shadow-lg">
+      {/* HEADER FIXO */}
+      <header className="fixed top-0 right-0 left-64 z-30 p-6 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4 items-center shadow-lg">
         <div className="flex items-center gap-4 w-full md:w-auto">
           <Link href="/admin" className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 transition border border-zinc-800"><ArrowLeft size={20} className="text-zinc-400" /></Link>
           <div><h1 className="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-2"><Store className="text-emerald-500" /> Gestão de Parceiros</h1><p className="text-[11px] text-zinc-500 font-medium">Controle total do clube de vantagens</p></div>
@@ -201,7 +269,7 @@ export default function AdminParceirosPage() {
 
       <main className="p-6 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
-        {/* === ABA DASHBOARD === */}
+        {/* DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
             <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -214,7 +282,7 @@ export default function AdminParceirosPage() {
                         <div className="bg-blue-500/20 p-2 rounded-lg text-blue-500"><Store size={20}/></div>
                     </div>
                     <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex justify-between items-start">
-                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">Scans Validados</p><h3 className="text-2xl font-black text-white mt-1">{totalScans}</h3></div>
+                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">Scans Validados</p><h3 className="text-2xl font-black text-white mt-1">{totalScansValue}</h3></div>
                         <div className="bg-purple-500/20 p-2 rounded-lg text-purple-500"><QrCode size={20}/></div>
                     </div>
                     <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex justify-between items-start">
@@ -223,8 +291,8 @@ export default function AdminParceirosPage() {
                     </div>
                 </div>
 
+                {/* ID 84: GRÁFICO DE PIZZA COM LINKS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* DISTRIBUIÇÃO DE PLANOS (CLICÁVEL) */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                         <h3 className="text-sm font-bold text-white uppercase mb-6 flex items-center gap-2"><PieChart size={16}/> Planos Ativos (Clique para ver)</h3>
                         <div className="space-y-4">
@@ -239,11 +307,10 @@ export default function AdminParceirosPage() {
                         </div>
                     </div>
 
-                    {/* RANKING DE VENDAS */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                         <h3 className="text-sm font-bold text-white uppercase mb-6 flex items-center gap-2"><BarChart3 size={16}/> Ranking de Vendas</h3>
                         <div className="space-y-4">
-                            {parceiros.sort((a,b) => b.vendasTotal - a.vendasTotal).slice(0, 4).map((p, i) => (
+                            {parceiros.sort((a,b) => (b.vendasTotal||0) - (a.vendasTotal||0)).slice(0, 4).map((p, i) => (
                                 <div key={p.id} className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${i===0 ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>{i+1}</div>
@@ -258,7 +325,7 @@ export default function AdminParceirosPage() {
             </div>
         )}
 
-        {/* === ABA EMPRESAS (LISTA E APROVAÇÃO) === */}
+        {/* PARCEIROS TAB */}
         {activeTab === 'parceiros' && (
             <div className="grid grid-cols-1 gap-4">
                 {parceiros.map((parceiro) => (
@@ -275,22 +342,17 @@ export default function AdminParceirosPage() {
                                     <span className="text-[9px] bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded font-bold uppercase">{parceiro.categoria}</span>
                                 </div>
                                 <h3 className="font-bold text-white text-base">{parceiro.nome}</h3>
-                                <p className="text-zinc-500 text-xs">{parceiro.cupons.length} Cupons • {parceiro.responsavel}</p>
+                                <p className="text-zinc-500 text-xs">{parceiro.cupons?.length || 0} Cupons • {parceiro.responsavel}</p>
                             </div>
                         </div>
                         <div className="flex gap-2 w-full md:w-auto">
-                            {/* BOTÃO APROVAR (SÓ PENDENTES) */}
-                            {parceiro.status === 'pending' && (
-                                <button onClick={() => handleApprove(parceiro.id)} className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-500 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"><CheckCircle size={14}/> Aprovar</button>
-                            )}
-                            
-                            {/* BOTÃO TOGGLE STATUS (HABILITAR/DESABILITAR) */}
-                            {parceiro.status !== 'pending' && (
-                                <button onClick={() => handleToggleStatus(parceiro.id, parceiro.status)} className={`flex-1 md:flex-none p-2 rounded-lg transition ${parceiro.status === 'active' ? 'bg-zinc-800 text-emerald-500 hover:bg-zinc-700' : 'bg-zinc-800 text-red-500 hover:bg-zinc-700'}`} title={parceiro.status === 'active' ? "Desativar Empresa" : "Ativar Empresa"}>
-                                    <Power size={16}/>
-                                </button>
-                            )}
+                            {/* ID 80: LINK DIRETO PARA A VITRINE */}
+                            <Link href={`/parceiros/${parceiro.id}`} target="_blank" className="flex-1 md:flex-none p-2 bg-zinc-800 text-blue-400 rounded-lg hover:bg-zinc-700" title="Ver Vitrine">
+                                <ExternalLink size={16}/>
+                            </Link>
 
+                            {parceiro.status === 'pending' && <button onClick={() => handleApprove(parceiro.id)} className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-500 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"><CheckCircle size={14}/> Aprovar</button>}
+                            {parceiro.status !== 'pending' && <button onClick={() => handleToggleStatus(parceiro.id, parceiro.status)} className={`flex-1 md:flex-none p-2 rounded-lg transition ${parceiro.status === 'active' ? 'bg-zinc-800 text-emerald-500 hover:bg-zinc-700' : 'bg-zinc-800 text-red-500 hover:bg-zinc-700'}`} title="Alternar Status"><Power size={16}/></button>}
                             <button onClick={() => handleOpenEdit(parceiro)} className="flex-1 md:flex-none p-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700"><Edit size={16}/></button>
                             <button onClick={() => handleDelete(parceiro.id)} className="flex-1 md:flex-none p-2 bg-red-900/20 text-red-500 rounded-lg hover:bg-red-900/40"><Trash2 size={16}/></button>
                         </div>
@@ -299,42 +361,35 @@ export default function AdminParceirosPage() {
             </div>
         )}
 
-        {/* === ABA HISTÓRICO (LINK NO USUÁRIO) === */}
+        {/* HISTORICO TAB */}
         {activeTab === 'historico' && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
                 <table className="w-full text-left whitespace-nowrap">
                     <thead className="bg-black/40 border-b border-zinc-800 text-zinc-500 font-bold uppercase text-[10px] tracking-wider">
-                        <tr><th className="p-5">Data/Hora</th><th className="p-5">Empresa</th><th className="p-5">Aluno (Clique p/ Perfil)</th><th className="p-5">Cupom Utilizado</th></tr>
+                        <tr><th className="p-5">Data/Hora</th><th className="p-5">Empresa</th><th className="p-5">Aluno</th><th className="p-5">Cupom</th></tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/50 text-sm text-zinc-300">
-                        {SCAN_HISTORY_MOCK.map((scan) => (
+                        {scans.map((scan) => (
                             <tr key={scan.id} className="hover:bg-zinc-800/30 transition">
                                 <td className="p-5"><div>{scan.data}</div><div className="text-[10px] text-zinc-500">{scan.hora}</div></td>
                                 <td className="p-5 font-bold text-white">{scan.empresa}</td>
-                                <td className="p-5">
-                                    {/* LINK SIMULADO PARA PERFIL */}
-                                    <Link href={`/admin/usuarios/${scan.userId}`} className="flex items-center gap-2 text-blue-400 hover:text-blue-300 hover:underline transition group">
-                                        <div className="w-6 h-6 rounded-full bg-blue-900/30 flex items-center justify-center text-[10px] text-blue-400 group-hover:bg-blue-900/50">
-                                            {scan.usuario.charAt(0)}
-                                        </div>
-                                        {scan.usuario} <ExternalLink size={10}/>
-                                    </Link>
-                                </td>
-                                <td className="p-5 text-emerald-400 font-medium">{scan.cupom}</td>
+                                <td className="p-5"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-blue-900/30 flex items-center justify-center text-[10px]">{scan.usuario?.charAt(0)}</div>{scan.usuario}</div></td>
+                                <td className="p-5 text-emerald-400 font-medium">{scan.cupom} <span className="text-zinc-500 text-[10px]">({scan.valorEconomizado})</span></td>
                             </tr>
                         ))}
+                        {scans.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-zinc-500 text-xs">Nenhum histórico registrado.</td></tr>}
                     </tbody>
                 </table>
             </div>
         )}
 
-        {/* === ABA CADASTROS (DADOS SENSÍVEIS) === */}
+        {/* CADASTROS TAB (ID 81 - SENHA OCULTA) */}
         {activeTab === 'cadastros' && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left whitespace-nowrap">
                         <thead className="bg-black/40 border-b border-zinc-800 text-zinc-500 font-bold uppercase text-[10px] tracking-wider">
-                            <tr><th className="p-5">Empresa</th><th className="p-5">CNPJ</th><th className="p-5">Responsável</th><th className="p-5">Contato</th><th className="p-5">Status</th></tr>
+                            <tr><th className="p-5">Empresa</th><th className="p-5">CNPJ</th><th className="p-5">Responsável</th><th className="p-5">Acesso Master</th><th className="p-5">Status</th></tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50 text-sm text-zinc-300">
                             {parceiros.map((p) => (
@@ -342,7 +397,15 @@ export default function AdminParceirosPage() {
                                     <td className="p-5 font-bold text-white">{p.nome}</td>
                                     <td className="p-5 font-mono text-xs">{p.cnpj}</td>
                                     <td className="p-5 flex items-center gap-2"><User size={14}/> {p.responsavel}</td>
-                                    <td className="p-5 text-xs"><div className="text-emerald-400">{p.email}</div><div>{p.telefone}</div></td>
+                                    {/* ID 81: SENHA OCULTA */}
+                                    <td className="p-5">
+                                        <div className="flex items-center gap-2 bg-black/40 px-2 py-1 rounded-lg border border-zinc-700 w-fit">
+                                            <span className="font-mono text-xs">{showPassword[p.id] ? p.senha : "••••••••"}</span>
+                                            <button onClick={() => togglePasswordVisibility(p.id)} className="text-zinc-500 hover:text-white">
+                                                {showPassword[p.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td className="p-5"><span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${p.status === 'active' ? 'bg-emerald-500/20 text-emerald-500' : p.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>{p.status}</span></td>
                                 </tr>
                             ))}
@@ -354,9 +417,9 @@ export default function AdminParceirosPage() {
 
       </main>
 
-      {/* --- MODAL DE DETALHES DO PLANO (DRILL DOWN) --- */}
+      {/* --- MODAL DE DETALHES DO PLANO (ID 84: DRILL DOWN) --- */}
       {showTierModal && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
               <div className="bg-zinc-900 w-full max-w-lg rounded-2xl border border-zinc-800 p-6 relative">
                   <button onClick={() => setShowTierModal(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={20}/></button>
                   <h3 className="font-bold text-white text-lg mb-4 flex items-center gap-2">
@@ -378,7 +441,7 @@ export default function AdminParceirosPage() {
 
       {/* --- MODAL EDITAR/CRIAR --- */}
       {showPartnerModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 overflow-y-auto">
           <div className="bg-zinc-900 w-full max-w-5xl rounded-3xl border border-zinc-800 p-6 shadow-2xl relative my-auto animate-in zoom-in-95 duration-200">
             <button onClick={() => setShowPartnerModal(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24}/></button>
             <h2 className="font-bold text-white text-xl mb-6 border-b border-zinc-800 pb-4 flex items-center gap-2">
@@ -386,9 +449,8 @@ export default function AdminParceirosPage() {
                 {isEditing ? `Editar ${currentPartner.nome}` : "Novo Parceiro"}
             </h2>
 
-            {/* FORMULÁRIO DE EDIÇÃO (IGUAL AO ANTERIOR, MANTIDO COMPLETO) */}
+            {/* FORMULÁRIO */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* ESQUERDA: DADOS */}
                 <div className="space-y-5">
                     <div className="grid grid-cols-2 gap-3">
                         <input type="text" placeholder="Nome Fantasia" className="input-admin" value={currentPartner.nome} onChange={e => setCurrentPartner({...currentPartner, nome: e.target.value})}/>
@@ -403,12 +465,16 @@ export default function AdminParceirosPage() {
                         <input type="text" placeholder="Tel/Whats" className="input-admin" value={currentPartner.telefone} onChange={e => setCurrentPartner({...currentPartner, telefone: e.target.value})}/>
                     </div>
                     <input type="email" placeholder="Email" className="input-admin" value={currentPartner.email} onChange={e => setCurrentPartner({...currentPartner, email: e.target.value})}/>
+                    <div className="relative">
+                        <input type="text" placeholder="Senha de Acesso" className="input-admin" value={currentPartner.senha} onChange={e => setCurrentPartner({...currentPartner, senha: e.target.value})}/>
+                        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14}/>
+                    </div>
                     <textarea placeholder="Descrição" rows={3} className="input-admin" value={currentPartner.descricao} onChange={e => setCurrentPartner({...currentPartner, descricao: e.target.value})}/>
                     <div className="grid grid-cols-2 gap-3"><input type="text" placeholder="Endereço" className="input-admin" value={currentPartner.endereco} onChange={e => setCurrentPartner({...currentPartner, endereco: e.target.value})}/><input type="text" placeholder="Horário" className="input-admin" value={currentPartner.horario} onChange={e => setCurrentPartner({...currentPartner, horario: e.target.value})}/></div>
                     <div className="grid grid-cols-2 gap-3"><input type="text" placeholder="Instagram" className="input-admin" value={currentPartner.insta} onChange={e => setCurrentPartner({...currentPartner, insta: e.target.value})}/><input type="text" placeholder="Site" className="input-admin" value={currentPartner.site} onChange={e => setCurrentPartner({...currentPartner, site: e.target.value})}/></div>
                 </div>
 
-                {/* DIREITA: MÍDIA E CUPONS */}
+                {/* DIREITA */}
                 <div className="space-y-5">
                     <div className="grid grid-cols-2 gap-3">
                         <button onClick={() => logoInputRef.current?.click()} className="bg-zinc-800 border border-dashed border-zinc-600 p-4 rounded-xl text-xs text-zinc-400 hover:border-emerald-500 relative overflow-hidden h-24 flex flex-col items-center justify-center">{currentPartner.imgLogo ? <img src={currentPartner.imgLogo} className="absolute inset-0 w-full h-full object-cover opacity-50"/> : <ImageIcon size={20}/>} Logo</button>
@@ -436,10 +502,24 @@ export default function AdminParceirosPage() {
         </div>
       )}
 
-      {/* MODAL NOVA CATEGORIA */}
+      {/* MODAL NOVA CATEGORIA ID 83: LÓGICA CORRIGIDA */}
       {showCategoryModal && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-              <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 w-full max-w-sm"><h3 className="font-bold text-white mb-4">Nova Categoria</h3><input type="text" autoFocus placeholder="Ex: Vestuário" className="input-admin mb-4" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}/><div className="flex justify-end gap-2"><button onClick={() => setShowCategoryModal(false)} className="bg-zinc-800 text-zinc-400 px-4 py-2 rounded-lg text-xs font-bold">Cancelar</button><button onClick={handleAddCategory} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Adicionar</button></div></div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+              <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 w-full max-w-sm">
+                  <h3 className="font-bold text-white mb-4">Nova Categoria</h3>
+                  <input 
+                      type="text" 
+                      autoFocus 
+                      placeholder="Ex: Vestuário" 
+                      className="input-admin mb-4" 
+                      value={newCategoryName} 
+                      onChange={e => setNewCategoryName(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                      <button onClick={() => setShowCategoryModal(false)} className="bg-zinc-800 text-zinc-400 px-4 py-2 rounded-lg text-xs font-bold">Cancelar</button>
+                      <button onClick={handleAddCategory} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Adicionar</button>
+                  </div>
+              </div>
           </div>
       )}
 

@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// 🦈 IMPORTS DE COMPONENTES (Assumindo que estão em src/app/components)
-import BottomNav from "./components/BottomNav";
-import RouteGuard from "./components/RouteGuard";
+// 🦈 COMPONENTES GLOBAIS
+import BottomNav from "./components/BottomNav"; // Verifique se o caminho da pasta bate com seu projeto
+import RouteGuard from "./components/RouteGuard"; // Assumindo que este componente existe
 
-// 🦈 IMPORTS DE CONTEXTO CORRIGIDOS (Usando ../ em vez de @)
+// 🦈 CONTEXTOS
 import { AuthProvider } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
 
@@ -23,6 +23,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Tubarão App - AAAKN",
   description: "Portal oficial da Atlética Medicina Caraguá",
+  manifest: "/manifest.json", 
+  themeColor: "#050505",
 };
 
 export default function RootLayout({
@@ -31,15 +33,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-br">
+    <html lang="pt-br" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen selection:bg-emerald-500/30`}
       >
         <AuthProvider>
           <ToastProvider>
-            {/* O RouteGuard protege todas as páginas dentro dele */}
+            {/* O RouteGuard protege todas as rotas internas */}
             <RouteGuard>
-              <main className="pb-20">{children}</main>
+              <main className="pb-24 min-h-screen relative z-10">
+                {children}
+              </main>
+              {/* Barra de Navegação Flutuante */}
               <BottomNav />
             </RouteGuard>
           </ToastProvider>

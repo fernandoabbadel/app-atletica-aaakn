@@ -30,8 +30,10 @@ export interface UserStats {
     gymStreak?: number;
     arenaMatches?: number;
     arenaWins?: number;
+    arenaLosses?: number; // 🦈 NOVO: Derrotas
     arenaLoseStreak?: number;
     storeSpent?: number;
+    albumCollected?: number; // 🦈 NOVO: Figurinhas
     storeItemsCount?: number;
     eventsAttended?: number;
     eventsPromo?: number;
