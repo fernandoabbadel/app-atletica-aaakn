@@ -1,164 +1,199 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { 
-  ArrowLeft, MapPin, Clock, User, Trophy, Users, CheckCircle, 
-  HelpCircle, Share2, XCircle, Calendar, Crown, Navigation, UserX 
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
+  Users, CheckCircle, HelpCircle, XCircle, Lock, Trophy, Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { db } from "../../../lib/firebase";
+import { doc, onSnapshot, collection, runTransaction, serverTimestamp, increment } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { doc, onSnapshot, collection, runTransaction, serverTimestamp } from "firebase/firestore";
 
-// Mapa de Imagens das Turmas
+// Mapa de imagens das turmas (Assets locais)
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
 };
 
-export default function TreinoDetalhesPage() {
+export default function DetalhesEventoPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
   const { addToast } = useToast();
-
-  const [treino, setTreino] = useState<any>(null);
+ 
+  const [evento, setEvento] = useState<any>(null);
   const [rsvps, setRsvps] = useState<any[]>([]);
-  const [chamadaAdmin, setChamadaAdmin] = useState<any[]>([]); 
-  
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
-  const [loadingAction, setLoadingAction] = useState(false);
 
-  // 1. CARREGAR DADOS
+  // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
       if (!params.id) return;
 
-      const unsubTreino = onSnapshot(doc(db, "treinos", params.id as string), (docSnap) => {
+      // Listener do Evento
+      const unsubEvent = onSnapshot(doc(db, "eventos", params.id as string), (docSnap) => {
           if (docSnap.exists()) {
-              setTreino({ id: docSnap.id, ...docSnap.data() });
+              setEvento({ id: docSnap.id, ...docSnap.data() });
           } else {
-              addToast("Treino não encontrado.", "error");
-              router.push("/treinos");
+              setEvento(null); // Evento não existe
           }
           setLoading(false);
       });
 
-      const unsubRsvps = onSnapshot(collection(db, "treinos", params.id as string, "rsvps"), (snap) => {
+      // Listener dos RSVPs (Lista de quem vai)
+      const unsubRsvp = onSnapshot(collection(db, "eventos", params.id as string, "rsvps"), (snap) => {
           const lista = snap.docs.map(d => d.data());
           setRsvps(lista);
+          
           if (user) {
               const me = lista.find((p: any) => p.userId === user.uid);
               setUserRsvp(me ? me.status : null);
           }
       });
 
-      const unsubChamada = onSnapshot(collection(db, "treinos", params.id as string, "chamada"), (snap) => {
-          const lista = snap.docs.map(d => d.data());
-          setChamadaAdmin(lista);
-      });
+      return () => { unsubEvent(); unsubRsvp(); };
+  }, [params.id, user]);
 
-      return () => { unsubTreino(); unsubRsvps(); unsubChamada(); };
-  }, [params.id, user, router]);
-
-  // 2. FUSÃO DE LISTAS
-  const listaFinal = useMemo(() => {
-      const map = new Map();
-      rsvps.forEach(r => {
-          if (r.status === 'going') {
-              map.set(r.userId, { 
-                  ...r, nome: r.userName, turma: r.userTurma, avatar: r.userAvatar, statusVisual: 'confirmado' 
-              });
-          }
-      });
-      chamadaAdmin.forEach(c => {
-          const existing = map.get(c.userId) || {};
-          map.set(c.userId, {
-              ...existing, ...c, userId: c.userId, statusVisual: c.status 
-          });
-      });
-      return Array.from(map.values()).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
-  }, [rsvps, chamadaAdmin]);
-
-  // 3. RANKING
+  // 2. CÁLCULO DO RANKING DE TURMAS
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
-      listaFinal.forEach(aluno => {
-          if (aluno.statusVisual !== 'falta' && aluno.turma) {
-              const t = aluno.turma.toUpperCase();
-              counts[t] = (counts[t] || 0) + 1;
+      
+      rsvps.forEach(r => {
+          if (r.status === 'going' && r.userTurma) {
+              // Normaliza para maiúsculo (ex: t1 -> T1)
+              const turma = r.userTurma.toUpperCase(); 
+              counts[turma] = (counts[turma] || 0) + 1;
           }
       });
-      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] }));
-  }, [listaFinal]);
 
-  // 4. AÇÃO RSVP
-  const handleRSVP = async (status: "going" | "not_going") => {
-      if (!user) return addToast("Faça login para confirmar!", "error");
-      if (loadingAction) return;
-      setLoadingAction(true);
+      return Object.entries(counts)
+          .sort((a, b) => b[1] - a[1]) // Maior para menor
+          .slice(0, 3) // Top 3
+          .map(([turma, count]) => ({
+              turma,
+              count,
+              imagem: TURMA_IMAGENS[turma] || null
+          }));
+  }, [rsvps]);
 
+  // 3. AÇÃO DE RSVP (TRANSAÇÃO SEGURA)
+  const handleRSVP = async (status: "going" | "maybe") => {
+      if (!user) {
+          addToast("Faça login para confirmar presença!", "error");
+          router.push("/login");
+          return;
+      }
+      
       try {
           await runTransaction(db, async (t) => {
-              const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
-              if (status === 'not_going') {
+              const eventRef = doc(db, "eventos", evento.id);
+              const rsvpRef = doc(db, "eventos", evento.id, "rsvps", user.uid);
+              const rsvpDoc = await t.get(rsvpRef);
+              const oldStatus = rsvpDoc.exists() ? rsvpDoc.data().status : null;
+
+              // Se clicar no mesmo botão, remove a presença (toggle)
+              if (oldStatus === status) {
                   t.delete(rsvpRef);
+                  // Remove UID dos arrays principais para facilitar consultas simples
+                  if (status === 'going') t.update(eventRef, { confirmed: user.uid, [`stats.confirmados`]: increment(-1) });
+                  else t.update(eventRef, { [`stats.talvez`]: increment(-1) });
               } else {
+                  // Se mudar de status ou for novo
+                  if (oldStatus) {
+                      // Decrementa o antigo
+                      t.update(eventRef, { [`stats.${oldStatus === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  }
+                  
+                  // Salva dados completos na subcoleção para o ranking
                   t.set(rsvpRef, {
-                      userId: user.uid, userName: user.nome || "Atleta", userAvatar: user.foto || "", userTurma: user.turma || "Geral", status: 'going', timestamp: serverTimestamp()
+                      userId: user.uid,
+                      status: status,
+                      userName: user.nome || "Anônimo",
+                      userAvatar: user.foto || "",
+                      userTurma: user.turma || "Geral", 
+                      timestamp: serverTimestamp()
                   });
+
+                  // Incrementa o novo e atualiza arrays de IDs
+                  if (status === 'going') {
+                      // ArrayUnion não funciona bem dentro de transaction com lógica complexa as vezes, 
+                      // mas para contadores simples usamos increment.
+                      t.update(eventRef, { [`stats.confirmados`]: increment(1) });
+                  } else {
+                      t.update(eventRef, { [`stats.talvez`]: increment(1) });
+                  }
               }
           });
-          addToast(status === 'going' ? "Presença confirmada! 💪" : "Inscrição removida.", "success");
-      } catch (e) { console.error(e); addToast("Erro ao atualizar.", "error"); } 
-      finally { setLoadingAction(false); }
+          
+          // Feedback Visual
+          if (userRsvp === status) addToast("Presença removida.", "info");
+          else addToast(status === 'going' ? "Confirmado! A Tuba te espera! 🦈" : "Interesse registrado.", "success");
+
+      } catch (e) {
+          console.error(e);
+          addToast("Erro ao atualizar presença.", "error");
+      }
   };
 
-  const getTheme = () => {
-      if (!treino) return {};
-      const m = treino.modalidade.toLowerCase();
-      if (m.includes("volei")) return { text: "text-yellow-400", badge: "bg-yellow-500 border-yellow-400 text-black", gradient: "from-yellow-900/40" };
-      if (m.includes("hand")) return { text: "text-blue-400", badge: "bg-blue-600 border-blue-500 text-white", gradient: "from-blue-900/40" };
-      return { text: "text-emerald-400", badge: "bg-emerald-600 border-emerald-500 text-white", gradient: "from-emerald-900/40" };
-  };
+  // --- RENDERS ---
 
-  const getMapsLink = () => treino?.local ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(treino.local)}` : "#";
+  if (loading) return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
+        <Loader2 className="w-10 h-10 text-emerald-500 animate-spin"/>
+        <p className="text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Evento...</p>
+    </div>
+  );
 
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-10 h-10 border-4 border-emerald-500 rounded-full animate-spin border-t-transparent"></div></div>;
-  if (!treino) return null;
-
-  const theme = getTheme();
-  const confirmadosCount = listaFinal.filter(a => a.statusVisual !== 'falta').length;
+  if (!evento) return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
+        <XCircle size={48} className="text-red-500/50"/>
+        <p className="text-sm font-bold uppercase tracking-widest">Evento não encontrado</p>
+        <Link href="/dashboard" className="text-emerald-500 text-xs hover:underline">Voltar para o Início</Link>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32 selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500/30">
       
-      {/* --- HERO SECTION --- */}
-      <div className="relative h-[65vh] w-full">
-        <div className="absolute inset-0 bg-black">
-            <img src={treino.imagem || "https://placehold.co/800x600/111/333?text=AAAKN"} className="w-full h-full object-cover opacity-60" alt={treino.modalidade} />
-            <div className={`absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-transparent z-10`}></div>
-        </div>
+      {/* --- HERO SECTION (CAPA) --- */}
+      <div className="relative h-[55vh] w-full">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent z-10"></div>
+        
+        <img
+            src={evento.imagem || evento.imgCapa || "https://placehold.co/600x400/111/333?text=Sem+Capa"}
+            className="w-full h-full object-cover"
+            alt={evento.titulo}
+        />
 
-        <Link href="/treinos" className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 hover:bg-white hover:text-black transition">
+        <Link
+            href="/dashboard"
+            className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white border border-white/10 hover:bg-white hover:text-black transition duration-300"
+        >
             <ArrowLeft size={24} />
         </Link>
-        <button className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 hover:bg-emerald-500 transition">
-            <Share2 size={24} />
-        </button>
 
-        {/* RANKING FLUTUANTE */}
-        <div className="absolute bottom-40 right-6 z-20 flex flex-col gap-2 items-end">
+        {/* RANKING FLUTUANTE DE TURMAS */}
+        <div className="absolute bottom-32 right-6 z-20 flex flex-col gap-2 items-end">
             {rankingTurmas.map((t, i) => (
-                <div key={t.turma} className="flex items-center gap-3 bg-black/60 backdrop-blur-md pl-1.5 pr-4 py-1.5 rounded-full border border-white/10 animate-in slide-in-from-right duration-700 shadow-xl" style={{ animationDelay: `${i * 100}ms` }}>
-                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-500 shrink-0">
-                        {t.imagem ? <img src={t.imagem} className="w-full h-full object-cover" /> : <span className="text-xs font-black">{t.turma}</span>}
+                <div
+                    key={t.turma}
+                    className="flex items-center gap-3 bg-black/60 backdrop-blur-md pl-1.5 pr-4 py-1.5 rounded-full border border-white/10 animate-in slide-in-from-right duration-700 shadow-xl"
+                    style={{ animationDelay: `${i * 100}ms` }}
+                >
+                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-600 shadow-inner">
+                        {t.imagem ? (
+                            <img src={t.imagem} alt={t.turma} className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-[10px] font-black">{t.turma}</span>
+                        )}
                     </div>
                     <div className="flex flex-col items-end leading-none">
-                        <span className="text-[9px] font-bold text-zinc-400 uppercase">Dominando</span>
-                        <span className={`font-black text-sm ${theme.text}`}>+{t.count}</span>
+                        <span className="text-[9px] font-bold text-zinc-400 uppercase">Presença</span>
+                        <span className="text-emerald-400 font-black text-xs">+{t.count}</span>
                     </div>
                 </div>
             ))}
@@ -166,141 +201,136 @@ export default function TreinoDetalhesPage() {
 
         {/* INFO PRINCIPAL */}
         <div className="absolute bottom-0 left-0 w-full p-6 z-20 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-                <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg ${theme.badge}`}>
-                    {treino.modalidade}
-                </span>
-                <span className="bg-white/10 backdrop-blur-md text-white text-[10px] font-bold uppercase px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
-                    <Users size={12}/> {confirmadosCount} Atletas
-                </span>
+          <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border backdrop-blur-md shadow-lg ${evento.tipo === 'Festa' ? 'bg-purple-600/80 border-purple-500' : 'bg-orange-600/80 border-orange-500'}`}>
+                  {evento.tipo || "Evento"}
+              </span>
+              {evento.destaque && (
+                  <span className="bg-emerald-500 text-black text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-lg shadow-emerald-500/20">
+                      {evento.destaque}
+                  </span>
+              )}
+          </div>
+          
+          <h1 className="text-3xl md:text-4xl font-black italic uppercase tracking-tighter leading-none text-white drop-shadow-2xl">
+              {evento.titulo}
+          </h1>
+          
+          <div className="flex flex-wrap gap-3 text-xs font-bold text-zinc-300 uppercase tracking-wide mt-1">
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
+                <Calendar size={14} className="text-emerald-500" /> {evento.data}
             </div>
-            
-            <h1 className="text-5xl md:text-6xl font-black italic uppercase tracking-tighter leading-none text-white drop-shadow-2xl">
-                {treino.modalidade}
-            </h1>
-            
-            <div className="flex flex-wrap gap-4 text-xs font-bold text-zinc-300 uppercase tracking-wide mt-2">
-                <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm">
-                    <Calendar size={16} className={theme.text} /> {treino.diaSemana}, {treino.dia ? treino.dia.split('-').reverse().slice(0,2).join('/') : ''}
-                </div>
-                <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm">
-                    <Clock size={16} className={theme.text} /> {treino.horario}
-                </div>
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
+                <Clock size={14} className="text-emerald-500" /> {evento.hora}
             </div>
+          </div>
         </div>
       </div>
 
-      {/* --- CARD DE CONTEÚDO --- */}
-      <div className="relative z-30 -mt-8 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 shadow-[0_-10px_50px_rgba(0,0,0,0.5)] p-6 space-y-8 min-h-[50vh]">
+      {/* --- CONTEÚDO (CARD) --- */}
+      <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] p-6 space-y-8 min-h-[50vh]">
         
-        {/* 1. BOTÕES DE DECISÃO */}
-        <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-2 rounded-2xl shadow-inner flex gap-2">
-            <button onClick={() => handleRSVP('not_going')} className="flex-1 py-4 rounded-xl border border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 font-bold text-xs uppercase transition-all">
-                <span className="flex flex-col items-center gap-1"><XCircle size={20}/> Não Vou</span>
-            </button>
-            <button onClick={() => handleRSVP('going')} disabled={loadingAction} className={`flex-[2] py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${userRsvp === 'going' ? 'bg-emerald-500 text-black shadow-emerald-500/30' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                {loadingAction ? <span className="animate-spin">⌛</span> : userRsvp === 'going' ? <><CheckCircle size={24}/> Confirmado</> : "Confirmar Presença"}
-            </button>
-        </div>
-
-        {/* 2. RESPONSÁVEL & DESCRIÇÃO */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-4">
-                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                    <Trophy size={16} className={theme.text} /> O Treino
-                </h2>
-                <div className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800">
-                    {/* 🦈 DESCRIÇÃO TÁTICA AQUI */}
-                    <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
-                        {treino.descricao || "Sem orientações táticas para este treino."}
-                    </p>
-                </div>
+        {/* 1. BOTÕES DE RSVP */}
+        <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-1.5 rounded-2xl shadow-inner">
+            <div className="grid grid-cols-2 gap-2">
+                <button
+                    onClick={() => handleRSVP('going')}
+                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'going' ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 scale-[1.02]" : "bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800"}`}
+                >
+                    <CheckCircle size={22} className={userRsvp === 'going' ? "fill-black text-emerald-500" : ""} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Eu Vou</span>
+                </button>
                 
-                {/* Local com Maps */}
-                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center border border-zinc-700">
-                            <MapPin size={18} className={theme.text} />
-                        </div>
-                        <div>
-                            <p className="text-zinc-500 text-[10px] font-bold uppercase">Localização</p>
-                            <p className="text-white font-bold text-sm">{treino.local}</p>
-                        </div>
-                    </div>
-                    <a href={getMapsLink()} target="_blank" rel="noopener noreferrer" className="bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-bold uppercase px-3 py-2 rounded-xl flex items-center gap-2 transition">
-                        Abrir <Navigation size={12}/>
-                    </a>
-                </div>
+                <button
+                    onClick={() => handleRSVP('maybe')}
+                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'maybe' ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]" : "bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800"}`}
+                >
+                    <HelpCircle size={22} className={userRsvp === 'maybe' ? "fill-black text-yellow-500" : ""} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Talvez</span>
+                </button>
             </div>
-
-            {/* Card Responsável */}
-            <Link href={treino.treinadorId ? `/perfil/${treino.treinadorId}` : "#"} className="block group">
-                <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 p-5 rounded-2xl flex flex-col items-center text-center gap-3 relative overflow-hidden group-hover:border-zinc-600 transition">
-                    <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${theme.gradient} to-transparent`}></div>
-                    <div className="w-20 h-20 rounded-full border-4 border-[#050505] shadow-xl overflow-hidden relative group-hover:scale-105 transition duration-300">
-                        {treino.treinadorAvatar ? <img src={treino.treinadorAvatar} className="w-full h-full object-cover"/> : <User size={32} className="text-zinc-600 m-auto"/>}
-                        <div className="absolute bottom-0 right-0 bg-emerald-500 p-1 rounded-full border-2 border-black"><Crown size={12} className="text-black"/></div>
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1">Responsável</p>
-                        <p className="text-lg font-black text-white">{treino.treinador || "Tubarão"}</p>
-                        <span className={`text-xs font-bold ${theme.text} mt-1 block group-hover:underline`}>Ver Perfil</span>
-                    </div>
-                </div>
-            </Link>
+            
+            <div className="text-center py-2.5 flex justify-center items-center gap-2 mt-1">
+                <Users size={12} className="text-zinc-500"/>
+                <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
+                    {evento.stats?.confirmados || 0} confirmados • {evento.stats?.talvez || 0} interessados
+                </p>
+            </div>
         </div>
 
-        {/* 3. LISTA DE QUEM VAI */}
-        <section className="space-y-4 pt-4 border-t border-white/5">
-            <h2 className="text-sm font-black text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                <Users size={16} className={theme.text} /> Lista de Presença
-            </h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {listaFinal.map((pessoa, idx) => {
-                    let statusColor = "border-zinc-800/50 bg-zinc-900/50";
-                    let icon = null;
-                    if (pessoa.statusVisual === 'presente') {
-                        statusColor = "border-emerald-500/20 bg-emerald-900/10";
-                        icon = <CheckCircle size={14} className="text-emerald-500"/>;
-                    } else if (pessoa.statusVisual === 'falta') {
-                        statusColor = "border-red-500/20 bg-red-900/10 opacity-60";
-                        icon = <UserX size={14} className="text-red-500"/>;
-                    }
+        {/* 2. DESCRIÇÃO */}
+        <section>
+          <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+              Detalhes do Rolê
+          </h2>
+          <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap font-medium bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
+              {evento.descricao || "Nenhuma descrição informada."}
+          </p>
+        </section>
 
-                    return (
-                        <Link href={`/perfil/${pessoa.userId}`} key={idx}>
-                            <div className={`flex items-center justify-between p-3 rounded-xl border transition hover:bg-white/5 ${statusColor}`}>
-                                <div className="flex items-center gap-3">
-                                    <img src={pessoa.avatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full border border-zinc-700 object-cover"/>
-                                    <div>
-                                        <p className={`text-sm font-bold ${pessoa.statusVisual === 'falta' ? 'text-zinc-500 line-through' : 'text-white'}`}>{pessoa.nome}</p>
-                                        <p className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1">
-                                            {pessoa.turma}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                    {icon}
-                                    <span className={`text-[8px] uppercase font-black tracking-widest mt-1 ${
-                                        pessoa.statusVisual === 'presente' ? 'text-emerald-500' : 
-                                        pessoa.statusVisual === 'falta' ? 'text-red-500' : 'text-zinc-500'
-                                    }`}>
-                                        {pessoa.statusVisual === 'presente' ? 'Presente' : 
-                                         pessoa.statusVisual === 'falta' ? 'Faltou' : 'Inscrito'}
-                                    </span>
-                                </div>
-                            </div>
-                        </Link>
-                    );
-                })}
-                {listaFinal.length === 0 && (
-                    <div className="col-span-full py-8 text-center border border-dashed border-zinc-800 rounded-xl">
-                        <p className="text-zinc-600 text-xs font-bold uppercase">Nenhum confirmado ainda. Seja o primeiro!</p>
-                    </div>
+        {/* 3. LOCALIZAÇÃO */}
+        <section className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4">
+            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center border border-zinc-700 shrink-0 shadow-lg">
+                <MapPin size={24} className="text-emerald-500" />
+            </div>
+            <div className="flex-1">
+                <h3 className="text-white font-bold text-sm uppercase">Localização</h3>
+                <p className="text-zinc-400 text-xs mt-0.5">{evento.local}</p>
+                {evento.mapsUrl && (
+                    <a href={evento.mapsUrl} target="_blank" className="text-[10px] text-emerald-500 font-bold hover:underline mt-1 block">Abrir no Maps</a>
                 )}
             </div>
         </section>
+
+        {/* 4. LOTES (INGRESSOS) */}
+        {evento.lotes && evento.lotes.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <Ticket size={14} className="text-emerald-500" /> Ingressos
+              </h2>
+              
+              <div className="space-y-3">
+                {evento.lotes.map((lote: any, index: number) => (
+                  <div
+                    key={index}
+                    className={`relative flex justify-between items-center p-4 rounded-2xl border transition-all duration-300 group ${
+                        lote.status === "ativo"
+                            ? "bg-zinc-900 border-emerald-500/30 shadow-lg"
+                            : "bg-black border-zinc-800 opacity-60"
+                    }`}
+                  >
+                    <div className="relative z-10">
+                      <p className={`text-xs font-black uppercase tracking-wider mb-0.5 ${lote.status === "ativo" ? "text-white" : "text-zinc-500"}`}>
+                          {lote.nome}
+                      </p>
+                      <p className={`text-lg font-black ${lote.status === "ativo" ? "text-emerald-400" : "text-zinc-600"}`}>
+                          R$ {lote.preco}
+                      </p>
+                    </div>
+                    
+                    <div className="relative z-10">
+                        {lote.status === "ativo" && (
+                            <Link href="/carrinho" className="bg-white text-black px-5 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-400 transition-colors shadow-lg">
+                                Comprar
+                            </Link>
+                        )}
+                        {lote.status === "agendado" && (
+                            <div className="flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/20">
+                                <Lock size={12}/>
+                                <span className="text-[9px] font-bold uppercase">Em Breve</span>
+                            </div>
+                        )}
+                        {lote.status === "encerrado" && (
+                            <div className="text-[9px] font-black text-red-500 uppercase bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20">
+                                Esgotado
+                            </div>
+                        )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+        )}
 
       </div>
     </div>

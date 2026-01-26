@@ -1,453 +1,268 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, ShoppingBag, X, MousePointer2, Package, Check } from "lucide-react";
+import { 
+  ArrowLeft, ShoppingBag, Search, Filter, 
+  Package, Tag, Zap, AlertCircle 
+} from "lucide-react";
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
-import { collection, doc, increment, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 
+// --- TIPAGEM EXATA DO SEU FIREBASE ---
 interface Variante {
   id: string;
-  tamanho: string;
   cor: string;
+  tamanho: string;
   estoque: number;
+  vendidos?: number;
 }
 
-interface ProdutoLoja {
+interface Produto {
   id: string;
   nome: string;
+  categoria: string;
+  descricao: string;
+  img: string; // Campo correto conforme seu dump
   preco: number;
   precoAntigo?: number;
-  categoria: string;
-  img: string;
-  vendidos: number;
-  cliques: number;
-  variantes: Variante[];
+  estoque: number;
   lote: string;
-  descricao: string;
-  caracteristicas: string[];
   tagLabel?: string;
   tagColor?: string;
   tagEffect?: "pulse" | "shine" | "none";
+  variantes: Variante[];
+  caracteristicas?: string[];
+  cliques: number;
+  createdAt: any;
 }
 
-type CartItem = {
-  productId: string;
-  variantId: string;
-  nome: string;
-  preco: number;
-  img: string;
-  tamanho: string;
-  cor: string;
-  qtd: number;
-};
-
+// Helper de Cores para as Tags
 const getTagColorClass = (color?: string) => {
   switch (color) {
-    case "red":
-      return "bg-red-600";
-    case "emerald":
-      return "bg-emerald-600";
-    case "orange":
-      return "bg-orange-600";
-    case "purple":
-      return "bg-purple-600";
-    default:
-      return "bg-zinc-700";
+    case "red": return "bg-red-600 border-red-500 text-white";
+    case "emerald": return "bg-emerald-600 border-emerald-500 text-white";
+    case "orange": return "bg-orange-600 border-orange-500 text-white";
+    case "purple": return "bg-purple-600 border-purple-500 text-white";
+    case "blue": return "bg-blue-600 border-blue-500 text-white";
+    default: return "bg-zinc-700 border-zinc-600 text-zinc-300";
   }
 };
 
 export default function LojaPage() {
   const { addToast } = useToast();
-
-  const [produtos, setProdutos] = useState<ProdutoLoja[]>([]);
+  
+  // Estados
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [filtroCategoria, setFiltroCategoria] = useState("Todos");
+  const [cartCount, setCartCount] = useState(0);
 
-  const [openProduto, setOpenProduto] = useState<ProdutoLoja | null>(null);
-  const [selectedVariantId, setSelectedVariantId] = useState<string>("");
-  const [qtd, setQtd] = useState<number>(1);
-
+  // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
     const q = query(collection(db, "produtos"), orderBy("nome"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const lista = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        })) as ProdutoLoja[];
-        setProdutos(lista);
-        setLoading(false);
-      },
-      () => {
-        setProdutos([]);
-        setLoading(false);
-      }
-    );
-    return () => unsubscribe();
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const lista = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Produto[];
+      setProdutos(lista);
+      setLoading(false);
+    });
+
+    // Atualizar contador do carrinho (LocalStorage)
+    const updateCartCount = () => {
+        const raw = localStorage.getItem("cart");
+        if (raw) {
+            const cart = JSON.parse(raw);
+            const total = cart.reduce((acc: number, item: any) => acc + (item.qtd || 1), 0);
+            setCartCount(total);
+        }
+    };
+    
+    updateCartCount();
+    // Pequeno hack para ouvir mudanças no storage se o usuário voltar do detalhe
+    window.addEventListener('storage', updateCartCount);
+    
+    return () => { 
+        unsubscribe(); 
+        window.removeEventListener('storage', updateCartCount);
+    };
   }, []);
 
-  const produtosComEstoque = useMemo(() => {
-    return produtos.map((p) => {
-      const estoqueTotal = p.variantes?.reduce((acc, v) => acc + Number(v.estoque || 0), 0) || 0;
-      return { ...p, estoqueTotal } as ProdutoLoja & { estoqueTotal: number };
-    });
+  // 2. FILTRAGEM
+  const categoriasDisponiveis = useMemo(() => {
+      const cats = new Set(produtos.map(p => p.categoria).filter(Boolean));
+      return ["Todos", ...Array.from(cats)];
   }, [produtos]);
 
-  const selectedVariant = useMemo(() => {
-    if (!openProduto) return null;
-    return openProduto.variantes?.find((v) => v.id === selectedVariantId) || null;
-  }, [openProduto, selectedVariantId]);
-
-  const selectedVariantStock = useMemo(() => {
-    if (!selectedVariant) return 0;
-    return Number(selectedVariant.estoque || 0);
-  }, [selectedVariant]);
-
-  const applyLocalClickIncrement = (productId: string) => {
-    setProdutos((prev) =>
-      prev.map((p) => (p.id === productId ? ({ ...p, cliques: Number(p.cliques || 0) + 1 } as any) : p))
-    );
-
-    setOpenProduto((prev) => {
-      if (!prev) return prev;
-      if (prev.id !== productId) return prev;
-      return { ...prev, cliques: Number(prev.cliques || 0) + 1 };
-    });
-  };
-
-  const handleOpenProduto = async (p: ProdutoLoja) => {
-    setOpenProduto(p);
-    setQtd(1);
-
-    const firstVariant = p.variantes?.[0]?.id || "";
-    setSelectedVariantId(firstVariant);
-
-    if (!p.id) return;
-
-    applyLocalClickIncrement(p.id);
-
-    try {
-      await updateDoc(doc(db, "produtos", p.id), { cliques: increment(1) });
-    } catch (e: any) {
-      addToast(
-        "Não consegui gravar o clique no Firestore. Verifique regras (permission-denied) e autenticação.",
-        "error"
-      );
-    }
-  };
-
-  const closeModal = () => {
-    setOpenProduto(null);
-    setSelectedVariantId("");
-    setQtd(1);
-  };
-
-  const addToCart = () => {
-    if (!openProduto) return;
-    if (!selectedVariant) {
-      addToast("Selecione uma variante (tamanho/cor).", "error");
-      return;
-    }
-    if (qtd < 1) {
-      addToast("Quantidade inválida.", "error");
-      return;
-    }
-    if (qtd > selectedVariantStock) {
-      addToast("Quantidade maior que o estoque da variante.", "error");
-      return;
-    }
-
-    const item: CartItem = {
-      productId: openProduto.id,
-      variantId: selectedVariant.id,
-      nome: openProduto.nome,
-      preco: Number(openProduto.preco || 0),
-      img: openProduto.img,
-      tamanho: selectedVariant.tamanho,
-      cor: selectedVariant.cor,
-      qtd,
-    };
-
-    try {
-      const raw = localStorage.getItem("cart");
-      const cart: CartItem[] = raw ? JSON.parse(raw) : [];
-      const idx = cart.findIndex((x) => x.productId === item.productId && x.variantId === item.variantId);
-
-      if (idx >= 0) {
-        cart[idx].qtd = Math.min(cart[idx].qtd + item.qtd, selectedVariantStock);
-      } else {
-        cart.push(item);
-      }
-
-      localStorage.setItem("cart", JSON.stringify(cart));
-      addToast("Adicionado ao carrinho!", "success");
-    } catch {
-      addToast("Não foi possível salvar no carrinho.", "error");
-    }
-  };
+  const produtosFiltrados = produtos.filter(p => {
+      const matchNome = p.nome.toLowerCase().includes(busca.toLowerCase());
+      const matchCat = filtroCategoria === "Todos" || p.categoria === filtroCategoria;
+      return matchNome && matchCat;
+  });
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition">
-            <ArrowLeft size={20} className="text-zinc-400" />
-          </Link>
-          <div>
-            <h1 className="text-lg font-black text-white uppercase tracking-tighter">Loja</h1>
-            <p className="text-xs text-zinc-500 font-bold uppercase">Produtos oficiais</p>
-          </div>
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32 selection:bg-emerald-500/30">
+      
+      {/* --- HEADER --- */}
+      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 space-y-4">
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <Link href="/dashboard" className="bg-zinc-900 p-2.5 rounded-full hover:bg-zinc-800 transition border border-zinc-800">
+                    <ArrowLeft size={20} className="text-zinc-400" />
+                </Link>
+                <div>
+                    <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">Lojinha AAAKN</h1>
+                    <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Vista a camisa</p>
+                </div>
+            </div>
+
+            <Link href="/carrinho" className="relative bg-zinc-900 p-2.5 rounded-full hover:bg-zinc-800 transition border border-zinc-800 group">
+                <ShoppingBag size={20} className="text-zinc-400 group-hover:text-emerald-500 transition"/>
+                {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-black text-[10px] font-black flex items-center justify-center rounded-full shadow-lg shadow-emerald-500/20">
+                        {cartCount}
+                    </span>
+                )}
+            </Link>
         </div>
 
-        <div className="flex gap-2">
-          <Link
-            href="/carrinho"
-            className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95"
-          >
-            <ShoppingBag size={16} /> Carrinho
-          </Link>
+        {/* BARRA DE BUSCA */}
+        <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"/>
+            <input 
+                type="text" 
+                placeholder="O que você procura?" 
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500 outline-none transition placeholder:text-zinc-600"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+            />
+        </div>
+
+        {/* CATEGORIAS (SCROLL HORIZONTAL) */}
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+            {categoriasDisponiveis.map(cat => (
+                <button 
+                    key={cat}
+                    onClick={() => setFiltroCategoria(cat)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap transition border ${
+                        filtroCategoria === cat 
+                        ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/20" 
+                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                    }`}
+                >
+                    {cat}
+                </button>
+            ))}
         </div>
       </header>
 
+      {/* --- GRID DE PRODUTOS --- */}
       <main className="p-6">
-        {loading && <div className="text-zinc-500 text-sm">Carregando produtos</div>}
+        {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-zinc-500 gap-2">
+                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-xs font-bold uppercase">Carregando Estoque...</p>
+            </div>
+        ) : produtosFiltrados.length === 0 ? (
+            <div className="text-center py-20 border-2 border-dashed border-zinc-800 rounded-3xl">
+                <Package size={40} className="mx-auto text-zinc-700 mb-2"/>
+                <p className="text-zinc-500 text-sm font-medium">Nenhum produto encontrado.</p>
+            </div>
+        ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {produtosFiltrados.map((prod) => {
+                    const emEstoque = prod.estoque > 0;
+                    const temVariantes = prod.variantes && prod.variantes.length > 0;
+                    const estoqueTotal = temVariantes 
+                        ? prod.variantes.reduce((acc, v) => acc + Number(v.estoque), 0) 
+                        : Number(prod.estoque);
 
-        {!loading && !produtosComEstoque.length && (
-          <div className="text-zinc-500 text-sm">Nenhum produto disponível ainda.</div>
+                    return (
+                        <Link 
+                            href={`/loja/${prod.id}`} 
+                            key={prod.id}
+                            className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden group active:scale-95 transition hover:border-zinc-700 flex flex-col relative"
+                        >
+                            {/* TAG VISUAL */}
+                            {prod.tagLabel && (
+                                <div className={`absolute top-3 left-3 z-10 px-3 py-1 rounded text-[9px] font-black uppercase border shadow-xl ${getTagColorClass(prod.tagColor)} ${prod.tagEffect === 'pulse' ? 'animate-pulse' : ''}`}>
+                                    {prod.tagLabel}
+                                </div>
+                            )}
+
+                            {/* IMAGEM */}
+                            <div className="relative h-48 bg-black w-full overflow-hidden">
+                                {prod.img ? (
+                                    <img 
+                                        src={prod.img} 
+                                        alt={prod.nome} 
+                                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition duration-500"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-zinc-700">
+                                        <ShoppingBag size={32}/>
+                                    </div>
+                                )}
+                                
+                                {/* BADGE DE ESTOQUE BAIXO */}
+                                {estoqueTotal > 0 && estoqueTotal < 5 && (
+                                    <div className="absolute bottom-2 right-2 bg-orange-500/90 text-white text-[8px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-lg backdrop-blur-sm">
+                                        <AlertCircle size={10}/> Restam {estoqueTotal}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* INFO */}
+                            <div className="p-4 flex flex-col gap-2 flex-1">
+                                <div className="flex justify-between items-start">
+                                    <h3 className="text-sm font-black text-white leading-tight line-clamp-2">{prod.nome}</h3>
+                                </div>
+                                
+                                <div className="mt-auto pt-2 flex items-end justify-between">
+                                    <div>
+                                        {prod.precoAntigo && prod.precoAntigo > prod.preco && (
+                                            <p className="text-[10px] text-zinc-500 line-through font-bold">R$ {Number(prod.precoAntigo).toFixed(2)}</p>
+                                        )}
+                                        <p className="text-xl font-black text-emerald-400">R$ {Number(prod.preco).toFixed(2)}</p>
+                                    </div>
+                                    
+                                    {estoqueTotal > 0 ? (
+                                        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-black transition">
+                                            <ShoppingBag size={16}/>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[10px] font-black uppercase text-red-500 border border-red-500/30 px-2 py-1 rounded bg-red-500/10">
+                                            Esgotado
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </Link>
+                    );
+                })}
+            </div>
         )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {produtosComEstoque.map((p: any) => {
-            const emEstoque = Number(p.estoqueTotal || 0) > 0;
-
-            return (
-              <button
-                key={p.id}
-                onClick={() => handleOpenProduto(p)}
-                className="text-left bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition group"
-              >
-                <div className="relative h-44 bg-black overflow-hidden">
-                  <img
-                    src={p.img}
-                    className="w-full h-full object-cover opacity-95 group-hover:scale-[1.02] transition"
-                  />
-
-                  {!!p.tagLabel && (
-                    <div
-                      className={`absolute top-3 left-3 px-3 py-1 rounded text-white text-[10px] font-black uppercase ${getTagColorClass(
-                        p.tagColor
-                      )} ${p.tagEffect === "pulse" ? "animate-pulse" : ""}`}
-                    >
-                      {p.tagLabel}
-                    </div>
-                  )}
-
-                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                    <span className="px-2 py-1 rounded bg-black/60 border border-white/10 text-[10px] font-bold uppercase text-zinc-200 flex items-center gap-1">
-                      <Package size={14} /> {Number(p.estoqueTotal || 0)}
-                    </span>
-                    <span className="px-2 py-1 rounded bg-black/60 border border-white/10 text-[10px] font-bold uppercase text-zinc-200 flex items-center gap-1">
-                      <MousePointer2 size={14} /> {Number(p.cliques || 0)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-black text-white">{p.nome}</h3>
-                    <span className="text-[10px] font-bold uppercase text-zinc-500">{p.categoria}</span>
-                  </div>
-
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-emerald-400 font-black text-lg">
-                      R$ {Number(p.preco || 0).toFixed(2)}
-                    </span>
-                    {!!p.precoAntigo && Number(p.precoAntigo) > 0 && (
-                      <span className="text-zinc-500 text-xs line-through font-bold">
-                        R$ {Number(p.precoAntigo).toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-[10px] font-bold uppercase">
-                    {emEstoque ? (
-                      <span className="text-emerald-500">Em estoque</span>
-                    ) : (
-                      <span className="text-red-500">Esgotado</span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </main>
 
-      {openProduto && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-zinc-950 w-full max-w-3xl rounded-2xl border border-zinc-800 p-6 space-y-6 my-10 shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg overflow-hidden bg-black border border-zinc-800">
-                  <img src={openProduto.img} className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <h2 className="font-black text-white text-lg">{openProduto.nome}</h2>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase">
-                    {openProduto.categoria} • {openProduto.lote || "Lote"}
-                  </p>
-                </div>
+      {/* BANNER PROMOCIONAL XP (INTEGRAÇÃO COM CONQUISTAS/FIDELIDADE) */}
+      <div className="fixed bottom-20 left-0 w-full px-6 pointer-events-none">
+          <div className="bg-gradient-to-r from-yellow-600/90 to-yellow-800/90 backdrop-blur-md p-3 rounded-xl border border-yellow-500/30 shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-10 duration-700 pointer-events-auto">
+              <div className="bg-black/20 p-2 rounded-lg text-yellow-200"><Zap size={18}/></div>
+              <div className="flex-1">
+                  <p className="text-xs font-bold text-white uppercase">Ganhe XP em compras!</p>
+                  <p className="text-[10px] text-yellow-100">Cada R$ 1,00 = 10 XP no Shark Card.</p>
               </div>
-
-              <button
-                onClick={closeModal}
-                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white"
-              >
-                <X size={22} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <div className="h-64 rounded-xl overflow-hidden bg-black border border-zinc-800">
-                  <img src={openProduto.img} className="w-full h-full object-cover" />
-                </div>
-
-                {!!openProduto.descricao && (
-                  <div className="bg-black/30 border border-white/5 rounded-xl p-4">
-                    <p className="text-sm text-zinc-200">{openProduto.descricao}</p>
-                  </div>
-                )}
-
-                {!!openProduto.caracteristicas?.length && (
-                  <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-2">
-                    <p className="text-[10px] font-black uppercase text-zinc-400">Características</p>
-                    <div className="flex flex-wrap gap-2">
-                      {openProduto.caracteristicas.map((c, idx) => (
-                        <span
-                          key={`${c}-${idx}`}
-                          className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-300"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-5">
-                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase">Preço</p>
-                      <p className="text-2xl font-black text-emerald-400">
-                        R$ {Number(openProduto.preco || 0).toFixed(2)}
-                      </p>
-                    </div>
-
-                    {!!openProduto.precoAntigo && Number(openProduto.precoAntigo) > 0 && (
-                      <p className="text-sm font-bold text-zinc-500 line-through">
-                        R$ {Number(openProduto.precoAntigo).toFixed(2)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 space-y-3">
-                  <p className="text-[10px] text-zinc-500 font-black uppercase">Selecione a variante</p>
-
-                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
-                    {(openProduto.variantes || []).map((v) => {
-                      const active = v.id === selectedVariantId;
-                      const stock = Number(v.estoque || 0);
-
-                      return (
-                        <button
-                          key={v.id}
-                          onClick={() => {
-                            setSelectedVariantId(v.id);
-                            setQtd(1);
-                          }}
-                          className={`flex items-center justify-between p-3 rounded-lg border text-left transition ${
-                            active
-                              ? "bg-emerald-600/10 border-emerald-500 text-white"
-                              : "bg-black/30 border-zinc-800 text-zinc-300 hover:border-zinc-700"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black uppercase bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
-                              {v.tamanho}
-                            </span>
-                            <span className="text-xs font-bold">{v.cor}</span>
-                          </div>
-                          <span className={`text-xs font-black ${stock > 0 ? "text-emerald-400" : "text-red-500"}`}>
-                            {stock} un
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {!openProduto.variantes?.length && (
-                    <p className="text-xs text-zinc-500">Produto sem variantes cadastradas.</p>
-                  )}
-                </div>
-
-                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-zinc-500 font-black uppercase">Quantidade</p>
-                    <p className="text-[10px] text-zinc-500 font-bold uppercase">
-                      Estoque variante: {selectedVariantStock}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setQtd((q) => Math.max(1, q - 1))}
-                      className="w-10 h-10 rounded-lg bg-black/30 border border-zinc-800 hover:border-zinc-700 transition font-black"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      value={qtd}
-                      min={1}
-                      max={Math.max(1, selectedVariantStock)}
-                      onChange={(e) => setQtd(Number(e.target.value || 1))}
-                      className="flex-1 h-10 rounded-lg bg-black/30 border border-zinc-800 px-3 text-white font-bold outline-none focus:border-emerald-500"
-                    />
-                    <button
-                      onClick={() => setQtd((q) => Math.min(Math.max(1, selectedVariantStock), q + 1))}
-                      className="w-10 h-10 rounded-lg bg-black/30 border border-zinc-800 hover:border-zinc-700 transition font-black"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={addToCart}
-                    disabled={!selectedVariant || selectedVariantStock <= 0}
-                    className={`w-full py-4 rounded-xl font-black text-xs uppercase transition flex items-center justify-center gap-2 ${
-                      !selectedVariant || selectedVariantStock <= 0
-                        ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                        : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20"
-                    }`}
-                  >
-                    <Check size={18} /> Adicionar ao carrinho
-                  </button>
-
-                  <p className="text-[10px] text-zinc-500">
-                    O clique é gravado com increment no Firestore (contador atômico).
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+      </div>
+
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 }

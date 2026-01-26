@@ -8,15 +8,15 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase"; 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
 
 // --- TIPAGEM ---
 export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master";
 
-export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused";
+// 🦈 STATUS CORRIGIDOS
+export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused" | "bloqueado";
 
-// 🦈 Interface Stats (Conquistas)
 export interface UserStats {
     loginCount?: number;
     postsCount?: number;
@@ -30,16 +30,16 @@ export interface UserStats {
     gymStreak?: number;
     arenaMatches?: number;
     arenaWins?: number;
-    arenaLosses?: number; // 🦈 NOVO: Derrotas
+    arenaLosses?: number;
     arenaLoseStreak?: number;
     storeSpent?: number;
-    albumCollected?: number; // 🦈 NOVO: Figurinhas
+    albumCollected?: number;
     storeItemsCount?: number;
     eventsAttended?: number;
     eventsPromo?: number;
     eventsAcademic?: number;
     solidarityCount?: number;
-    accountCreated?: number; // Importante para "Primeiro Mergulho"
+    accountCreated?: number;
     [key: string]: number | undefined; 
 }
 
@@ -50,13 +50,13 @@ export interface User {
   idade?: number;
   cidadeOrigem?: string;
   foto: string;
-  role: UserRole | string; // Allow string fallback
+  role: UserRole | string;
   
-  // 🦈 CONTROLE DE ACESSO (CORREÇÃO AQUI)
+  // Controle
   status?: UserStatus;
-  saved_role?: string; // Para restaurar cargo após modo convidado
+  saved_role?: string;
   
-  // Gamification & Stats
+  // Gamification
   level?: number;
   xp?: number;
   heroPower?: number;
@@ -64,7 +64,7 @@ export interface User {
   stats?: UserStats; 
   sharkCoins?: number;
   
-  // Opcionais
+  // Dados
   matricula?: string;
   turma?: string;
   handle?: string;
@@ -82,10 +82,11 @@ export interface User {
   apelido?: string;
   idadePublica?: boolean;
 
-  // Visuais
+  // Visual
   plano?: string;
   patente?: string;
   plano_badge?: string;
+  tier?: 'bicho' | 'atleta' | 'lenda'; 
 }
 
 interface AuthContextType {
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname(); 
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
@@ -114,7 +116,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
                 
-                // GATILHO DE PRIMEIRO LOGIN (CRÍTICO PARA CONQUISTAS)
+                // 🦈 1. BLOQUEIO (SEM LOOP):
+                // Se estiver bloqueado, forçamos a rota /banned.
+                // IMPORTANTE: NÃO setamos user=null aqui, senão o app acha que deslogou e causa loop.
+                // O router.replace segura o usuário na jaula.
+                if (userData.status === 'banned' || userData.status === 'bloqueado') {
+                    if (pathname !== '/banned') {
+                        router.replace('/banned'); 
+                    }
+                    setUser({ ...userData, uid: fbUser.uid }); // Mantém user para evitar logout loop
+                    setLoading(false);
+                    return; 
+                }
+
+                // 2. DESBLOQUEIO: Se estava na jaula e foi solto
+                if (userData.status !== 'banned' && userData.status !== 'bloqueado' && pathname === '/banned') {
+                    router.replace('/dashboard');
+                }
+
+                // 3. PRIMEIRO LOGIN (STATS)
                 if (!userData.stats?.accountCreated) {
                     await updateDoc(userRef, { 
                         "stats.accountCreated": 1,
@@ -122,19 +142,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     });
                 }
 
-                // 🦈 Garantindo que o UID da Auth sobrescreva
                 setUser({ ...userData, uid: fbUser.uid }); 
               } else {
+                // 4. CADASTRO INICIAL
                 const newUser: User = {
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
                   email: fbUser.email || "",
                   foto: fbUser.photoURL || "https://github.com/shadcn.png",
                   role: "guest",
-                  status: "ativo", // Padrão
+                  status: "ativo",
                   level: 1,
                   xp: 50,
                   stats: { accountCreated: 1, loginCount: 1 }, 
+                  plano: "Bicho Solto",
+                  tier: "bicho"
                 };
                 
                 await setDoc(userRef, newUser);
@@ -147,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return () => unsubDoc(); 
 
         } catch (error) {
-          console.error("Erro ao buscar user:", error);
+          console.error("Erro no Auth:", error);
           setUser(null);
           setLoading(false);
         }
@@ -158,19 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [pathname, router]);
 
   const loginGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const userDocRef = doc(db, "users", result.user.uid);
-      const userSnap = await getDoc(userDocRef);
-
-      if (userSnap.exists() && userSnap.data()?.matricula) {
-        router.push("/dashboard");
-      } else {
-        router.push("/cadastro");
-      }
+      await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Login falhou:", error);
     }
@@ -181,13 +195,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Logout realizado");
     }
     await signOut(auth);
+    setUser(null);
     router.push("/");
   };
 
   const checkPermission = (allowedRoles: string[]) => {
     if (!user) return false;
     if (user.role === "master") return true;
-    // Conversão segura caso role venha undefined
     return allowedRoles.includes(user.role as string);
   };
 
@@ -196,12 +210,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, data);
-      
-      const camposAlterados = Object.keys(data).join(", ");
-      await logActivity(user.uid, user.nome, "UPDATE", "Perfil", `Atualizou: [${camposAlterados}]`);
+      const campos = Object.keys(data).join(", ");
+      await logActivity(user.uid, user.nome, "UPDATE", "Perfil", `Atualizou: [${campos}]`);
     } catch (error) {
       console.error("Erro ao atualizar:", error);
-      await logActivity(user.uid, user.nome, "ERROR", "Perfil", "Falha ao atualizar");
     }
   };
 

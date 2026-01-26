@@ -1,320 +1,328 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Trophy, 
-  Swords, 
-  Heart, 
-  CheckCircle, 
-  HelpCircle, 
-  MapPin, 
-  Calendar,
-  Gamepad2,
-  Loader2
+  MapPin, Calendar, Loader2, Target, Users, Heart, 
+  CheckCircle, ChevronRight, ChevronLeft, ShoppingBag, 
+  Star, Wallet, Dumbbell, Medal, ExternalLink
 } from 'lucide-react';
-
-// ✅ Caminho relativo correto (Volta 2 pastas)
 import { useAuth } from '../../context/AuthContext'; 
 import Link from 'next/link';
-
-// ✅ CORREÇÃO AQUI: Aspas duplas ou simples, mas tem que ter!
+import { useRouter } from 'next/navigation';
 import { db } from '../../lib/firebase'; 
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { 
+    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot 
+} from 'firebase/firestore';
 
-// ... resto do código continua igual
-// --- TIPAGEM ---
+// --- TIPAGEM BASEADA NO SEU PRINT ---
 interface Evento {
   id: string;
-  title: string;
-  category: 'Festa' | 'Esporte' | 'Acadêmico';
-  lote: 'Promocional' | '1º Lote' | '2º Lote' | 'Esgotado' | 'Gratuito';
-  date: string;
-  location: string;
-  image: string;
-  likes: number;
-  going: number;
-  userInteraction: 'like' | 'going' | 'maybe' | null;
+  titulo: string;
+  data: string;
+  local: string;
+  imagem: string; // ✅ Corrigido conforme print
+  tipo: string;
+  likesList: string[]; // ✅ Corrigido conforme print
+  participantes: string[]; // ✅ Corrigido conforme print
+  imagePositionY?: number;
 }
 
-// --- SUB-COMPONENTE INTERNO (CARD DARK - MANTIDO IGUAL) ---
-const EventCardItem = ({ evt }: { evt: Evento }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [interaction, setInteraction] = useState(evt.userInteraction);
-  const [goingCount, setGoingCount] = useState(evt.going);
+interface Produto {
+    id: string;
+    nome: string;
+    preco: string | number;
+    img: string; 
+    likes: string[];
+}
 
-  // Cores das Badges (MANTIDAS)
-  const getCategoryColor = (cat: string) => {
-    switch(cat) {
-      case 'Festa': return 'bg-purple-600';
-      case 'Esporte': return 'bg-orange-500';
-      case 'Acadêmico': return 'bg-cyan-600';
-      default: return 'bg-gray-600';
-    }
-  };
-
-  const getLoteColor = (lote: string) => {
-    switch(lote) {
-      case 'Promocional': return 'bg-green-500';
-      case '1º Lote': return 'bg-blue-500';
-      case '2º Lote': return 'bg-yellow-500';
-      case 'Esgotado': return 'bg-red-600';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const handleTogglePresence = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-
-    const isJoining = interaction !== 'going';
-    setInteraction(isJoining ? 'going' : null);
-    setGoingCount(prev => isJoining ? prev + 1 : prev - 1);
-    
-    // TODO: Aqui a gente chama o Firebase para salvar a presença de verdade no futuro
-    
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 600);
-  };
+// --- CARD EVENTO ---
+const EventCardItem = ({ evt, userId, onToggleLike }: any) => {
+  const isLiked = evt.likesList?.includes(userId);
+  const isGoing = evt.participantes?.includes(userId);
 
   return (
-    <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800 flex flex-col">
-      <div className="relative h-48 w-full">
-        <img src={evt.image} alt={evt.title} className="w-full h-full object-cover opacity-90" />
-        <span className={`absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-md uppercase tracking-wide border border-white/20 ${getCategoryColor(evt.category)}`}>{evt.category}</span>
-        <span className={`absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-md uppercase tracking-wide border border-white/20 ${getLoteColor(evt.lote)}`}>{evt.lote}</span>
-        <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-gray-900 via-gray-900/60 to-transparent p-4 pt-10">
-          <p className="text-white font-bold text-sm flex items-center gap-2"><Calendar className="h-4 w-4 text-orange-400" /> {evt.date}</p>
-        </div>
-      </div>
-      <div className="p-4 flex flex-col gap-3">
+    <div className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col snap-center relative h-[450px]">
+      <Link href={`/eventos/${evt.id}`} className="relative h-64 w-full bg-black block group">
+        {evt.imagem ? (
+            <img 
+                src={evt.imagem} 
+                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition duration-500" 
+                style={{ objectPosition: `50% ${evt.imagePositionY || 50}%` }} 
+            />
+        ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-700"><Calendar size={48}/></div>
+        )}
+        <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-black text-white uppercase bg-black/60 backdrop-blur-md border border-white/10">{evt.tipo || 'Geral'}</span>
+      </Link>
+      
+      <div className="p-6 flex flex-col justify-between flex-1">
         <div>
-          <h3 className="font-bold text-xl text-white leading-tight mb-1">{evt.title}</h3>
-          <p className="text-gray-400 text-sm flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {evt.location}</p>
-        </div>
-        <div className="h-px w-full bg-gray-800" />
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex gap-3">
-            <button className="flex flex-col items-center gap-1 group">
-              <div className={`p-2.5 rounded-full transition-colors ${evt.userInteraction === 'like' ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-500 hover:bg-red-500/20 hover:text-red-500'}`}><Heart className={`h-5 w-5 ${evt.userInteraction === 'like' ? 'fill-current' : ''}`} /></div>
-              <span className="text-[10px] font-bold text-gray-500">{evt.likes}</span>
-            </button>
-            <button onClick={handleTogglePresence} disabled={isLoading} className="flex flex-col items-center gap-1 group relative">
-              <div className={`p-2.5 rounded-full transition-all duration-300 transform active:scale-95 ${interaction === 'going' ? 'bg-green-500/20 text-green-500 ring-1 ring-green-500/50' : 'bg-gray-800 text-gray-500 hover:bg-green-500/20 hover:text-green-500'}`}>
-                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle className={`h-5 w-5 ${interaction === 'going' ? 'fill-current' : ''}`} />}
-              </div>
-              <span className={`text-[10px] font-bold ${interaction === 'going' ? 'text-green-500' : 'text-gray-500'}`}>{goingCount} Vou</span>
-            </button>
-            <button className="flex flex-col items-center gap-1 group">
-              <div className="p-2.5 rounded-full bg-gray-800 text-gray-500 hover:bg-blue-500/20 hover:text-blue-500 transition-colors"><HelpCircle className="h-5 w-5" /></div>
-              <span className="text-[10px] font-bold text-gray-500">Talvez</span>
-            </button>
-          </div>
-          {goingCount > 0 && (
-            <div className="flex items-center -space-x-2.5">
-              {[...Array(Math.min(3, goingCount))].map((_, i) => (
-                <div key={i} className="h-7 w-7 rounded-full bg-gray-700 border-2 border-gray-900 overflow-hidden"><img src={`https://i.pravatar.cc/100?img=${15 + i}`} alt="User" className="w-full h-full object-cover" /></div>
-              ))}
-              {goingCount > 3 && <div className="h-7 w-7 rounded-full bg-gray-800 border-2 border-gray-900 flex items-center justify-center text-[9px] text-white font-bold">+{goingCount - 3}</div>}
+            <h3 className="font-black text-2xl text-white italic uppercase leading-tight line-clamp-2">{evt.titulo}</h3>
+            <div className="flex gap-4 mt-3 text-zinc-400 font-bold text-xs">
+                <p className="flex items-center gap-1.5"><Calendar size={14} className="text-emerald-500"/> {evt.data}</p>
+                {evt.local && <p className="flex items-center gap-1.5"><MapPin size={14} className="text-emerald-500"/> {evt.local}</p>}
             </div>
-          )}
+        </div>
+        <div className="flex items-center justify-between pt-4 border-t border-white/5">
+            <button 
+                onClick={(e) => { e.preventDefault(); onToggleLike(evt.id, isLiked); }} 
+                className={`flex items-center gap-2 font-bold text-xs transition ${isLiked ? 'text-red-500' : 'text-zinc-500 hover:text-white'}`}
+            >
+                <Heart size={20} className={isLiked ? 'fill-current' : ''}/> {evt.likesList?.length || 0}
+            </button>
+            
+            <Link href={`/eventos/${evt.id}`} className={`px-6 py-2 rounded-full font-black text-xs uppercase border transition flex items-center gap-2 ${isGoing ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-emerald-500'}`}>
+                {isGoing && <CheckCircle size={14}/>} {isGoing ? 'Confirmado' : 'Ver Detalhes'}
+            </Link>
         </div>
       </div>
     </div>
   );
 };
 
-// --- COMPONENTE PRINCIPAL (DASHBOARD) ---
+// --- CARD PRODUTO ---
+const ProductCard = ({ prod }: any) => (
+    <Link href={`/loja/${prod.id}`} className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col h-[450px] snap-center">
+        <div className="h-64 bg-black relative">
+            <img src={prod.img} className="w-full h-full object-cover" />
+        </div>
+        <div className="p-6 flex justify-between items-center">
+            <div>
+                <h3 className="font-black text-xl uppercase text-white">{prod.nome}</h3>
+                <p className="text-emerald-400 font-black text-lg">R$ {Number(prod.preco).toFixed(2)}</p>
+            </div>
+            <div className="bg-white text-black p-3 rounded-full"><ChevronRight/></div>
+        </div>
+    </Link>
+);
+
 export default function DashboardPage() {
   const { user, loading } = useAuth();
-  
-  // 🦈 ESTADO REAL DE EVENTOS
+  const router = useRouter();
+
   const [events, setEvents] = useState<Evento[]>([]);
-  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [parceiros, setParceiros] = useState<any[]>([]);
+  const [mensagens, setMensagens] = useState<any[]>([]);
+  const [treinos, setTreinos] = useState<string[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
-  // 🦈 BUSCA NO FIREBASE (MOTOR LIGADO)
+  const eventsScrollRef = useRef<HTMLDivElement>(null);
+  const productsScrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    async function fetchEvents() {
-        try {
-            const q = query(collection(db, "events"), orderBy("date", "asc"), limit(5));
-            const querySnapshot = await getDocs(q);
-            
-            const eventsData: Evento[] = [];
-            querySnapshot.forEach((doc) => {
-                // Aqui a gente converte os dados do banco pro formato da tela
-                eventsData.push({ id: doc.id, ...doc.data() } as Evento);
-            });
+    // 1. Eventos (Ordenado por Data)
+    const unsubEvents = onSnapshot(query(collection(db, "eventos"), orderBy("data", "asc"), limit(5)), (snap) => {
+        setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as Evento)));
+    });
 
-            // Se o banco estiver vazio, mantém o mock (pra não ficar feio na demo)
-            if (eventsData.length === 0) {
-                setEvents([
-                    {
-                      id: '1', title: 'Intermed - O Início', category: 'Festa', lote: '1º Lote', date: '20/10 - 22h', location: 'Arena Sharks', image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1000', likes: 124, going: 89, userInteraction: null
-                    },
-                    {
-                      id: '2', title: 'Sutura & Trauma', category: 'Acadêmico', lote: 'Esgotado', date: '22/10 - 14h', location: 'Auditório Principal', image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=1000', likes: 45, going: 200, userInteraction: 'going'
-                    }
-                ]);
-            } else {
-                setEvents(eventsData);
-            }
+    // 2. Produtos
+    const unsubProds = onSnapshot(query(collection(db, "produtos"), limit(5)), (snap) => {
+        setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Produto)));
+    });
 
-        } catch (error) {
-            console.error("Erro ao buscar eventos:", error);
-        } finally {
-            setLoadingEvents(false);
-        }
-    }
+    // 3. Parceiros (Ativos)
+    const unsubParceiros = onSnapshot(query(collection(db, "parceiros")), (snap) => {
+        setParceiros(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p:any) => p.status === 'active'));
+    });
 
-    fetchEvents();
+    // 4. Comunidade (Mensagens)
+    const unsubMsgs = onSnapshot(query(collection(db, "comunidade"), orderBy("timestamp", "desc"), limit(2)), (snap) => {
+        setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // 5. Treinos (Mosaico)
+    const unsubTreinos = onSnapshot(query(collection(db, "treinos"), limit(4)), (snap) => {
+        setTreinos(snap.docs.map(d => d.data().imagem).filter(Boolean));
+        setLoadingData(false);
+    });
+
+    return () => { unsubEvents(); unsubProds(); unsubParceiros(); unsubMsgs(); unsubTreinos(); };
   }, []);
 
-  if (loading || loadingEvents) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#050505]">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-10 w-10 text-orange-500 animate-spin" />
-          <p className="text-orange-500 font-bold animate-pulse">O Tubarão está acordando...</p>
-        </div>
-      </div>
-    );
-  }
+  const scroll = (ref: any, dir: 'left' | 'right') => { ref.current?.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' }); };
+  
+  const handleEventLike = async (id: string, state: boolean) => { 
+      if(!user) return; 
+      await updateDoc(doc(db,"eventos",id), { likesList: state ? arrayRemove(user.uid) : arrayUnion(user.uid) }); 
+  };
 
-  if (!user) return null;
+  const formatTime = (ts: any) => { 
+      if (!ts) return ""; 
+      const d = ts.toDate ? ts.toDate() : new Date(ts); 
+      const diff = Math.floor((new Date().getTime() - d.getTime()) / 60000); 
+      return diff < 60 ? `${diff}min` : `${Math.floor(diff/60)}h`; 
+  };
 
-  // DADOS VISUAIS (Mantidos do seu design)
-  const turmaRanking = 6; 
-  const matchesPlayed = user.dailyMatchesPlayed || 0;
-  const remainingMatches = Math.max(0, 5 - matchesPlayed);
-  // Usa a foto da turma cadastrada (T1.jpeg, T2.jpeg...) ou fallback
-  const classPhotoSrc = `/turma${user.turma?.replace('T', '')}.jpeg` || 'https://images.unsplash.com/photo-1523580494863-6f3031224c94';
+  if (loading || loadingData) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
+
+  // Safe User Access
+  const userData = user as any; 
 
   return (
-    <div className="flex flex-col gap-6 p-4 pb-24 max-w-md mx-auto w-full bg-[#050505] min-h-screen text-white">
+    <div className="flex flex-col gap-8 p-5 pb-32 max-w-md mx-auto w-full bg-[#050505] min-h-screen text-white font-sans selection:bg-emerald-500">
       
-      {/* --- Header --- */}
+      {/* HEADER */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">Fala, {user.nome.split(' ')[0]}! 🦈</h1>
-          <p className="text-gray-400 text-sm font-medium">Pronto para dominar o oceano?</p>
+          <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic">Fala, {userData?.nome?.split(' ')[0]}! 🦈</h1>
+          <p className="text-zinc-500 text-xs font-bold tracking-wide">Pronto para dominar?</p>
         </div>
-        {/* Agora clica na foto e vai pro Perfil */}
-        <Link href="/dashboard/perfil">
-            <div className="h-14 w-14 rounded-full bg-gray-900 flex items-center justify-center border-2 border-orange-500 p-0.5 shadow-sm overflow-hidden cursor-pointer active:scale-95 transition-transform">
-                <img src={user.foto} alt="Perfil" className="w-full h-full rounded-full object-cover" />
+        <Link href="/perfil">
+            <div className="h-12 w-12 rounded-full bg-zinc-900 border-2 border-emerald-500 p-0.5 overflow-hidden">
+                <img src={userData?.foto || "https://github.com/shadcn.png"} alt="Perfil" className="w-full h-full rounded-full object-cover" />
             </div>
         </Link>
       </div>
 
-      {/* --- GRID DE AÇÃO --- */}
+      {/* 1. CARTEIRINHA */}
+      <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group">
+          <img src={`/turma${userData?.turma?.replace('T','') || '1'}.jpeg`} className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-50 transition" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black p-6 flex flex-col justify-center">
+              <div className="flex items-center gap-2 mb-2">
+                  <Wallet size={16} className="text-emerald-500"/>
+                  <span className="text-[10px] font-bold uppercase text-emerald-500 bg-emerald-900/30 px-2 py-0.5 rounded">Sócio Ativo</span>
+              </div>
+              <h2 className="text-2xl font-black italic uppercase text-white">Carteirinha</h2>
+              <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest mt-1">Turma {userData?.turma || "Geral"}</p>
+          </div>
+      </Link>
+
+      {/* 2. SHARK ROUND & TREINOS */}
       <div className="grid grid-cols-2 gap-4">
-        
-        {/* BOTÃO GYMRATS -> Vai para /gym/details */}
-        <Link href="/gym/details" className="group relative h-48 w-full overflow-hidden rounded-2xl bg-gray-900 shadow-xl transition-all active:scale-95 border border-red-900/30">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-red-900/50 via-gray-900 to-black" />
-
-          {/* Conteúdo Centralizado */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-white z-10">
-            
-            {/* Badge Topo */}
-            <div className="absolute top-3 flex items-center gap-2 bg-red-900/30 px-3 py-1 rounded-full backdrop-blur-sm border border-red-500/20">
-              <Trophy className="h-3 w-3 text-red-400" />
-              <span className="font-bold tracking-wide uppercase text-[10px] text-red-100">GymRats</span>
-            </div>
-            
-            {/* Ranking Geral do Usuário */}
-            <div className="flex flex-col items-center mt-2">
-                <div className="text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                #{user.rankingPosition || '-'}
-                </div>
-                <span className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Geral</span>
-            </div>
-
-            {/* INFO DA TURMA (Com imagem dinâmica da T1, T2...) */}
-            <div className="mt-3 flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-red-500/30 shadow-lg backdrop-blur-sm">
-                <div className="h-6 w-6 rounded-full border border-red-500 overflow-hidden shrink-0">
-                    <img src={classPhotoSrc} alt="Turma" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')}/>
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-white">{turmaRanking}º</span>
-                    <span className="text-[8px] text-gray-300 uppercase">Turma</span>
-                </div>
-            </div>
-
-          </div>
-        </Link>
-
-        {/* BOTÃO ARENA GAMES -> Vai para /games */}
-        <Link href="/games" className="group relative h-48 w-full overflow-hidden rounded-2xl bg-gray-900 shadow-xl transition-all active:scale-95 border border-purple-500/30">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-purple-900/40 via-gray-900 to-black" />
+          <Link href="/sharkround" className="bg-emerald-600 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition relative overflow-hidden group">
+              <div className="absolute right-0 top-0 w-24 h-24 bg-white/10 rounded-full blur-xl -mr-6 -mt-6"></div>
+              <Target size={32} className="text-black relative z-10" />
+              <h3 className="font-black text-black text-xl uppercase italic leading-none relative z-10">Shark<br/>Round</h3>
+          </Link>
           
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-white z-10">
-            
-            {/* Badge Topo */}
-            <div className="absolute top-3 flex items-center gap-2 bg-purple-900/30 px-3 py-1 rounded-full backdrop-blur-sm border border-purple-500/20">
-              <Gamepad2 className="h-3 w-3 text-purple-500" />
-              <span className="font-bold tracking-wide uppercase text-[10px] text-purple-100">Arena</span>
-            </div>
+          <Link href="/treinos" className="bg-zinc-900 rounded-3xl h-44 overflow-hidden relative active:scale-95 transition border border-zinc-800 group">
+              <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 opacity-30 group-hover:opacity-50 transition">
+                  {treinos.length > 0 ? treinos.map((img, i) => <img key={i} src={img} className="w-full h-full object-cover border-[0.5px] border-black"/>) : (
+                      <>
+                        <div className="bg-zinc-800 w-full h-full"></div><div className="bg-zinc-700 w-full h-full"></div>
+                        <div className="bg-zinc-700 w-full h-full"></div><div className="bg-zinc-800 w-full h-full"></div>
+                      </>
+                  )}
+              </div>
+              <div className="absolute inset-0 flex flex-col justify-end p-5 bg-gradient-to-t from-black via-black/20 to-transparent">
+                  <Dumbbell size={24} className="text-orange-500 mb-1 drop-shadow-md"/>
+                  <h3 className="font-black text-white uppercase italic text-xl">Treinos</h3>
+              </div>
+          </Link>
+      </div>
 
-            {/* Level */}
-            <div className="flex flex-col items-center mt-2">
-              <span className="text-[9px] text-gray-400 uppercase tracking-wider font-bold">Level</span>
-              <span className="text-4xl font-black text-white drop-shadow-lg">{user.level || 1}</span>
-            </div>
+      {/* 3. CONQUISTAS & FIDELIDADE */}
+      <div className="grid grid-cols-2 gap-4">
+          <Link href="/conquistas" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition hover:border-zinc-700 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 opacity-10 p-2"><Medal size={80}/></div>
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-500 font-black text-xl">{userData?.level || 1}</div>
+              <h3 className="font-black text-white text-lg uppercase italic leading-none">Nível</h3>
+          </Link>
+          <Link href="/fidelidade" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition hover:border-zinc-700 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 opacity-10 p-2"><Star size={80} className="text-yellow-500"/></div>
+              <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 text-yellow-500 font-black"><Star size={20} className="fill-current"/></div>
+              <div>
+                  <h3 className="font-black text-white text-lg uppercase italic leading-none">Fidelidade</h3>
+                  <p className="text-[10px] text-zinc-500 mt-1 uppercase font-bold">{userData?.selos || 0} Selos</p>
+              </div>
+          </Link>
+      </div>
 
-            {/* Poder do Herói */}
-            <div className="mt-3 w-full px-4">
-               <div className="bg-black/40 w-full rounded-lg py-1 px-2 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
-                 <div className="flex flex-col items-center">
-                    <span className="text-[8px] text-purple-300/80 uppercase font-bold tracking-wider mb-px">Poder</span>
-                    <span className="text-lg font-bold text-purple-500 drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse leading-none">
-                    ⚡ {user.xp || 0}
-                    </span>
-                 </div>
-               </div>
-            </div>
+      {/* 4. CARROSSEL EVENTOS */}
+      {events.length > 0 && (
+          <div className="relative group/car">
+              <div className="flex items-center justify-between mb-4 px-1">
+                  <h2 className="text-sm font-black uppercase tracking-widest mb-0 flex items-center gap-2"><Calendar size={16} className="text-emerald-500"/> Eventos</h2>
+                  <div className="flex gap-2">
+                      <button onClick={() => scroll(eventsScrollRef, 'left')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronLeft size={16}/></button>
+                      <button onClick={() => scroll(eventsScrollRef, 'right')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronRight size={16}/></button>
+                  </div>
+              </div>
+              <div ref={eventsScrollRef} className="flex overflow-x-auto scrollbar-hide snap-x snap-mandatory gap-4">
+                  {events.map(evt => <EventCardItem key={evt.id} evt={evt} userId={userData?.uid} onToggleLike={handleEventLike} />)}
+              </div>
           </div>
-        </Link>
+      )}
+
+      {/* 5. PARCEIROS (Carrossel Box) */}
+      {parceiros.length > 0 && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-6 relative overflow-hidden">
+               <div className="flex items-center justify-between mb-5 relative z-10">
+                 <h2 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Users size={16} className="text-blue-500"/> Parceiros</h2>
+                 <Link href="/parceiros" className="text-[10px] text-blue-400 font-bold bg-blue-900/20 px-3 py-1.5 rounded-full hover:bg-blue-900/40 transition">Ver todos</Link>
+               </div>
+               <div className="flex overflow-x-auto gap-4 scrollbar-hide snap-x relative z-10 pb-2">
+                   {parceiros.map((p: any) => (
+                       <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[140px] h-36 bg-black rounded-2xl flex flex-col items-center justify-center gap-3 snap-start group active:scale-95 transition relative overflow-hidden border border-zinc-800">
+                           <div className="absolute inset-0">
+                               <img src={p.imgCapa || "/placeholder.jpg"} className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition"/>
+                               <div className="absolute inset-0 bg-black/40"/>
+                           </div>
+                           <div className="w-14 h-14 bg-black rounded-full border-2 border-zinc-600 flex items-center justify-center overflow-hidden shadow-xl relative z-10">
+                               <img src={p.imgLogo} className="w-full h-full object-cover"/>
+                           </div>
+                           <div className="text-center relative z-10 px-2 w-full">
+                               <h4 className="text-xs font-bold text-white truncate">{p.nome}</h4>
+                           </div>
+                       </Link>
+                   ))}
+               </div>
+          </div>
+      )}
+
+      {/* 6. CARROSSEL LOJA */}
+      {produtos.length > 0 && (
+          <div className="relative group/car">
+              <h2 className="text-sm font-black uppercase tracking-widest mb-4 px-1 flex items-center gap-2"><ShoppingBag size={16} className="text-purple-500"/> Lojinha</h2>
+              <div ref={productsScrollRef} className="flex overflow-x-auto scrollbar-hide snap-x snap-mandatory gap-4">
+                  {produtos.map(p => <ProductCard key={p.id} prod={p} />)}
+              </div>
+          </div>
+      )}
+
+      {/* 7. LIGAS UNITAU */}
+      <Link href="/ligas_unitau" className="bg-blue-900/10 border border-blue-500/20 p-5 rounded-2xl flex items-center justify-between active:scale-95 transition hover:bg-blue-900/20 shadow-lg">
+           <div className="flex items-center gap-4">
+               <div className="bg-blue-500 p-3 rounded-xl text-black shadow-[0_0_15px_rgba(59,130,246,0.4)]"><Users size={20}/></div>
+               <div>
+                   <h4 className="text-base font-black text-white uppercase italic">Ligas Acadêmicas</h4>
+                   <p className="text-xs text-zinc-400 font-medium">Conecte-se com a UNITAU.</p>
+               </div>
+           </div>
+           <ExternalLink size={20} className="text-blue-500"/>
+      </Link>
+
+      {/* 8. COMUNIDADE */}
+      <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural da Tuba</h2>
+            <Link href="/comunidade" className="text-[10px] font-bold text-emerald-500 hover:underline">Ver tudo</Link>
+          </div>
+          {mensagens.length > 0 ? mensagens.map((msg: any) => (
+              <Link href="/comunidade" key={msg.id} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex gap-4 items-start active:scale-95 transition hover:bg-zinc-800/80">
+                  <img src={msg.avatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-black object-cover border border-zinc-700"/>
+                  <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between w-full gap-2 mb-1">
+                          <span className="text-sm font-bold text-white truncate">{msg.autor}</span>
+                          <span className="text-[10px] text-zinc-500 whitespace-nowrap">{formatTime(msg.timestamp)}</span>
+                      </div>
+                      <p className="text-xs text-zinc-400 leading-relaxed line-clamp-1">{msg.texto}</p>
+                  </div>
+              </Link>
+          )) : (
+              <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl">
+                  <p className="text-zinc-600 text-xs italic">Nenhuma mensagem recente.</p>
+              </div>
+          )}
       </div>
 
-      {/* --- PARTIDAS RESTANTES (Mantido) --- */}
-      <div className="bg-gray-900 p-5 rounded-2xl shadow-lg border border-gray-800">
-        <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wide">
-                <Swords className="h-5 w-5 text-orange-500" />
-                Partidas Restantes
-            </h3>
-            <span className="text-[10px] font-bold text-gray-400 bg-gray-800 px-2 py-1 rounded border border-gray-700">Reseta às 00h</span>
-        </div>
-        
-        <div className="flex gap-1.5 mb-3">
-            {[...Array(5)].map((_, i) => (
-                <div 
-                    key={i} 
-                    className={`h-2.5 flex-1 rounded-full transition-all duration-500 ${
-                        i < matchesPlayed
-                        ? 'bg-gray-700'
-                        : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]'
-                    }`}
-                />
-            ))}
-        </div>
-        <p className="text-sm text-center text-gray-400 font-medium">
-            Você ainda pode jogar <strong className="text-orange-500 text-lg">{remainingMatches}</strong> partidas hoje!
-        </p>
-      </div>
-
-      {/* --- LISTA DE EVENTOS --- */}
-      <div>
-        <h2 className="text-lg font-extrabold text-white mb-4 px-1 flex items-center gap-2">
-          Próximos Eventos <span className="text-xs font-normal text-gray-300 bg-gray-800 px-2 py-0.5 rounded-full border border-gray-700">{events.length}</span>
-        </h2>
-        <div className="flex flex-col gap-5">
-          {events.map((evt) => (
-            <EventCardItem key={evt.id} evt={evt} />
-          ))}
-        </div>
-      </div>
+      <div className="h-6"></div>
+      
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 }
