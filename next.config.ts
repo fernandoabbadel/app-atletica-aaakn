@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 🚨 A CURA DO LOGIN: Desativa o Strict Mode.
+  // Isso impede que o React carregue o popup do Firebase duas vezes e trave o app.
+  reactStrictMode: false, 
+
   images: {
     remotePatterns: [
       {
@@ -12,15 +16,19 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'www.google.com', // 🚨 A CORREÇÃO: Libera o ícone "G" do botão de login
+        hostname: 'www.google.com', // 🚨 Ícone "G" do botão de login
       },
       {
         protocol: 'https',
-        hostname: 'i.pravatar.cc', // 🌟 Libera as fotos dos depoimentos da Landing Page
+        hostname: 'i.pravatar.cc', // 🌟 Fotos dos depoimentos
       },
       {
         protocol: 'https',
-        hostname: 'images.unsplash.com', // 🖼️ Mantive caso você use placeholders antigos
+        hostname: 'images.unsplash.com', // 🖼️ Placeholders
+      },
+      {
+        protocol: 'https',
+        hostname: 'github.com', // ✅ Adicionei este para garantir (fotos padrão do shadcn)
       }
     ],
   },

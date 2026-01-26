@@ -6,15 +6,16 @@ import {
   signOut, 
   User as FirebaseUser 
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase"; 
 import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
+// 🦈 IMPORTA SEU LOADING OFICIAL (O Tubarão)
+import LoadingScreen from "../app/loading";
 
 // --- TIPAGEM ---
-export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master";
-
-// 🦈 STATUS CORRIGIDOS
+// Adicionado 'vendas' que estava faltando
+export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master" | "vendas";
 export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused" | "bloqueado";
 
 export interface UserStats {
@@ -64,7 +65,7 @@ export interface User {
   stats?: UserStats; 
   sharkCoins?: number;
   
-  // Dados
+  // Dados Completos
   matricula?: string;
   turma?: string;
   handle?: string;
@@ -92,6 +93,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   checkPermission: (allowedRoles: string[]) => boolean;
@@ -103,38 +105,35 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [mounted, setMounted] = useState(false); // Controle de Hidratação
+  
   const router = useRouter();
   const pathname = usePathname(); 
 
+  // 1. PREVINE ERRO DE HIDRATAÇÃO (CLIENT-SIDE ONLY)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 2. MONITORAR AUTH & DADOS
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
       if (fbUser) {
         try {
           const userRef = doc(db, "users", fbUser.uid);
           
+          // Listener em tempo real dos dados do usuário
           const unsubDoc = onSnapshot(userRef, async (userSnap) => {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
                 
-                // 🦈 1. BLOQUEIO (SEM LOOP):
-                // Se estiver bloqueado, forçamos a rota /banned.
-                // IMPORTANTE: NÃO setamos user=null aqui, senão o app acha que deslogou e causa loop.
-                // O router.replace segura o usuário na jaula.
-                if (userData.status === 'banned' || userData.status === 'bloqueado') {
-                    if (pathname !== '/banned') {
-                        router.replace('/banned'); 
-                    }
-                    setUser({ ...userData, uid: fbUser.uid }); // Mantém user para evitar logout loop
-                    setLoading(false);
-                    return; 
-                }
+                // Atualiza User e Admin Status
+                setUser({ ...userData, uid: fbUser.uid });
+                // Define quem é Admin (inclui master, geral e gestor)
+                setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
 
-                // 2. DESBLOQUEIO: Se estava na jaula e foi solto
-                if (userData.status !== 'banned' && userData.status !== 'bloqueado' && pathname === '/banned') {
-                    router.replace('/dashboard');
-                }
-
-                // 3. PRIMEIRO LOGIN (STATS)
+                // Garante status de primeiro login
                 if (!userData.stats?.accountCreated) {
                     await updateDoc(userRef, { 
                         "stats.accountCreated": 1,
@@ -142,9 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     });
                 }
 
-                setUser({ ...userData, uid: fbUser.uid }); 
               } else {
-                // 4. CADASTRO INICIAL
+                // Cadastro Inicial (Se não existir no Firestore)
                 const newUser: User = {
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
@@ -161,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 await setDoc(userRef, newUser);
                 setUser(newUser);
+                setIsAdmin(false);
                 await logActivity(newUser.uid, newUser.nome, "CREATE", "Usuários", "Novo cadastro via Google");
               }
               setLoading(false);
@@ -171,16 +170,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
           console.error("Erro no Auth:", error);
           setUser(null);
+          setIsAdmin(false);
           setLoading(false);
         }
       } else {
+        // Deslogado
         setUser(null);
+        setIsAdmin(false);
         setLoading(false);
       }
     });
 
     return () => unsubscribe();
-  }, [pathname, router]);
+  }, []);
+
+  // 3. SEGURANÇA E REDIRECIONAMENTOS (Fallback do RouteGuard)
+  useEffect(() => {
+      if (loading || !user) return;
+
+      // BLOQUEIO: Se user for banned e não estiver na jaula
+      if ((user.status === 'banned' || user.status === 'bloqueado') && pathname !== '/banned') {
+          router.replace('/banned');
+      }
+
+      // DESBLOQUEIO: Se user for ativo e estiver na jaula
+      if (user.status !== 'banned' && user.status !== 'bloqueado' && pathname === '/banned') {
+          router.replace('/dashboard');
+      }
+  }, [user, pathname, loading, router]); 
 
   const loginGoogle = async () => {
     try {
@@ -196,6 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     await signOut(auth);
     setUser(null);
+    setIsAdmin(false);
     router.push("/");
   };
 
@@ -210,22 +228,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, data);
-      const campos = Object.keys(data).join(", ");
-      await logActivity(user.uid, user.nome, "UPDATE", "Perfil", `Atualizou: [${campos}]`);
     } catch (error) {
       console.error("Erro ao atualizar:", error);
     }
   };
 
+  // 🦈 RENDERIZAÇÃO BLINDADA: Evita erro de Hidratação
+  if (!mounted) return null;
+
+  // 🦈 LOADING UNIFICADO:
+  // Usa o mesmo LoadingScreen (Tubarão) do app/loading.tsx
+  if (loading) {
+      return <LoadingScreen />;
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, loginGoogle, logout, checkPermission, updateUser }}>
-      {loading ? (
-        <div className="h-screen w-full flex items-center justify-center bg-[#050505]">
-            <span className="text-emerald-500 font-bold animate-pulse text-xl tracking-widest uppercase">Carregando Cardume... 🦈</span>
-        </div>
-      ) : (
-        children
-      )}
+    <AuthContext.Provider value={{ user, loading, isAdmin, loginGoogle, logout, checkPermission, updateUser }}>
+      {children}
     </AuthContext.Provider>
   );
 }

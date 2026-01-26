@@ -1,218 +1,326 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Search, Shield, User, Briefcase, 
-  Dumbbell, Crown, Filter, Lock, AlertTriangle, 
-  CheckCircle, MoreVertical, ExternalLink
+  Dumbbell, Crown, Lock, Save, CheckSquare, 
+  LayoutList, Users, DollarSign, Ghost, Loader2,
+  AlertTriangle, Settings, Zap
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../../context/AuthContext";
+import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
+import { db } from "../../../lib/firebase";
+import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
-// --- TIPOS DE CARGO (HIERARQUIA) ---
-type UserRole = 'master' | 'admin' | 'treinador' | 'empresa' | 'usuario';
+// --- 1. DEFINIÇÃO DE CARGOS COMPLETA (Baseada no AuthContext) ---
+const ROLES = [
+    { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
+    
+    // Admins Específicos
+    { id: 'admin_geral', label: 'Admin Geral', icon: Shield, color: 'text-emerald-500' },
+    { id: 'admin_gestor', label: 'Gestor', icon: Settings, color: 'text-blue-500' },
+    { id: 'admin_treino', label: 'Adm Treino', icon: Zap, color: 'text-orange-600' },
+    
+    // Operacional
+    { id: 'vendas', label: 'Vendas', icon: DollarSign, color: 'text-yellow-400' },
+    { id: 'treinador', label: 'Coach', icon: Dumbbell, color: 'text-orange-500' },
+    { id: 'empresa', label: 'Empresa', icon: Briefcase, color: 'text-cyan-400' },
+    
+    // Base
+    { id: 'user', label: 'Membro', icon: User, color: 'text-zinc-400' },
+    { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' }
+];
 
-interface UserData {
-    id: string;
-    nome: string;
-    email: string;
-    foto: string;
-    role: UserRole;
-    status: 'ativo' | 'banido';
-    ultimoAcesso: string;
-}
+// --- 2. TODAS AS PÁGINAS DO SISTEMA ---
+const PAGES = [
+    // --- PÚBLICO / MEMBROS ---
+    { path: '/dashboard', label: '🏠 Dashboard' },
+    { path: '/carteirinha', label: '🪪 Carteirinha' },
+    { path: '/loja', label: '🛍️ Loja' },
+    { path: '/carrinho', label: '🛒 Carrinho' },
+    { path: '/eventos', label: '🎉 Eventos' },
+    { path: '/treinos', label: '💪 Treinos' },
+    { path: '/ligas', label: '🏆 Ligas' },
+    { path: '/ranking', label: '📊 Ranking' },
+    { path: '/album', label: '📸 Álbum' },
+    { path: '/comunidade', label: '💬 Comunidade' },
+    { path: '/conquistas', label: '🏅 Conquistas' },
+    { path: '/fidelidade', label: '💎 Fidelidade' },
+    { path: '/games', label: '🎮 Games' },
+    { path: '/guia', label: '📘 Guia' },
+    { path: '/gym', label: '🏋️ Gym / Check-in' },
+    { path: '/historico', label: '📜 Histórico' },
+    { path: '/parceiros', label: '🤝 Parceiros' },
+    { path: '/perfil', label: '👤 Perfil' },
+    { path: '/planos', label: '📝 Planos' },
+    { path: '/sharkround', label: '🦈 SharkRound' },
+    { path: '/empresa', label: '💼 Painel Empresa' },
 
-// --- MOCK DATA (SIMULAÇÃO DO BANCO) ---
-const INITIAL_USERS: UserData[] = [
-    { id: "1", nome: "Gabriel Presidente", email: "presida@aaakn.com", foto: "https://github.com/shadcn.png", role: "master", status: "ativo", ultimoAcesso: "Agora" },
-    { id: "2", nome: "Duda Diretoria", email: "duda@aaakn.com", foto: "https://i.pravatar.cc/150?u=a", role: "admin", status: "ativo", ultimoAcesso: "Há 2h" },
-    { id: "3", nome: "Coach Marcão", email: "marcao@gym.com", foto: "https://i.pravatar.cc/150?u=b", role: "treinador", status: "ativo", ultimoAcesso: "Ontem" },
-    { id: "4", nome: "Bar do Zé", email: "contato@bardoze.com", foto: "https://i.pravatar.cc/150?u=c", role: "empresa", status: "ativo", ultimoAcesso: "Há 5h" },
-    { id: "5", nome: "Lucas Calouro", email: "lucas@aluno.com", foto: "https://i.pravatar.cc/150?u=d", role: "usuario", status: "ativo", ultimoAcesso: "Há 10min" },
-    { id: "6", nome: "Ana Veterinária", email: "ana@aluno.com", foto: "https://i.pravatar.cc/150?u=e", role: "usuario", status: "ativo", ultimoAcesso: "Há 3 dias" },
+    // --- ADMINISTRAÇÃO (BACKOFFICE) ---
+    { path: '/admin', label: '👮 Admin Geral' },
+    { path: '/admin/permissoes', label: '🔑 Permissões (Crítico)' },
+    { path: '/admin/usuarios', label: '👥 Usuários' },
+    { path: '/admin/financeiro', label: '💰 Financeiro' },
+    { path: '/admin/album', label: '📷 Adm Álbum' },
+    { path: '/admin/carteirinha', label: '🪪 Adm Carteirinha' },
+    { path: '/admin/comunidade', label: '💬 Adm Comunidade' },
+    { path: '/admin/configuracoes', label: '⚙️ Configurações' },
+    { path: '/admin/conquistas', label: '🏅 Adm Conquistas' },
+    { path: '/admin/denuncias', label: '🚨 Denúncias' },
+    { path: '/admin/eventos', label: '📅 Adm Eventos' },
+    { path: '/admin/fidelidade', label: '💎 Adm Fidelidade' },
+    { path: '/admin/games', label: '🎮 Adm Games' },
+    { path: '/admin/guia', label: '📘 Adm Guia' },
+    { path: '/admin/gym', label: '🏋️ Adm Gym' },
+    { path: '/admin/historico', label: '📜 Adm Histórico' },
+    { path: '/admin/logs', label: '📝 Logs do Sistema' },
+    { path: '/admin/loja', label: '👕 Adm Loja' },
+    { path: '/admin/parceiros', label: '🤝 Adm Parceiros' },
+    { path: '/admin/planos', label: '📝 Adm Planos' },
+    { path: '/admin/sharkround', label: '🦈 Adm SharkRound' },
+    { path: '/admin/treinos', label: '💪 Adm Treinos' },
 ];
 
 export default function AdminPermissoesPage() {
-  const { user, checkPermission } = useAuth(); // Pega o usuário logado
+  const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
 
-  // Estados
-  const [users, setUsers] = useState<UserData[]>(INITIAL_USERS);
-  const [filterRole, setFilterRole] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<'users' | 'matrix'>('matrix');
+  const [loading, setLoading] = useState(true);
+  const [usersList, setUsersList] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
+  const [savingMatrix, setSavingMatrix] = useState(false);
 
-  // Permissão de Segurança: Só MASTER pode editar
+  // Segurança local
   const isMaster = checkPermission(["master"]);
 
-  // --- LÓGICA DE FILTRO ---
-  const filteredUsers = users.filter(u => {
-      const matchesSearch = u.nome.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRole = filterRole === "all" ? true : 
-                          filterRole === "staff" ? ["master", "admin", "treinador"].includes(u.role) :
-                          u.role === filterRole;
-      return matchesSearch && matchesRole;
-  });
-
-  // --- HANDLERS ---
-  const handleRoleChange = (userId: string, newRole: UserRole) => {
-      if (!isMaster) {
-          addToast("Apenas o MASTER pode promover usuários!", "error");
+  useEffect(() => {
+      if (!isMaster && !loading) {
+          router.push('/dashboard');
           return;
       }
-      
-      // Simulação de update
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      
-      const feedbackMsg = newRole === 'admin' ? "Novo General promovido! 🛡️" :
-                          newRole === 'treinador' ? "Treinador escalado! 💪" :
-                          newRole === 'empresa' ? "Conta Empresarial ativada! 💼" :
-                          "Permissões atualizadas.";
-      
-      addToast(feedbackMsg, "success");
-  };
 
-  // Helper de Cores e Ícones
-  const getRoleBadge = (role: UserRole) => {
-      switch(role) {
-          case 'master': return { color: "text-red-500 bg-red-500/10 border-red-500/20", icon: Crown, label: "MASTER" };
-          case 'admin': return { color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20", icon: Shield, label: "ADMIN" };
-          case 'treinador': return { color: "text-orange-500 bg-orange-500/10 border-orange-500/20", icon: Dumbbell, label: "COACH" };
-          case 'empresa': return { color: "text-blue-400 bg-blue-500/10 border-blue-500/20", icon: Briefcase, label: "EMPRESA" };
-          default: return { color: "text-zinc-400 bg-zinc-800 border-zinc-700", icon: User, label: "MEMBRO" };
+      const fetchData = async () => {
+          try {
+              // 1. Puxa Usuários
+              const snapUsers = await getDocs(collection(db, "users"));
+              setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() })));
+
+              // 2. Puxa Matriz
+              const docRef = doc(db, "settings", "permissions");
+              const docSnap = await getDoc(docRef);
+              
+              if (docSnap.exists()) {
+                  setPermissionMatrix(docSnap.data() as Record<string, string[]>);
+              } else {
+                  const defaultMatrix: Record<string, string[]> = {};
+                  PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
+                  setPermissionMatrix(defaultMatrix);
+              }
+
+          } catch (e) {
+              console.error(e);
+              addToast("Erro ao carregar dados.", "error");
+          } finally {
+              setLoading(false);
+          }
+      };
+
+      if (isMaster) fetchData();
+  }, [isMaster, loading, router, addToast]);
+
+  const handleUpdateRole = async (userId: string, newRole: string) => {
+      try {
+          await updateDoc(doc(db, "users", userId), { role: newRole });
+          setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+          addToast(`Cargo atualizado para ${newRole.toUpperCase()}`, "success");
+      } catch (e) {
+          addToast("Erro ao atualizar cargo.", "error");
       }
   };
 
+  const filteredUsers = usersList.filter(u => 
+      (u.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (u.email || "").toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const togglePermission = (path: string, roleId: string) => {
+      setPermissionMatrix(prev => {
+          const currentRoles = prev[path] || [];
+          const hasAccess = currentRoles.includes(roleId);
+          let newRoles;
+          if (hasAccess) newRoles = currentRoles.filter(r => r !== roleId);
+          else newRoles = [...currentRoles, roleId];
+          return { ...prev, [path]: newRoles };
+      });
+  };
+
+  const saveMatrix = async () => {
+      setSavingMatrix(true);
+      try {
+          await setDoc(doc(db, "settings", "permissions"), permissionMatrix);
+          addToast("Matriz de acesso salva e aplicada!", "success");
+      } catch (e) {
+          addToast("Erro ao salvar matriz.", "error");
+      } finally {
+          setSavingMatrix(false);
+      }
+  };
+
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
+  if (!isMaster) return null;
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-20 font-sans selection:bg-red-500">
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* HEADER PERIGOSO */}
-      <header className="p-6 sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-red-900/30 flex justify-between items-center shadow-lg shadow-red-900/5">
-        <div className="flex items-center gap-4">
-          <Link href="/admin" className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 border border-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <div>
-              <h1 className="text-xl font-black uppercase flex items-center gap-2 text-white">
-                  <Lock size={20} className="text-red-500" /> Gestão de Acesso
-              </h1>
-              <p className="text-[11px] text-zinc-500 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Área Sensível
-              </p>
+      {/* HEADER */}
+      <header className="p-6 border-b border-zinc-800 bg-[#09090b]/95 backdrop-blur sticky top-0 z-30 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+              <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20}/></Link>
+              <div>
+                  <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-red-600"/> Controle de Acesso</h1>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Acesso Exclusivo Master</p>
+              </div>
           </div>
-        </div>
-        
-        {!isMaster && (
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-zinc-800 rounded-lg border border-zinc-700">
-                <AlertTriangle size={14} className="text-yellow-500"/>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase">Modo Visualização (Somente Master edita)</span>
-            </div>
-        )}
       </header>
 
-      <main className="p-6 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* CONTEÚDO */}
+      <div className="p-6 max-w-[90vw] mx-auto overflow-hidden">
           
-          {/* FILTROS E BUSCA */}
-          <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-8">
-              {/* Abas */}
-              <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 w-full md:w-auto overflow-x-auto">
-                  {[
-                      { id: 'all', label: 'Todos' },
-                      { id: 'staff', label: 'Staff & Diretoria' },
-                      { id: 'empresa', label: 'Empresas' },
-                      { id: 'usuario', label: 'Membros' }
-                  ].map(tab => (
-                      <button 
-                          key={tab.id}
-                          onClick={() => setFilterRole(tab.id)}
-                          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap transition ${filterRole === tab.id ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
-                      >
-                          {tab.label}
-                      </button>
-                  ))}
-              </div>
-
-              {/* Busca */}
-              <div className="relative w-full md:w-64 group">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-500 transition"/>
-                  <input 
-                      type="text" 
-                      placeholder="Buscar usuário..." 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-500 transition"
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                  />
+          {/* SELETOR DE ABAS */}
+          <div className="flex justify-center mb-8">
+              <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+                  <button onClick={() => setActiveTab('matrix')} className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase transition ${activeTab === 'matrix' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><LayoutList size={14}/> Matriz de Acesso</button>
+                  <button onClick={() => setActiveTab('users')} className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase transition ${activeTab === 'users' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><Users size={14}/> Gerenciar Usuários</button>
               </div>
           </div>
 
-          {/* LISTA DE USUÁRIOS */}
-          <div className="space-y-3">
-              {filteredUsers.map((u) => {
-                  const badge = getRoleBadge(u.role);
-                  const BadgeIcon = badge.icon;
+          {/* === MATRIZ === */}
+          {activeTab === 'matrix' && (
+              <div className="space-y-6 animate-in fade-in">
+                  <div className="bg-yellow-900/20 border border-yellow-600/30 p-4 rounded-xl flex items-start gap-3">
+                      <AlertTriangle className="text-yellow-500 shrink-0" size={20}/>
+                      <div>
+                          <h3 className="text-sm font-bold text-yellow-500 uppercase">Atenção, Master!</h3>
+                          <p className="text-xs text-zinc-400 mt-1">
+                              Novos cargos detectados! Verifique as permissões para <strong>Gestor</strong> e <strong>Adm Treino</strong>.
+                          </p>
+                      </div>
+                  </div>
 
-                  return (
-                      <div key={u.id} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-4 hover:border-zinc-700 transition group">
-                          
-                          {/* Avatar & Info */}
-                          <div className="flex items-center gap-4 flex-1 w-full">
-                              <div className="relative">
-                                  <img src={u.foto} className="w-12 h-12 rounded-full border-2 border-zinc-800 object-cover"/>
-                                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full bg-zinc-900 border border-zinc-800 ${badge.color.split(' ')[0]}`}>
-                                      <BadgeIcon size={10}/>
+                  <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-2xl">
+                      <table className="w-full text-left border-collapse">
+                          <thead>
+                              <tr className="bg-zinc-900 border-b border-zinc-800">
+                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 bg-zinc-900 z-10 min-w-[200px]">
+                                      Página / Rota
+                                  </th>
+                                  {ROLES.map(role => (
+                                      <th key={role.id} className="p-4 min-w-[100px] text-center bg-zinc-900/95 backdrop-blur">
+                                          <div className="flex flex-col items-center gap-1.5">
+                                              <div className={`p-2 rounded-full bg-black/50 ${role.color}`}>
+                                                  <role.icon size={16}/>
+                                              </div>
+                                              <span className={`text-[9px] font-black uppercase ${role.color}`}>{role.label}</span>
+                                          </div>
+                                      </th>
+                                  ))}
+                              </tr>
+                          </thead>
+                          <tbody className="bg-black">
+                              {PAGES.map((page, idx) => (
+                                  <tr key={page.path} className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''}`}>
+                                      <td className="p-4 text-xs font-bold text-white sticky left-0 bg-black group-hover:bg-zinc-900/30 transition z-10 border-r border-zinc-800/50">
+                                          <div className="flex flex-col">
+                                              <span className="text-sm">{page.label}</span>
+                                              <span className="text-[10px] text-zinc-600 font-mono mt-0.5">{page.path}</span>
+                                          </div>
+                                      </td>
+                                      {ROLES.map(role => {
+                                          const isAllowed = (permissionMatrix[page.path] || []).includes(role.id) || role.id === 'master';
+                                          return (
+                                              <td key={`${page.path}-${role.id}`} className="p-4 text-center">
+                                                  <button 
+                                                      onClick={() => togglePermission(page.path, role.id)}
+                                                      disabled={role.id === 'master'}
+                                                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all mx-auto ${isAllowed ? 'bg-emerald-500 text-black shadow-lg scale-100' : 'bg-zinc-900 text-zinc-700 border border-zinc-800 scale-90 grayscale'} ${role.id === 'master' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
+                                                  >
+                                                      {isAllowed ? <CheckSquare size={16} strokeWidth={3}/> : <Lock size={14}/>}
+                                                  </button>
+                                              </td>
+                                          );
+                                      })}
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+
+                  <div className="fixed bottom-6 right-6 z-50">
+                      <button 
+                          onClick={saveMatrix} 
+                          disabled={savingMatrix}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-8 rounded-full flex items-center gap-3 transition-all shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95 border-4 border-[#050505]"
+                      >
+                          {savingMatrix ? <Loader2 className="animate-spin"/> : <Save size={20}/>}
+                          SALVAR ALTERAÇÕES
+                      </button>
+                  </div>
+              </div>
+          )}
+
+          {/* === USUÁRIOS === */}
+          {activeTab === 'users' && (
+              <div className="space-y-6 animate-in fade-in">
+                  <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex items-center gap-2 sticky top-24 z-20 shadow-lg">
+                      <Search className="text-zinc-500" size={18}/>
+                      <input 
+                          type="text" 
+                          placeholder="Buscar usuário..." 
+                          className="bg-transparent outline-none text-sm text-white w-full placeholder:text-zinc-600"
+                          value={searchTerm}
+                          onChange={e => setSearchTerm(e.target.value)}
+                      />
+                  </div>
+
+                  <div className="grid gap-3 pb-20">
+                      {filteredUsers.map(u => (
+                          <div key={u.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 group hover:border-zinc-700 transition">
+                              <div className="flex items-center gap-4 w-full md:w-auto">
+                                  <img src={u.foto || "https://github.com/shadcn.png"} className="w-12 h-12 rounded-full bg-zinc-800 object-cover border-2 border-zinc-800"/>
+                                  <div>
+                                      <p className="font-bold text-sm text-white flex items-center gap-2">
+                                          {u.nome || "Sem Nome"}
+                                          {u.id === user?.uid && <span className="text-[9px] bg-emerald-500/20 text-emerald-500 px-2 rounded-full border border-emerald-500/30">VOCÊ</span>}
+                                      </p>
+                                      <p className="text-xs text-zinc-500">{u.email}</p>
                                   </div>
                               </div>
-                              <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                      <h3 className="font-bold text-white text-sm truncate">{u.nome}</h3>
-                                      <Link href={`/admin/usuarios/${u.id}`} className="text-zinc-600 hover:text-emerald-500 transition" title="Ver Perfil Completo">
-                                          <ExternalLink size={12}/>
-                                      </Link>
-                                  </div>
-                                  <p className="text-xs text-zinc-500 truncate">{u.email}</p>
-                              </div>
-                          </div>
 
-                          {/* Cargo Atual (Badge) */}
-                          <div className={`px-3 py-1 rounded-lg border flex items-center gap-2 ${badge.color} w-full md:w-auto justify-center`}>
-                              <span className="text-[10px] font-black uppercase tracking-wider">{badge.label}</span>
-                          </div>
-
-                          {/* Ações (Só MASTER vê os controles) */}
-                          {isMaster ? (
-                              <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 border-zinc-800 pt-3 md:pt-0 mt-2 md:mt-0">
+                              <div className="flex items-center gap-3 w-full md:w-auto bg-black p-1.5 rounded-lg border border-zinc-800">
+                                  <label className="text-[10px] text-zinc-500 uppercase font-bold pl-2">Cargo:</label>
                                   <select 
-                                      className="bg-black border border-zinc-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-emerald-500 cursor-pointer w-full md:w-auto"
-                                      value={u.role}
-                                      onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                                      disabled={u.id === (user as any)?.id} // Não pode mudar o próprio cargo aqui pra não se trancar fora
+                                      value={u.role || 'guest'} 
+                                      onChange={(e) => handleUpdateRole(u.id, e.target.value)}
+                                      className="bg-zinc-900 text-white text-xs rounded px-3 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer uppercase font-bold w-full md:w-40 border border-zinc-700"
+                                      disabled={u.id === user?.uid}
                                   >
-                                      <option value="usuario">Membro</option>
-                                      <option value="treinador">Treinador</option>
-                                      <option value="empresa">Empresa</option>
-                                      <option value="admin">Admin</option>
-                                      <option value="master">Master</option>
+                                      {ROLES.map(role => (
+                                          <option key={role.id} value={role.id}>{role.label}</option>
+                                      ))}
                                   </select>
                               </div>
-                          ) : (
-                              <div className="text-zinc-600 text-xs italic w-full md:w-auto text-center">
-                                  Sem permissão
-                              </div>
-                          )}
-                      </div>
-                  );
-              })}
-
-              {filteredUsers.length === 0 && (
-                  <div className="text-center py-12">
-                      <div className="bg-zinc-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-zinc-600">
-                          <Filter size={24}/>
-                      </div>
-                      <p className="text-zinc-500 text-sm font-bold uppercase">Nenhum usuário encontrado</p>
+                          </div>
+                      ))}
                   </div>
-              )}
-          </div>
-      </main>
+              </div>
+          )}
+
+      </div>
     </div>
   );
 }

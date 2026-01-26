@@ -4,13 +4,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Lock, ArrowRight, Upload, Plus, Trash2, Save, LogOut, 
   Image as ImageIcon, Layout, Edit3, Eye, Bell, 
-  Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Ticket, Users 
+  Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Tag, 
+  Loader2, Ticket
 } from 'lucide-react';
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
     collection, query, getDocs, updateDoc, doc, 
-    serverTimestamp, setDoc 
+    serverTimestamp, setDoc, addDoc 
 } from "firebase/firestore";
 
 // --- TIPAGEM ---
@@ -67,7 +68,7 @@ interface LigaData {
     eventos?: LeagueEvent[];
 }
 
-// --- HELPER PARA BASE64 (Para Upload de Imagens) ---
+// --- HELPER PARA BASE64 ---
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -98,7 +99,7 @@ export default function LigasAdminPage() {
   // --- MODAL DE BUSCA DE USUÁRIOS (ID 148) ---
   const [searchUserModal, setSearchUserModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [allUsers, setAllUsers] = useState<any[]>([]); // Cache local para busca rápida
+  const [allUsers, setAllUsers] = useState<any[]>([]); 
 
   // --- MODAL DE EVENTOS (ID 151) ---
   const [eventModal, setEventModal] = useState(false);
@@ -112,23 +113,18 @@ export default function LigasAdminPage() {
   useEffect(() => {
       const fetchData = async () => {
           try {
-              // Carrega Ligas para o Select de Login
               const snapLigas = await getDocs(collection(db, "ligas_config"));
               if (!snapLigas.empty) {
                   const lista = snapLigas.docs.map(d => ({ id: d.id, nome: d.data().nome }));
                   lista.sort((a, b) => a.nome.localeCompare(b.nome));
                   setLigasDisponiveis(lista);
               }
-
-              // Carrega Usuários para o Cache de Busca (Resolve ID 154 - Busca falhando)
-              // Como são poucos usuários, carregamos tudo uma vez para garantir que a busca funcione instantaneamente
               const snapUsers = await getDocs(collection(db, "users"));
               const usersList = snapUsers.docs.map(d => ({ id: d.id, ...d.data() }));
               setAllUsers(usersList);
-
           } catch (e) { 
               console.error(e);
-              addToast("Erro ao carregar dados iniciais.", "error"); 
+              addToast("Erro ao carregar dados.", "error"); 
           } finally { 
               setIsLoadingList(false); 
           }
@@ -136,7 +132,7 @@ export default function LigasAdminPage() {
       fetchData();
   }, []);
 
-  // 2. FUNÇÃO DE LOGIN NA LIGA
+  // 2. FUNÇÃO DE LOGIN
   const handleLogin = async () => {
       if (!selectedLigaId || !senhaInput) return addToast("Preencha todos os campos!", "error");
       setLoading(true);
@@ -146,7 +142,6 @@ export default function LigasAdminPage() {
           
           if (target && target.data().senha === senhaInput) {
               const data = target.data();
-              // Hidrata o estado com os dados do banco ou arrays vazios se não existirem
               setLigaData({ 
                   id: target.id, 
                   ...data, 
@@ -170,11 +165,11 @@ export default function LigasAdminPage() {
       }
   };
 
-  // 3. UPLOAD DE IMAGENS (Logo, Perguntas, Membros)
+  // 3. UPLOAD DE IMAGENS
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'pergunta' | 'membro', index?: number) => {
       const file = e.target.files?.[0];
       if (!file || !ligaData) return;
-      if (file.size > 2 * 1024 * 1024) return addToast("Máximo 2MB por imagem.", "error");
+      if (file.size > 2 * 1024 * 1024) return addToast("Máximo 2MB.", "error");
 
       try {
           const base64 = await fileToBase64(file);
@@ -191,30 +186,28 @@ export default function LigasAdminPage() {
           }
           addToast("Imagem carregada!", "success");
       } catch { 
-          addToast("Erro ao processar imagem.", "error"); 
+          addToast("Erro na imagem.", "error"); 
       }
   };
 
-  // --- LÓGICA DE MEMBROS (ID 148) ---
-  // Filtra usuários localmente para garantir que funcione mesmo sem índices complexos no Firebase
+  // --- MEMBROS ---
   const filteredUsers = searchTerm.length > 0 
       ? allUsers.filter(u => (u.nome || "").toLowerCase().includes(searchTerm.toLowerCase())) 
       : [];
 
   const addMemberFromSearch = (u: any) => {
       if (!ligaData) return;
-      // Cria o objeto membro com os dados reais do usuário
       const newMember: Member = { 
           id: u.id, 
           nome: u.nome || "Sem Nome", 
-          cargo: "Membro", // Cargo padrão, editável depois
+          cargo: "Membro", 
           foto: u.foto || "", 
           linkPerfil: `/perfil/${u.id}` 
       };
       setLigaData({ ...ligaData, membros: [...(ligaData.membros || []), newMember] });
       setSearchUserModal(false);
       setSearchTerm("");
-      addToast("Usuário adicionado! Defina o cargo dele.", "success");
+      addToast("Usuário adicionado! Defina o cargo.", "success");
   };
 
   const removeMember = (idx: number) => {
@@ -229,7 +222,7 @@ export default function LigasAdminPage() {
       setLigaData({ ...ligaData, membros: novos });
   };
 
-  // --- LÓGICA DE EVENTOS (ID 151) ---
+  // --- EVENTOS ---
   const handleOpenEventModal = (idx: number | null) => {
       if (idx !== null && ligaData?.eventos) {
           setCurrentEvent(ligaData.eventos[idx]);
@@ -256,7 +249,7 @@ export default function LigasAdminPage() {
   };
 
   const saveEventLocal = () => {
-      if (!ligaData || !currentEvent.titulo) return addToast("Título do evento é obrigatório!", "error");
+      if (!ligaData || !currentEvent.titulo) return addToast("Título obrigatório!", "error");
       const novosEventos = [...(ligaData.eventos || [])];
       const eventoSalvo = currentEvent as LeagueEvent;
       
@@ -267,54 +260,50 @@ export default function LigasAdminPage() {
       }
       setLigaData({ ...ligaData, eventos: novosEventos });
       setEventModal(false);
-      addToast("Evento salvo no rascunho. Clique em SALVAR TUDO para publicar.", "info");
+      addToast("Evento salvo no rascunho.", "info");
   };
 
-  // --- LÓGICA DE SALVAMENTO E SINCRONIA (ID 156) ---
+  // --- SALVAR TUDO E SINCRONIZAR ---
   const handleSaveAll = async () => {
       if (!ligaData) return;
-      if (ligaData.perguntas.length < 10) return addToast("Você precisa ter pelo menos 10 perguntas cadastradas.", "error");
+      if (ligaData.perguntas.length < 10) return addToast("Mínimo 10 perguntas necessárias.", "error");
       
       setLoading(true);
       try {
-          // 1. Atualiza a configuração interna da Liga
+          // 1. Atualiza Config Liga
           await updateDoc(doc(db, "ligas_config", ligaData.id), { ...ligaData });
 
-          // 2. SINCRONIA: Publica eventos na coleção global 'eventos'
+          // 2. Sincroniza Eventos
           if (ligaData.eventos && ligaData.eventos.length > 0) {
               const batchPromises = ligaData.eventos.map(async (ev) => {
-                  // Se o evento não tem ID global ainda, gera um
                   const eventId = ev.globalEventId || doc(collection(db, "eventos")).id;
                   ev.globalEventId = eventId;
-                  ev.linkEvento = `/eventos/${eventId}`; // Link direto para a página do evento
+                  ev.linkEvento = `/eventos/${eventId}`;
                   
-                  // Salva na coleção pública 'eventos' para aparecer no Admin Geral e no App
                   await setDoc(doc(db, "eventos", eventId), {
-                      titulo: `[${ligaData.sigla}] ${ev.titulo}`, // Adiciona tag da liga
+                      titulo: `[${ligaData.sigla}] ${ev.titulo}`,
                       data: ev.data,
                       hora: ev.hora,
                       local: ev.local,
-                      tipo: "Liga", // Força categoria Liga
+                      tipo: "Liga", 
                       destaque: ev.destaque,
                       imagem: ev.imagem || ligaData.logoBase64,
                       imagePositionY: ev.imagePositionY,
                       lotes: ev.lotes,
-                      descricao: ev.descricao,
+                      descricao: ev.descricao, // Agora tem descrição!
                       categoria: "Liga",
                       criadorId: ligaData.id,
                       criadorNome: ligaData.sigla,
                       status: "ativo",
-                      createdAt: serverTimestamp() // Importante para ordenação
+                      createdAt: serverTimestamp() 
                   }, { merge: true });
               });
               
               await Promise.all(batchPromises);
-              
-              // Salva novamente a liga para persistir os IDs globais gerados
               await updateDoc(doc(db, "ligas_config", ligaData.id), { eventos: ligaData.eventos });
           }
 
-          // 3. Notificação de Bizu (ID 145)
+          // 3. Notificação Bizu
           if (sendNotification && ligaData.bizu) {
               await addDoc(collection(db, "notifications"), {
                   title: `Novo Bizu da ${ligaData.sigla}! 🦈`,
@@ -327,10 +316,10 @@ export default function LigasAdminPage() {
               setSendNotification(false);
           }
 
-          addToast("Tudo salvo! Eventos sincronizados e bizu enviado.", "success");
+          addToast("Salvo e Sincronizado!", "success");
       } catch (e) { 
           console.error(e);
-          addToast("Erro ao salvar dados.", "error"); 
+          addToast("Erro ao salvar.", "error"); 
       } finally {
           setLoading(false);
       }
@@ -348,7 +337,6 @@ export default function LigasAdminPage() {
       setLigaData({ ...ligaData, perguntas: novas });
   };
 
-  // --- RENDERIZAÇÃO: TELA DE LOGIN ---
   if (!isLoggedIn) return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4 font-sans text-white">
           <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl space-y-4">
@@ -380,11 +368,9 @@ export default function LigasAdminPage() {
       </div>
   );
 
-  // --- RENDERIZAÇÃO: PAINEL ---
   return (
       <div className="min-h-screen bg-[#050505] text-white p-6 font-sans pb-32">
           
-          {/* HEADER */}
           <header className="flex flex-col gap-6 mb-8">
             <div className="flex justify-between items-center">
                 <div>
@@ -398,7 +384,6 @@ export default function LigasAdminPage() {
                 </button>
             </div>
 
-            {/* ABAS DE NAVEGAÇÃO */}
             <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 overflow-x-auto">
                 <button onClick={() => setActiveTab('visual')} className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold uppercase whitespace-nowrap transition ${activeTab === 'visual' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500'}`}>1. Informações</button>
                 <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold uppercase whitespace-nowrap transition ${activeTab === 'members' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500'}`}>2. Membros</button>
@@ -407,8 +392,6 @@ export default function LigasAdminPage() {
             </div>
           </header>
 
-          {/* CONTEÚDO DAS ABAS */}
-          
           {/* 1. VISUAL */}
           {activeTab === 'visual' && ligaData && (
               <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-6">
@@ -427,8 +410,6 @@ export default function LigasAdminPage() {
                       </div>
                   </div>
                   <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Descrição</label><textarea className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-sm h-24 focus:border-emerald-500 outline-none resize-none" value={ligaData.descricao} onChange={e => setLigaData({...ligaData, descricao: e.target.value})}/></div>
-                  
-                  {/* BIZU COM NOTIFICAÇÃO (ID 145) */}
                   <div className="bg-yellow-900/10 border border-yellow-500/20 p-4 rounded-xl">
                       <div className="flex justify-between items-center mb-2">
                           <label className="text-[10px] font-bold text-yellow-500 uppercase">Bizu da Semana</label>
@@ -443,7 +424,7 @@ export default function LigasAdminPage() {
               </div>
           )}
 
-          {/* 2. MEMBROS (ID 148 - Search) */}
+          {/* 2. MEMBROS */}
           {activeTab === 'members' && ligaData && (
               <div className="space-y-6">
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
@@ -466,7 +447,7 @@ export default function LigasAdminPage() {
               </div>
           )}
 
-          {/* 3. EVENTOS (ID 151 - Clone Admin) */}
+          {/* 3. EVENTOS */}
           {activeTab === 'events' && ligaData && (
               <div className="space-y-6">
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
@@ -494,7 +475,7 @@ export default function LigasAdminPage() {
               </div>
           )}
 
-          {/* 4. SHARK ROUND (Questões) */}
+          {/* 4. SHARK ROUND */}
           {activeTab === 'shark' && ligaData && (
               <div className="space-y-6">
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
@@ -547,7 +528,7 @@ export default function LigasAdminPage() {
               </div>
           )}
 
-          {/* MODAL EDITAR EVENTO (ID 151 - Completo) */}
+          {/* MODAL EDITAR EVENTO (ID 151 - Completo com Descrição) */}
           {eventModal && (
               <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto">
                   <div className="bg-zinc-950 w-full max-w-lg rounded-2xl border border-zinc-800 p-6 space-y-4 my-auto animate-in zoom-in-95">
@@ -566,6 +547,12 @@ export default function LigasAdminPage() {
                       </div>
                       <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
                       
+                      {/* 🔥 DESCRIÇÃO DO EVENTO (NOVO) */}
+                      <div>
+                          <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Descrição do Evento</label>
+                          <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" placeholder="Detalhes, regras, atrações..." value={currentEvent.descricao || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, descricao: e.target.value })} />
+                      </div>
+
                       {/* Gestão de Lotes */}
                       <div className="bg-black/40 border border-zinc-800 rounded-xl p-4">
                           <label className="text-xs text-zinc-500 font-bold uppercase mb-2 block">Lotes de Ingressos</label>

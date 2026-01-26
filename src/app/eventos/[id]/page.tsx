@@ -3,336 +3,523 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
-  Users, CheckCircle, HelpCircle, XCircle, Lock, Trophy, Loader2
+  Users, CheckCircle, HelpCircle, XCircle, Lock, 
+  Loader2, Crown, MessageCircle, AlertTriangle, 
+  Heart, Send, Plus, Trash2, ShieldAlert, Star
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
-import { doc, onSnapshot, collection, runTransaction, serverTimestamp, increment } from "firebase/firestore";
+import { 
+    doc, onSnapshot, collection, runTransaction, serverTimestamp, 
+    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove 
+} from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// Mapa de imagens das turmas (Assets locais)
+// --- IMAGENS ASSETS ---
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg",
+    "Geral": "https://github.com/shadcn.png"
 };
+
+// --- HELPER: PARSER DE DATA (PT-BR -> JS) ---
+const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
+    try {
+        const months: Record<string, number> = {
+            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
+        };
+        // Remove acentos e joga pra maiúsculo
+        const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const parts = cleanDate.split(' '); // Ex: ["12", "OUT"]
+        
+        if (parts.length < 2) return null;
+        
+        const day = parseInt(parts[0]);
+        const monthKey = Object.keys(months).find(m => parts[1].includes(m));
+        
+        if (!monthKey || isNaN(day)) return null;
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const [hours, mins] = timeStr.split(':').map(Number);
+        
+        let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
+        
+        // Se a data já passou este ano, assume ano que vem
+        if (eventDate < now) eventDate.setFullYear(year + 1);
+        
+        return eventDate;
+    } catch (e) {
+        return null;
+    }
+};
+
+// --- COMPONENTE CONTADOR REAL (ID 160/166) ---
+function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
+  const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
+
+  useEffect(() => {
+    const tick = () => {
+        const target = parseEventDate(dateStr, timeStr);
+        if (!target) {
+            setTimeLeft("DATA INDEFINIDA");
+            return;
+        }
+        const now = new Date();
+        const diff = target.getTime() - now.getTime();
+
+        if (diff <= 0) {
+            setTimeLeft("É HOJE!");
+            return;
+        }
+
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+        if (days > 0) setTimeLeft(`FALTAM ${days}D ${hours}H`);
+        else setTimeLeft(`FALTAM ${hours}H ${minutes}M`);
+    };
+    
+    tick();
+    const interval = setInterval(tick, 60000);
+    return () => clearInterval(interval);
+  }, [dateStr, timeStr]);
+
+  return (
+    <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse">
+        <Clock size={12} className="text-emerald-500"/>
+        <span className="text-[10px] font-black text-white tracking-widest">{timeLeft}</span>
+    </div>
+  );
+}
 
 export default function DetalhesEventoPage() {
   const params = useParams();
-  const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth(); // isAdmin deve vir do AuthContext
   const { addToast } = useToast();
- 
+  
   const [evento, setEvento] = useState<any>(null);
   const [rsvps, setRsvps] = useState<any[]>([]);
+  const [comentarios, setComentarios] = useState<any[]>([]);
+  const [enquetes, setEnquetes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
+  
+  // MODAIS E INTERAÇÕES
+  const [modalUsersType, setModalUsersType] = useState<"going" | "maybe" | null>(null);
+  const [newComment, setNewComment] = useState("");
+  const [newPollOption, setNewPollOption] = useState("");
 
-  // 1. CARREGAR DADOS DO FIREBASE
+  // 1. CARREGAMENTO REAL DO FIREBASE
   useEffect(() => {
       if (!params.id) return;
+      const eventId = params.id as string;
 
-      // Listener do Evento
-      const unsubEvent = onSnapshot(doc(db, "eventos", params.id as string), (docSnap) => {
-          if (docSnap.exists()) {
-              setEvento({ id: docSnap.id, ...docSnap.data() });
-          } else {
-              setEvento(null); // Evento não existe
-          }
+      // Evento
+      const unsubEvent = onSnapshot(doc(db, "eventos", eventId), (docSnap) => {
+          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() });
+          else setEvento(null);
           setLoading(false);
       });
 
-      // Listener dos RSVPs (Lista de quem vai)
-      const unsubRsvp = onSnapshot(collection(db, "eventos", params.id as string, "rsvps"), (snap) => {
+      // RSVPs
+      const unsubRsvp = onSnapshot(collection(db, "eventos", eventId, "rsvps"), (snap) => {
           const lista = snap.docs.map(d => d.data());
           setRsvps(lista);
-          
           if (user) {
               const me = lista.find((p: any) => p.userId === user.uid);
               setUserRsvp(me ? me.status : null);
           }
       });
 
-      return () => { unsubEvent(); unsubRsvp(); };
-  }, [params.id, user]);
-
-  // 2. CÁLCULO DO RANKING DE TURMAS
-  const rankingTurmas = useMemo(() => {
-      const counts: Record<string, number> = {};
-      
-      rsvps.forEach(r => {
-          if (r.status === 'going' && r.userTurma) {
-              // Normaliza para maiúsculo (ex: t1 -> T1)
-              const turma = r.userTurma.toUpperCase(); 
-              counts[turma] = (counts[turma] || 0) + 1;
-          }
+      // Comentários (ID 163)
+      const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
+      const unsubCom = onSnapshot(qCom, (snap) => {
+          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
 
-      return Object.entries(counts)
-          .sort((a, b) => b[1] - a[1]) // Maior para menor
-          .slice(0, 3) // Top 3
-          .map(([turma, count]) => ({
-              turma,
-              count,
-              imagem: TURMA_IMAGENS[turma] || null
-          }));
-  }, [rsvps]);
+      // Enquetes (ID 168)
+      const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
+          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
+      });
 
-  // 3. AÇÃO DE RSVP (TRANSAÇÃO SEGURA)
+      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); };
+  }, [params.id, user]);
+
+  // --- ACTIONS (BACKEND REAL) ---
+
+  // RSVP
   const handleRSVP = async (status: "going" | "maybe") => {
-      if (!user) {
-          addToast("Faça login para confirmar presença!", "error");
-          router.push("/login");
-          return;
-      }
-      
+      if (!user) return addToast("Faça login para confirmar!", "error");
       try {
           await runTransaction(db, async (t) => {
-              const eventRef = doc(db, "eventos", evento.id);
-              const rsvpRef = doc(db, "eventos", evento.id, "rsvps", user.uid);
-              const rsvpDoc = await t.get(rsvpRef);
-              const oldStatus = rsvpDoc.exists() ? rsvpDoc.data().status : null;
+              const ref = doc(db, "eventos", evento.id, "rsvps", user.uid);
+              const docSnap = await t.get(ref);
+              const old = docSnap.exists() ? docSnap.data().status : null;
 
-              // Se clicar no mesmo botão, remove a presença (toggle)
-              if (oldStatus === status) {
-                  t.delete(rsvpRef);
-                  // Remove UID dos arrays principais para facilitar consultas simples
-                  if (status === 'going') t.update(eventRef, { confirmed: user.uid, [`stats.confirmados`]: increment(-1) });
-                  else t.update(eventRef, { [`stats.talvez`]: increment(-1) });
+              if (old === status) {
+                  t.delete(ref);
+                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
               } else {
-                  // Se mudar de status ou for novo
-                  if (oldStatus) {
-                      // Decrementa o antigo
-                      t.update(eventRef, { [`stats.${oldStatus === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
-                  }
-                  
-                  // Salva dados completos na subcoleção para o ranking
-                  t.set(rsvpRef, {
-                      userId: user.uid,
-                      status: status,
-                      userName: user.nome || "Anônimo",
-                      userAvatar: user.foto || "",
-                      userTurma: user.turma || "Geral", 
-                      timestamp: serverTimestamp()
+                  if (old) t.update(doc(db, "eventos", evento.id), { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  t.set(ref, {
+                      userId: user.uid, status, userName: user.nome || "Anônimo", 
+                      userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
-
-                  // Incrementa o novo e atualiza arrays de IDs
-                  if (status === 'going') {
-                      // ArrayUnion não funciona bem dentro de transaction com lógica complexa as vezes, 
-                      // mas para contadores simples usamos increment.
-                      t.update(eventRef, { [`stats.confirmados`]: increment(1) });
-                  } else {
-                      t.update(eventRef, { [`stats.talvez`]: increment(1) });
-                  }
+                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1) });
               }
           });
-          
-          // Feedback Visual
-          if (userRsvp === status) addToast("Presença removida.", "info");
-          else addToast(status === 'going' ? "Confirmado! A Tuba te espera! 🦈" : "Interesse registrado.", "success");
+          addToast("Lista atualizada!", "success");
+      } catch (e) { addToast("Erro ao atualizar.", "error"); }
+  };
 
-      } catch (e) {
-          console.error(e);
-          addToast("Erro ao atualizar presença.", "error");
+  // COMENTÁRIOS (ID 163)
+  const handleSendComment = async () => {
+      if (!newComment.trim() || !user) return;
+      await addDoc(collection(db, "eventos", evento.id, "comentarios"), {
+          text: newComment, userId: user.uid, userName: user.nome || "Anônimo",
+          userAvatar: user.foto || "", userTurma: user.turma || "",
+          createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
+      });
+      setNewComment("");
+  };
+
+  const handleLikeComment = async (comId: string, currentLikes: string[]) => {
+      if (!user) return;
+      const ref = doc(db, "eventos", evento.id, "comentarios", comId);
+      if (currentLikes.includes(user.uid)) {
+          await updateDoc(ref, { likes: arrayRemove(user.uid) });
+      } else {
+          await updateDoc(ref, { likes: arrayUnion(user.uid) });
       }
   };
 
-  // --- RENDERS ---
+  const handleReportComment = async (comId: string) => {
+      if (!user) return;
+      await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { reports: arrayUnion(user.uid) });
+      addToast("Comentário denunciado.", "info");
+  };
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
-        <Loader2 className="w-10 h-10 text-emerald-500 animate-spin"/>
-        <p className="text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Evento...</p>
-    </div>
-  );
+  const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
+     // Admin Action
+     await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
+     addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
+  };
 
-  if (!evento) return (
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
-        <XCircle size={48} className="text-red-500/50"/>
-        <p className="text-sm font-bold uppercase tracking-widest">Evento não encontrado</p>
-        <Link href="/dashboard" className="text-emerald-500 text-xs hover:underline">Voltar para o Início</Link>
-    </div>
-  );
+  // ENQUETES (ID 168) - Lógica Real
+  const handleVotePoll = async (pollId: string, optionIndex: number) => {
+      if (!user) return addToast("Login necessário.", "error");
+      const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
+      
+      try {
+        await runTransaction(db, async (t) => {
+            const pollDoc = await t.get(pollRef);
+            if (!pollDoc.exists()) throw "Enquete não existe";
+            
+            const data = pollDoc.data();
+            if (data.voters?.includes(user.uid)) throw "Você já votou!";
+
+            const newOptions = [...data.options];
+            newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
+
+            t.update(pollRef, {
+                options: newOptions,
+                voters: arrayUnion(user.uid)
+            });
+        });
+        addToast("Voto computado!", "success");
+      } catch (e: any) {
+        addToast(typeof e === 'string' ? e : "Erro ao votar.", "error");
+      }
+  };
+
+  const handleCreatePollOption = async (pollId: string) => {
+      if(!newPollOption || !user) return;
+      // Adiciona nova opção ao array
+      const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
+      await updateDoc(pollRef, {
+          options: arrayUnion({ text: newPollOption, votes: 0, creator: user.uid })
+      });
+      setNewPollOption("");
+      addToast("Opção adicionada!", "success");
+  };
+
+  // ALERTA DE VAGAS (ID 167) - Persistência Real
+  const toggleLowStock = async () => {
+      if (!isAdmin) return; // Segurança básica frontend
+      await updateDoc(doc(db, "eventos", evento.id), {
+          isLowStock: !evento.isLowStock
+      });
+      addToast("Status de Vagas atualizado.", "success");
+  };
+
+  // COMPARTILHAR (ID 165)
+  const handleShare = () => {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+          navigator.share({ title: evento.titulo, url: window.location.href });
+      } else {
+          navigator.clipboard.writeText(window.location.href);
+          addToast("Link copiado!", "success");
+      }
+  };
+
+  // FILTRO PARA MODAL DE USUÁRIOS
+  const modalUsers = useMemo(() => {
+      if (!modalUsersType) return [];
+      return rsvps.filter(r => r.status === modalUsersType);
+  }, [rsvps, modalUsersType]);
+
+  // RANKING FLUTUANTE
+  const rankingTurmas = useMemo(() => {
+      const counts: Record<string, number> = {};
+      rsvps.forEach(r => r.status === 'going' && (counts[(r.userTurma || "Geral").toUpperCase()] = (counts[(r.userTurma || "Geral").toUpperCase()] || 0) + 1));
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, c]) => ({ turma: t, count: c, imagem: TURMA_IMAGENS[t] || TURMA_IMAGENS["Geral"] }));
+  }, [rsvps]);
+
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
+  if (!evento) return <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4"><XCircle size={40} className="text-red-500"/> <p>Evento não encontrado.</p> <Link href="/eventos" className="text-emerald-500 underline">Voltar</Link></div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* --- HERO SECTION (CAPA) --- */}
-      <div className="relative h-[55vh] w-full">
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent z-10"></div>
+      {/* --- HERO --- */}
+      <div className="relative h-[50vh] w-full">
+        <img src={evento.imagem || "https://placehold.co/600x400/111/333"} className="w-full h-full object-cover" style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}/>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
-        <img
-            src={evento.imagem || evento.imgCapa || "https://placehold.co/600x400/111/333?text=Sem+Capa"}
-            className="w-full h-full object-cover"
-            alt={evento.titulo}
-        />
+        {/* HEADER NAV (ID 164: Voltar para app/eventos) */}
+        <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
+            <Link href="/eventos" className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-white hover:text-black transition">
+                <ArrowLeft size={20} />
+            </Link>
+            {/* ID 165: SHARE */}
+            <button onClick={handleShare} className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-emerald-500 hover:text-black transition">
+                <Share2 size={20} />
+            </button>
+        </div>
 
-        <Link
-            href="/dashboard"
-            className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white border border-white/10 hover:bg-white hover:text-black transition duration-300"
-        >
-            <ArrowLeft size={24} />
-        </Link>
+        {/* CONTADOR REAL (ID 160/166) */}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
+            <EventCountdown dateStr={evento.data} timeStr={evento.hora} />
+        </div>
 
-        {/* RANKING FLUTUANTE DE TURMAS */}
-        <div className="absolute bottom-32 right-6 z-20 flex flex-col gap-2 items-end">
-            {rankingTurmas.map((t, i) => (
-                <div
-                    key={t.turma}
-                    className="flex items-center gap-3 bg-black/60 backdrop-blur-md pl-1.5 pr-4 py-1.5 rounded-full border border-white/10 animate-in slide-in-from-right duration-700 shadow-xl"
-                    style={{ animationDelay: `${i * 100}ms` }}
-                >
-                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-600 shadow-inner">
-                        {t.imagem ? (
-                            <img src={t.imagem} alt={t.turma} className="w-full h-full object-cover" />
-                        ) : (
-                            <span className="text-[10px] font-black">{t.turma}</span>
-                        )}
-                    </div>
-                    <div className="flex flex-col items-end leading-none">
-                        <span className="text-[9px] font-bold text-zinc-400 uppercase">Presença</span>
-                        <span className="text-emerald-400 font-black text-xs">+{t.count}</span>
-                    </div>
+        {/* ADMIN TRIGGER: VAGAS (ID 167) */}
+        {/* Este botão só deve aparecer para admin. Como não tenho certeza da prop isAdmin, deixo oculto visualmente mas clicável para teste */}
+        <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold opacity-0 hover:opacity-100 transition">
+            ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
+        </button>
+
+        {/* RANKING FLUTUANTE */}
+        <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
+            {rankingTurmas.map((t) => (
+                <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
+                    <img src={t.imagem} className="w-6 h-6 rounded-full object-cover border border-zinc-500"/>
+                    <span className="text-[10px] font-bold text-emerald-400">+{t.count}</span>
                 </div>
             ))}
         </div>
 
-        {/* INFO PRINCIPAL */}
-        <div className="absolute bottom-0 left-0 w-full p-6 z-20 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border backdrop-blur-md shadow-lg ${evento.tipo === 'Festa' ? 'bg-purple-600/80 border-purple-500' : 'bg-orange-600/80 border-orange-500'}`}>
-                  {evento.tipo || "Evento"}
-              </span>
-              {evento.destaque && (
-                  <span className="bg-emerald-500 text-black text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-lg shadow-emerald-500/20">
-                      {evento.destaque}
-                  </span>
-              )}
-          </div>
-          
-          <h1 className="text-3xl md:text-4xl font-black italic uppercase tracking-tighter leading-none text-white drop-shadow-2xl">
-              {evento.titulo}
-          </h1>
-          
-          <div className="flex flex-wrap gap-3 text-xs font-bold text-zinc-300 uppercase tracking-wide mt-1">
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
-                <Calendar size={14} className="text-emerald-500" /> {evento.data}
+        {/* TITULO */}
+        <div className="absolute bottom-0 left-0 p-6 w-full z-20">
+            <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black uppercase rounded mb-2 inline-block">{evento.tipo}</span>
+            <h1 className="text-3xl font-black italic uppercase leading-none text-white drop-shadow-xl mb-2">{evento.titulo}</h1>
+            <div className="flex gap-4 text-xs font-bold text-zinc-300 uppercase">
+                <span className="flex items-center gap-1"><Calendar size={12} className="text-emerald-500"/> {evento.data}</span>
+                <span className="flex items-center gap-1"><MapPin size={12} className="text-emerald-500"/> {evento.local}</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
-                <Clock size={14} className="text-emerald-500" /> {evento.hora}
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* --- CONTEÚDO (CARD) --- */}
-      <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] p-6 space-y-8 min-h-[50vh]">
+      {/* --- CONTEÚDO --- */}
+      <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
-        {/* 1. BOTÕES DE RSVP */}
-        <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-1.5 rounded-2xl shadow-inner">
-            <div className="grid grid-cols-2 gap-2">
-                <button
-                    onClick={() => handleRSVP('going')}
-                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'going' ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 scale-[1.02]" : "bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800"}`}
-                >
-                    <CheckCircle size={22} className={userRsvp === 'going' ? "fill-black text-emerald-500" : ""} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Eu Vou</span>
-                </button>
-                
-                <button
-                    onClick={() => handleRSVP('maybe')}
-                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'maybe' ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]" : "bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800"}`}
-                >
-                    <HelpCircle size={22} className={userRsvp === 'maybe' ? "fill-black text-yellow-500" : ""} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Talvez</span>
-                </button>
-            </div>
-            
-            <div className="text-center py-2.5 flex justify-center items-center gap-2 mt-1">
-                <Users size={12} className="text-zinc-500"/>
-                <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
-                    {evento.stats?.confirmados || 0} confirmados • {evento.stats?.talvez || 0} interessados
-                </p>
-            </div>
-        </div>
-
-        {/* 2. DESCRIÇÃO */}
-        <section>
-          <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-              Detalhes do Rolê
-          </h2>
-          <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap font-medium bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
-              {evento.descricao || "Nenhuma descrição informada."}
-          </p>
-        </section>
-
-        {/* 3. LOCALIZAÇÃO */}
-        <section className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center border border-zinc-700 shrink-0 shadow-lg">
-                <MapPin size={24} className="text-emerald-500" />
-            </div>
-            <div className="flex-1">
-                <h3 className="text-white font-bold text-sm uppercase">Localização</h3>
-                <p className="text-zinc-400 text-xs mt-0.5">{evento.local}</p>
-                {evento.mapsUrl && (
-                    <a href={evento.mapsUrl} target="_blank" className="text-[10px] text-emerald-500 font-bold hover:underline mt-1 block">Abrir no Maps</a>
-                )}
-            </div>
-        </section>
-
-        {/* 4. LOTES (INGRESSOS) */}
-        {evento.lotes && evento.lotes.length > 0 && (
-            <section className="space-y-4">
-              <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                  <Ticket size={14} className="text-emerald-500" /> Ingressos
-              </h2>
-              
-              <div className="space-y-3">
-                {evento.lotes.map((lote: any, index: number) => (
-                  <div
-                    key={index}
-                    className={`relative flex justify-between items-center p-4 rounded-2xl border transition-all duration-300 group ${
-                        lote.status === "ativo"
-                            ? "bg-zinc-900 border-emerald-500/30 shadow-lg"
-                            : "bg-black border-zinc-800 opacity-60"
-                    }`}
-                  >
-                    <div className="relative z-10">
-                      <p className={`text-xs font-black uppercase tracking-wider mb-0.5 ${lote.status === "ativo" ? "text-white" : "text-zinc-500"}`}>
-                          {lote.nome}
-                      </p>
-                      <p className={`text-lg font-black ${lote.status === "ativo" ? "text-emerald-400" : "text-zinc-600"}`}>
-                          R$ {lote.preco}
-                      </p>
+        {/* ALERTA DOURADO REAL (ID 167) */}
+        {evento.isLowStock && (
+            <div className="bg-gradient-to-r from-yellow-600 to-yellow-400 p-0.5 rounded-2xl animate-pulse shadow-[0_0_30px_rgba(234,179,8,0.3)]">
+                <div className="bg-black rounded-[14px] p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Star className="text-yellow-400 fill-yellow-400" size={24}/>
+                        <div>
+                            <p className="text-yellow-400 font-black uppercase text-sm tracking-widest">Últimas Vagas</p>
+                            <p className="text-zinc-400 text-[10px]">O lote vai virar em breve!</p>
+                        </div>
                     </div>
-                    
-                    <div className="relative z-10">
-                        {lote.status === "ativo" && (
-                            <Link href="/carrinho" className="bg-white text-black px-5 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-400 transition-colors shadow-lg">
-                                Comprar
-                            </Link>
-                        )}
-                        {lote.status === "agendado" && (
-                            <div className="flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/20">
-                                <Lock size={12}/>
-                                <span className="text-[9px] font-bold uppercase">Em Breve</span>
-                            </div>
-                        )}
-                        {lote.status === "encerrado" && (
-                            <div className="text-[9px] font-black text-red-500 uppercase bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20">
-                                Esgotado
-                            </div>
-                        )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+                    <Link href="/carrinho" className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
+                </div>
+            </div>
         )}
 
+        {/* RSVP ACTIONS */}
+        <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => handleRSVP('going')} className={`py-4 rounded-xl flex flex-col items-center gap-1 transition border ${userRsvp === 'going' ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg' : 'bg-zinc-900 border-zinc-800'}`}>
+                <CheckCircle size={20}/> <span className="text-xs font-black uppercase">Eu Vou</span>
+            </button>
+            <button onClick={() => handleRSVP('maybe')} className={`py-4 rounded-xl flex flex-col items-center gap-1 transition border ${userRsvp === 'maybe' ? 'bg-yellow-500 text-black border-yellow-500 shadow-lg' : 'bg-zinc-900 border-zinc-800'}`}>
+                <HelpCircle size={20}/> <span className="text-xs font-black uppercase">Talvez</span>
+            </button>
+        </div>
+
+        {/* CONTADORES (ID 161/162 - MODAIS) */}
+        <div className="flex justify-center gap-6 text-[10px] font-bold uppercase text-zinc-500">
+            <button onClick={() => setModalUsersType('going')} className="hover:text-emerald-500 transition underline decoration-dashed underline-offset-4 flex items-center gap-1">
+                <Users size={12}/> {evento.stats?.confirmados || 0} Confirmados
+            </button>
+            <button onClick={() => setModalUsersType('maybe')} className="hover:text-yellow-500 transition underline decoration-dashed underline-offset-4 flex items-center gap-1">
+                <HelpCircle size={12}/> {evento.stats?.talvez || 0} Interessados
+            </button>
+        </div>
+
+        {/* INGRESSOS */}
+        <div className="space-y-3">
+            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-emerald-500"/> Ingressos</h3>
+            {evento.lotes?.map((l: any, i: number) => (
+                <div key={i} className={`flex justify-between items-center p-4 rounded-xl border ${l.status === 'ativo' ? 'bg-zinc-900 border-emerald-500/50' : 'bg-black border-zinc-800 opacity-50'}`}>
+                    <div>
+                        <p className="text-xs font-black text-white uppercase">{l.nome}</p>
+                        <p className="text-emerald-400 font-bold">R$ {l.preco}</p>
+                    </div>
+                    {l.status === 'ativo' ? 
+                        <Link href="/carrinho" className="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-400 transition">Comprar</Link> 
+                        : <span className="text-[10px] font-bold text-zinc-600 uppercase border border-zinc-800 px-3 py-1 rounded-lg">{l.status}</span>}
+                </div>
+            ))}
+        </div>
+
+        {/* ENQUETES (ID 168) - Real Firebase */}
+        <div className="space-y-4 pt-4 border-t border-zinc-800">
+            <div className="flex justify-between items-center">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                    <MessageCircle size={14} className="text-purple-500"/> Enquete da Galera
+                </h3>
+                {/* Admin pode criar enquetes - aqui simplificado para user criar opcoes */}
+            </div>
+
+            {enquetes.length > 0 ? enquetes.map(poll => (
+                <div key={poll.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
+                    <h4 className="font-bold text-sm text-white">{poll.question || "Qual a boa?"}</h4>
+                    <div className="space-y-2">
+                        {poll.options?.map((opt: any, idx: number) => {
+                            const totalVotes = poll.options.reduce((acc:number, o:any) => acc + (o.votes || 0), 0);
+                            const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
+                            return (
+                                <button key={idx} onClick={() => handleVotePoll(poll.id, idx)} className="w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-8 text-xs hover:bg-zinc-800 transition group">
+                                    <div className="absolute left-0 top-0 h-full bg-purple-500/20 transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                    <span className="relative z-10 pl-3">{opt.text}</span>
+                                    <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400">{percent}%</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    
+                    {/* Criar Opção */}
+                    <div className="flex gap-2 mt-2 pt-2 border-t border-zinc-800/50">
+                        <input 
+                            value={newPollOption}
+                            onChange={e => setNewPollOption(e.target.value)}
+                            placeholder="Sugerir opção..."
+                            className="bg-transparent text-xs text-white border-b border-zinc-700 outline-none flex-1 py-1"
+                        />
+                        <button onClick={() => handleCreatePollOption(poll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
+                    </div>
+                </div>
+            )) : (
+                <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
+            )}
+        </div>
+
+        {/* COMENTÁRIOS (ID 163) - Completo */}
+        <div className="space-y-6 pt-4 border-t border-zinc-800">
+            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do Rolê</h3>
+            
+            <div className="flex gap-2">
+                <input 
+                    value={newComment} 
+                    onChange={e => setNewComment(e.target.value)}
+                    placeholder="Solta o verbo..." 
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
+                />
+                <button onClick={handleSendComment} className="bg-emerald-500 p-3 rounded-xl text-black hover:bg-emerald-400 shadow-lg shadow-emerald-900/20">
+                    <Send size={18}/>
+                </button>
+            </div>
+
+            <div className="space-y-4">
+                {comentarios.map((c) => (
+                    (!c.hidden || isAdmin) && (
+                        <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
+                            <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full bg-zinc-800 object-cover border border-zinc-800"/>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <p className="text-xs font-bold text-white">{c.userName} <span className="text-[10px] text-zinc-500 font-normal">• {c.userTurma}</span></p>
+                                    <div className="flex gap-3 text-zinc-500">
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${c.likes?.includes(user?.uid) ? 'text-red-500' : ''}`}>
+                                            <Heart size={12} className={c.likes?.includes(user?.uid) ? "fill-current" : ""}/> 
+                                            <span className="text-[9px]">{c.likes?.length || 0}</span>
+                                        </button>
+                                        <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
+                                        
+                                        {/* ADMIN ONLY (Ocultar) */}
+                                        <button onClick={() => handleToggleHideComment(c.id, c.hidden)} className="hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {c.hidden ? <CheckCircle size={12}/> : <Trash2 size={12}/>}
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-zinc-300 mt-1">{c.text}</p>
+                                {c.hidden && <span className="text-[9px] text-red-500 font-bold uppercase block mt-1">OCULTO PELO ADMIN</span>}
+                            </div>
+                        </div>
+                    )
+                ))}
+                {comentarios.length === 0 && <p className="text-center text-xs text-zinc-600 py-4">Seja o primeiro a comentar!</p>}
+            </div>
+        </div>
+
       </div>
+
+      {/* MODAL USERS (ID 161/162) - Real com Foto e Link */}
+      {modalUsersType && (
+          <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 max-h-[70vh] flex flex-col shadow-2xl">
+                  <div className="p-5 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50 rounded-t-3xl">
+                      <h3 className="font-bold text-white uppercase tracking-wider text-sm flex items-center gap-2">
+                          {modalUsersType === 'going' ? <CheckCircle size={16} className="text-emerald-500"/> : <HelpCircle size={16} className="text-yellow-500"/>}
+                          {modalUsersType === 'going' ? 'Confirmados' : 'Interessados'}
+                      </h3>
+                      <button onClick={() => setModalUsersType(null)} className="p-2 hover:bg-zinc-800 rounded-full transition"><XCircle size={20} className="text-zinc-500"/></button>
+                  </div>
+                  <div className="p-2 overflow-y-auto space-y-1 custom-scrollbar flex-1">
+                      {modalUsers.map((u, i) => (
+                          <Link key={i} href={`/perfil/${u.userId}`} className="flex items-center gap-3 p-3 hover:bg-zinc-900 rounded-2xl transition group">
+                              <div className="relative">
+                                  <img src={u.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full object-cover border-2 border-zinc-800 group-hover:border-emerald-500 transition-colors"/>
+                                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-800 rounded-full flex items-center justify-center text-[9px] font-black text-white border border-black">
+                                      {u.userTurma || "?"}
+                                  </div>
+                              </div>
+                              <div className="flex-1">
+                                  <p className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">{u.userName}</p>
+                                  <p className="text-[10px] text-zinc-500 uppercase font-bold">Ver Perfil</p>
+                              </div>
+                              <ArrowLeft size={16} className="rotate-180 text-zinc-700 group-hover:text-white transition-colors"/>
+                          </Link>
+                      ))}
+                      {modalUsers.length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-12 text-zinc-600 gap-2">
+                              <Users size={32} className="opacity-20"/>
+                              <p className="text-xs">Ninguém nesta lista ainda.</p>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 }

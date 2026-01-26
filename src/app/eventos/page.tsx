@@ -1,665 +1,322 @@
 "use client";
 
-
-
 import React, { useEffect, useState, useMemo } from "react";
-
-import {
-
-  ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
-
-  Users, CheckCircle, HelpCircle, XCircle, Lock, Trophy
-
+import { 
+  ArrowLeft, Calendar, MapPin, Share2, Ticket, Filter, 
+  Loader2, ArrowRight, Heart, Clock, Zap, Users, Crown 
 } from "lucide-react";
-
 import Link from "next/link";
-
-import { useParams } from "next/navigation";
-
-import { db } from "../../lib/firebase";
-
-import { doc, onSnapshot, collection, runTransaction, serverTimestamp, increment } from "firebase/firestore";
-
 import { useAuth } from "../../context/AuthContext";
+import { db } from "../../lib/firebase";
+import { 
+  collection, query, orderBy, onSnapshot, doc, updateDoc, 
+  increment, getDocs 
+} from "firebase/firestore";
 
-import { useToast } from "../../context/ToastContext";
-
-
-
-// 🦈 MAPA DE IMAGENS LOCAL (A PONTE ENTRE O BANCO E SEUS ARQUIVOS)
-
-// Certifique-se que esses arquivos existem na pasta /public
-
+// --- CONFIGURAÇÃO DE IMAGENS ---
 const TURMA_IMAGENS: Record<string, string> = {
-
-    "T1": "/turma1.jpeg",
-
-    "T2": "/turma2.jpeg",
-
-    "T3": "/turma3.jpeg",
-
-    "T4": "/turma4.jpeg",
-
-    "T5": "/turma5.jpeg",
-
-    "T6": "/turma6.jpeg",
-
-    // Adicione mais conforme necessário. Se não achar, usa um fallback.
-
+    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
+    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg",
+    "Geral": "https://github.com/shadcn.png" 
 };
 
-
-
-export default function DetalhesEventoPage() {
-
-  const params = useParams();
-
-  const { user } = useAuth();
-
-  const { addToast } = useToast();
-
- 
-
-  const [evento, setEvento] = useState<any>(null);
-
-  const [rsvps, setRsvps] = useState<any[]>([]);
-
-  const [loading, setLoading] = useState(true);
-
-  const [userRsvp, setUserRsvp] = useState<string | null>(null);
-
-
-
-  // 1. CARREGAR DADOS DO FIREBASE
+// --- COMPONENTE: RANKING DE TURMAS (RSVP) ---
+function EventClassRanking({ eventId }: { eventId: string }) {
+  const [ranking, setRanking] = useState<{turma: string, count: number, img: string}[]>([]);
+  const [totalConfirmados, setTotalConfirmados] = useState(0);
 
   useEffect(() => {
-
-      if (!params.id) return;
-
-
-
-      // Evento
-
-      const unsubEvent = onSnapshot(doc(db, "eventos", params.id as string), (docSnap) => {
-
-          if (docSnap.exists()) {
-
-              setEvento({ id: docSnap.id, ...docSnap.data() });
-
-          }
-
-          setLoading(false);
-
-      });
-
-
-
-      // Lista de Quem Vai (RSVPs)
-
-      const unsubRsvp = onSnapshot(collection(db, "eventos", params.id as string, "rsvps"), (snap) => {
-
-          const lista = snap.docs.map(d => d.data());
-
-          setRsvps(lista);
-
-         
-
-          if (user) {
-
-              const me = lista.find((p: any) => p.userId === user.uid);
-
-              setUserRsvp(me ? me.status : null);
-
-          }
-
-      });
-
-
-
-      return () => { unsubEvent(); unsubRsvp(); };
-
-  }, [params.id, user]);
-
-
-
-  // 2. CÁLCULO DO RANKING DE TURMAS (COM IMAGEM LOCAL)
-
-  const rankingTurmas = useMemo(() => {
-
-      const counts: Record<string, number> = {};
-
-     
-
-      rsvps.forEach(r => {
-
-          // Normaliza o nome da turma (ex: "T5" ou "Turma 5" vira "T5" se possível)
-
-          // Aqui assumimos que o usuário salvou como "T5", "T1", etc no perfil.
-
-          if (r.status === 'going' && r.userTurma) {
-
-              const turma = r.userTurma.toUpperCase();
-
-              counts[turma] = (counts[turma] || 0) + 1;
-
-          }
-
-      });
-
-
-
-      return Object.entries(counts)
-
-          .sort((a, b) => b[1] - a[1]) // Ordena do maior para o menor
-
-          .slice(0, 3) // Pega só o Top 3
-
-          .map(([turma, count]) => ({
-
-              turma,
-
-              count,
-
-              // Aqui está a mágica: busca a imagem no mapa estático
-
-              imagem: TURMA_IMAGENS[turma] || null
-
-          }));
-
-  }, [rsvps]);
-
-
-
-  // 3. AÇÃO DE CONFIRMAR PRESENÇA
-
-  const handleRSVP = async (status: "going" | "maybe") => {
-
-      if (!user) return addToast("Faça login para confirmar presença!", "error");
-
-     
-
-      try {
-
-          await runTransaction(db, async (t) => {
-
-              const eventRef = doc(db, "eventos", evento.id);
-
-              const rsvpRef = doc(db, "eventos", evento.id, "rsvps", user.uid);
-
-              const rsvpDoc = await t.get(rsvpRef);
-
-              const oldStatus = rsvpDoc.exists() ? rsvpDoc.data().status : null;
-
-
-
-              if (oldStatus === status) {
-
-                  t.delete(rsvpRef);
-
-                  t.update(eventRef, { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
-
-              } else {
-
-                  if (oldStatus) {
-
-                      t.update(eventRef, { [`stats.${oldStatus === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
-
-                  }
-
-                  t.set(rsvpRef, {
-
-                      userId: user.uid,
-
-                      status: status,
-
-                      userName: user.nome || "Anônimo",
-
-                      userAvatar: user.foto || "",
-
-                      userTurma: user.turma || "Geral", // Importante para o ranking
-
-                      timestamp: serverTimestamp()
-
-                  });
-
-                  t.update(eventRef, { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1) });
-
-              }
-
-          });
-
-          addToast(status === 'going' ? "Presença confirmada! 🦈" : "Lista atualizada.", "success");
-
-      } catch (e) {
-
-          console.error(e);
-
-          addToast("Erro ao atualizar presença.", "error");
-
-      }
-
-  };
-
-
-
-  if (loading) return (
-
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
-
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-
-        <p className="text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Evento...</p>
-
-    </div>
-
+    const q = collection(db, "eventos", eventId, "rsvps");
+    getDocs(q).then((snap) => {
+        const counts: Record<string, number> = {};
+        let total = 0;
+        snap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.status === 'going') {
+                const t = (data.userTurma || "Geral").toUpperCase();
+                counts[t] = (counts[t] || 0) + 1;
+                total++;
+            }
+        });
+        const sorted = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([turma, count]) => ({
+                turma, count, img: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]
+            }));
+        setRanking(sorted);
+        setTotalConfirmados(total);
+    });
+  }, [eventId]);
+
+  if (totalConfirmados === 0) return (
+      <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold uppercase bg-black/20 px-3 py-2 rounded-xl border border-dashed border-zinc-800 w-full justify-center">
+          <Users size={12}/> Seja o primeiro a ir!
+      </div>
   );
-
-
-
-  if (!evento) return (
-
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-zinc-500 gap-4">
-
-        <XCircle size={48} className="text-red-500/50"/>
-
-        <p className="text-sm font-bold uppercase tracking-widest">Evento não encontrado</p>
-
-        <Link href="/eventos" className="text-emerald-500 text-xs hover:underline">Voltar para Agenda</Link>
-
-    </div>
-
-  );
-
-
 
   return (
-
-    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans selection:bg-emerald-500/30">
-
-     
-
-      {/* --- HERO SECTION --- */}
-
-      <div className="relative h-[60vh] w-full">
-
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent z-10"></div>
-
-       
-
-        <img
-
-            src={evento.imagem || "https://placehold.co/600x400/111/333?text=Sem+Capa"}
-
-            className="w-full h-full object-cover"
-
-            alt={evento.titulo}
-
-        />
-
-
-
-        <Link
-
-            href="/eventos"
-
-            className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white border border-white/10 hover:bg-white hover:text-black transition duration-300"
-
-        >
-
-            <ArrowLeft size={24} />
-
-        </Link>
-
-
-
-        <button className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white border border-white/10 hover:bg-emerald-500 hover:text-black hover:border-emerald-500 transition duration-300">
-
-            <Share2 size={24} />
-
-        </button>
-
-
-
-        {/* --- RANKING DE TURMAS FLUTUANTE (Correção das Imagens) --- */}
-
-        <div className="absolute bottom-36 right-6 z-20 flex flex-col gap-2 items-end">
-
-            {rankingTurmas.map((t, i) => (
-
-                <div
-
-                    key={t.turma}
-
-                    className="flex items-center gap-3 bg-black/60 backdrop-blur-md pl-1.5 pr-4 py-1.5 rounded-full border border-white/10 animate-in slide-in-from-right duration-700 shadow-xl"
-
-                    style={{ animationDelay: `${i * 100}ms` }}
-
-                >
-
-                    {/* Imagem da Turma ou Fallback */}
-
-                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-600 shadow-inner">
-
-                        {t.imagem ? (
-
-                            <img src={t.imagem} alt={t.turma} className="w-full h-full object-cover" />
-
-                        ) : (
-
-                            <span className="text-[10px] font-black">{t.turma}</span>
-
-                        )}
-
-                    </div>
-
-                   
-
-                    <div className="flex flex-col items-end leading-none">
-
-                        <span className="text-[9px] font-bold text-zinc-400 uppercase">Presença</span>
-
-                        <span className="text-emerald-400 font-black text-xs">+{t.count}</span>
-
-                    </div>
-
+    <div className="flex items-center gap-3 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
+        <div className="flex -space-x-2">
+            {ranking.map((r, i) => (
+                <div key={r.turma} className={`relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden z-[${30-i*10}]`}>
+                    <img src={r.img} className="w-full h-full object-cover"/>
                 </div>
-
             ))}
-
         </div>
-
-
-
-        {/* --- TÍTULO E DATA --- */}
-
-        <div className="absolute bottom-0 left-0 w-full p-6 z-20 flex flex-col gap-3">
-
-          <div className="flex items-center gap-2">
-
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border backdrop-blur-md shadow-lg ${evento.tipo === 'Festa' ? 'bg-purple-600/80 border-purple-500' : 'bg-orange-600/80 border-orange-500'}`}>
-
-                  {evento.tipo || "Evento"}
-
-              </span>
-
-              <span className="bg-emerald-500 text-black text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-lg shadow-emerald-500/20">
-
-                  Oficial
-
-              </span>
-
-          </div>
-
-         
-
-          <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none text-white drop-shadow-2xl">
-
-              {evento.titulo}
-
-          </h1>
-
-         
-
-          <div className="flex flex-wrap gap-4 text-xs font-bold text-zinc-300 uppercase tracking-wide mt-1">
-
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
-
-                <Calendar size={14} className="text-emerald-500" /> {evento.data}
-
-            </div>
-
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
-
-                <Clock size={14} className="text-emerald-500" /> {evento.hora}
-
-            </div>
-
-          </div>
-
+        <div className="flex flex-col">
+            <span className="text-[9px] font-bold text-zinc-400 uppercase">Presença</span>
+            <span className="text-xs font-black text-emerald-400">+{totalConfirmados} Tubarões</span>
         </div>
-
-      </div>
-
-
-
-      {/* --- CONTEÚDO (CARD ELEVADO) --- */}
-
-      <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] p-6 space-y-10 min-h-[50vh]">
-
-       
-
-        {/* 1. PAINEL DE RSVP */}
-
-        <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-1 rounded-2xl shadow-inner">
-
-            <div className="grid grid-cols-2 gap-1">
-
-                <button
-
-                    onClick={() => handleRSVP('going')}
-
-                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'going' ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 scale-[1.02]" : "text-zinc-500 hover:bg-zinc-800 hover:text-white"}`}
-
-                >
-
-                    <CheckCircle size={22} className={userRsvp === 'going' ? "fill-black text-emerald-500" : ""} />
-
-                    <span className="text-[10px] font-black uppercase tracking-widest">Eu Vou</span>
-
-                </button>
-
-               
-
-                <button
-
-                    onClick={() => handleRSVP('maybe')}
-
-                    className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 ${userRsvp === 'maybe' ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]" : "text-zinc-500 hover:bg-zinc-800 hover:text-white"}`}
-
-                >
-
-                    <HelpCircle size={22} className={userRsvp === 'maybe' ? "fill-black text-yellow-500" : ""} />
-
-                    <span className="text-[10px] font-black uppercase tracking-widest">Talvez</span>
-
-                </button>
-
-            </div>
-
-           
-
-            <div className="text-center py-2 border-t border-white/5 mt-1 flex justify-center items-center gap-2">
-
-                <Users size={12} className="text-zinc-500"/>
-
-                <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
-
-                    {evento.stats?.confirmados || 0} confirmados • {evento.stats?.talvez || 0} interessados
-
-                </p>
-
-            </div>
-
-        </div>
-
-
-
-        {/* 2. DESCRIÇÃO */}
-
-        <section className="space-y-4">
-
-          <h2 className="text-sm font-black text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-2">
-
-              <Users size={16} className="text-emerald-500" /> Detalhes do Rolê
-
-          </h2>
-
-          <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-
-              {evento.descricao || "Nenhuma descrição informada pelo organizador."}
-
-          </p>
-
-        </section>
-
-
-
-        {/* 3. LOCALIZAÇÃO */}
-
-        <section className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4">
-
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center border border-zinc-700 shrink-0">
-
-                <MapPin size={24} className="text-emerald-500" />
-
-            </div>
-
-            <div>
-
-                <h3 className="text-white font-bold text-sm uppercase">Localização</h3>
-
-                <p className="text-zinc-400 text-xs mt-0.5">{evento.local}</p>
-
-            </div>
-
-        </section>
-
-
-
-        {/* 4. LOTES (INGRESSOS) */}
-
-        <section className="space-y-4">
-
-          <h2 className="text-sm font-black text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-2">
-
-              <Ticket size={16} className="text-emerald-500" /> Garanta seu lugar
-
-          </h2>
-
-         
-
-          <div className="space-y-3">
-
-            {evento.lotes?.map((lote: any, index: number) => (
-
-              <div
-
-                key={index}
-
-                className={`relative flex justify-between items-center p-5 rounded-2xl border transition-all duration-300 overflow-hidden group ${
-
-                    lote.status === "ativo"
-
-                        ? "bg-zinc-900 border-emerald-500/30 hover:border-emerald-500 shadow-lg"
-
-                        : "bg-black border-zinc-800 opacity-60"
-
-                }`}
-
-              >
-
-                {/* Visual Background Glow se ativo */}
-
-                {lote.status === 'ativo' && <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition"></div>}
-
-
-
-                <div className="relative z-10">
-
-                  <p className={`text-xs font-black uppercase tracking-wider mb-1 ${lote.status === "ativo" ? "text-white" : "text-zinc-500"}`}>
-
-                      {lote.nome}
-
-                  </p>
-
-                  <p className={`text-xl font-black ${lote.status === "ativo" ? "text-emerald-400" : "text-zinc-600"}`}>
-
-                      {lote.preco}
-
-                  </p>
-
-                </div>
-
-               
-
-                <div className="relative z-10">
-
-                    {/* BOTÃO COMPRAR (LOTE ATIVO) */}
-
-                    {lote.status === "ativo" && (
-
-                        <Link
-
-                            href="/carrinho"
-
-                            className="bg-white text-black px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-emerald-400 hover:scale-105 transition-all shadow-lg shadow-white/10"
-
-                        >
-
-                            Comprar
-
-                        </Link>
-
-                    )}
-
-                   
-
-                    {/* BOTÃO EM BREVE (LOTE AGENDADO) */}
-
-                    {lote.status === "agendado" && (
-
-                        <div className="flex items-center gap-2 text-yellow-500 bg-yellow-500/10 px-4 py-2 rounded-xl border border-yellow-500/20">
-
-                            <Lock size={14}/>
-
-                            <span className="text-[10px] font-bold uppercase tracking-wide">Em Breve</span>
-
-                        </div>
-
-                    )}
-
-
-
-                    {/* BOTÃO ESGOTADO (LOTE ENCERRADO) */}
-
-                    {lote.status === "encerrado" && (
-
-                        <div className="text-[10px] font-black text-red-500 uppercase bg-red-500/10 px-4 py-2 rounded-xl border border-red-500/20">
-
-                            Esgotado
-
-                        </div>
-
-                    )}
-
-                </div>
-
-              </div>
-
-            ))}
-
-
-
-            {(!evento.lotes || evento.lotes.length === 0) && (
-
-                <div className="text-center py-8 text-zinc-600 text-xs uppercase font-bold border border-dashed border-zinc-800 rounded-xl">
-
-                    Nenhum ingresso disponível no momento.
-
-                </div>
-
-            )}
-
-          </div>
-
-        </section>
-
-
-
-      </div>
-
     </div>
+  );
+}
 
+// --- COMPONENTE: CONTADOR ---
+function EventCountdown({ targetDate }: { targetDate: string }) {
+  const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
+
+  useEffect(() => {
+    const calculateTime = () => {
+        if (!targetDate) return "EM BREVE";
+        const months: Record<string, number> = {
+            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
+            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÇO': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
+            'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
+        };
+        const now = new Date();
+        let eventDate = new Date();
+        let isValid = false;
+        const cleanDate = targetDate.toUpperCase().trim();
+        const parts = cleanDate.split(' ');
+
+        if (parts.length >= 2) {
+            const day = parseInt(parts[0]);
+            const monthStr = parts[1].substring(0, 3);
+            const month = months[monthStr];
+            if (!isNaN(day) && month !== undefined) {
+                eventDate = new Date(now.getFullYear(), month, day, 23, 59, 59);
+                if (eventDate < now) eventDate.setFullYear(now.getFullYear() + 1);
+                isValid = true;
+            }
+        }
+        if (!isValid) return targetDate;
+
+        const diff = eventDate.getTime() - now.getTime();
+        if (diff < 0) return "HOJE!";
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        if (days > 0) return `FALTAM ${days} DIAS`;
+        return `FALTAM ${hours} HORAS`;
+    };
+    setTimeLeft(calculateTime());
+    const interval = setInterval(() => setTimeLeft(calculateTime()), 60000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  return (
+    <div className="flex items-center gap-1 text-[10px] font-black bg-black/60 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10 shadow-lg animate-in fade-in">
+      <Clock size={12} className="text-emerald-500" />
+      <span className="tracking-wide">{timeLeft}</span>
+    </div>
+  );
+}
+
+// --- COMPONENTE: CARD DO EVENTO (COM LIKE NO RODAPÉ) ---
+function EventCard({ ev, userId }: { ev: any, userId?: string }) {
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(ev.stats?.likes || 0);
+
+  const loteAtivo = ev.lotes?.find((l: any) => l.status === 'ativo');
+  const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes?.length > 0 ? "Esgotado" : "Em breve");
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // Impede de abrir o link do card
+    if (!userId) return; // Se não logado, não faz nada
+    
+    const newLiked = !liked;
+    setLiked(newLiked);
+    setLikesCount((prev: number) => newLiked ? prev + 1 : prev - 1);
+    
+    // Atualiza no Firebase
+    const eventRef = doc(db, "eventos", ev.id);
+    await updateDoc(eventRef, { [`stats.likes`]: increment(newLiked ? 1 : -1) });
+  };
+
+  return (
+    <Link href={`/eventos/${ev.id}`} className="group h-full">
+      <div className="flex flex-col h-full w-full bg-zinc-900 border border-zinc-800 rounded-[24px] overflow-hidden hover:border-emerald-500/50 hover:shadow-2xl hover:shadow-emerald-900/20 transition-all duration-300">
+        
+        {/* 1. IMAGEM */}
+        <div className="relative h-56 w-full shrink-0 overflow-hidden">
+            <img 
+                src={ev.imagem || "https://placehold.co/600x400/111/333?text=Evento"} 
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100"
+                style={{ objectPosition: `50% ${ev.imagePositionY || 50}%` }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+            
+            {/* Badges */}
+            <div className="absolute top-3 left-3 flex gap-2">
+                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase backdrop-blur-md shadow-lg ${ev.tipo === 'Liga' ? 'bg-blue-600 text-white' : 'bg-emerald-500 text-black'}`}>
+                    {ev.tipo}
+                </span>
+                {ev.destaque && (
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-yellow-500 text-black shadow-lg flex items-center gap-1">
+                        <Zap size={10} fill="black"/> {ev.destaque}
+                    </span>
+                )}
+            </div>
+
+            {/* Contador */}
+            <div className="absolute bottom-3 right-3">
+                <EventCountdown targetDate={ev.data} />
+            </div>
+        </div>
+
+        {/* 2. CONTEÚDO */}
+        <div className="flex flex-col flex-1 p-5 gap-4">
+            
+            {/* Título */}
+            <div>
+                <h2 className="text-xl font-black italic uppercase leading-tight text-white mb-2 line-clamp-2">
+                    {ev.titulo}
+                </h2>
+                <div className="flex flex-wrap gap-3 text-xs font-bold text-zinc-400 uppercase">
+                    <span className="flex items-center gap-1.5"><Calendar size={14} className="text-emerald-500"/> {ev.data}</span>
+                    <span className="flex items-center gap-1.5"><Clock size={14} className="text-emerald-500"/> {ev.hora}</span>
+                    <span className="flex items-center gap-1.5"><MapPin size={14} className="text-emerald-500"/> {ev.local}</span>
+                </div>
+            </div>
+
+            {/* Ranking (RSVP) */}
+            <EventClassRanking eventId={ev.id} />
+
+            {/* Footer do Card */}
+            <div className="mt-auto pt-4 border-t border-zinc-800 flex items-center justify-between">
+                
+                {/* Preço */}
+                <div>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase">A partir de</p>
+                    <p className={`text-lg font-black ${loteAtivo ? 'text-white' : 'text-zinc-600'}`}>{precoDisplay}</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {/* BOTÃO DE LIKE (NOVO LOCAL) */}
+                    <button 
+                        onClick={handleLike}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-all ${liked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'}`}
+                    >
+                        <Heart size={16} className={liked ? "fill-current" : ""} />
+                        <span className="text-xs font-black">{likesCount}</span>
+                    </button>
+
+                    {/* Seta de Ir */}
+                    <div className="bg-white text-black p-2.5 rounded-full group-hover:bg-emerald-500 transition-colors shadow-lg">
+                        <ArrowRight size={18}/>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+      </div>
+    </Link>
+  );
+}
+
+// --- PÁGINA PRINCIPAL ---
+export default function EventosPage() {
+  const { user } = useAuth();
+  const [eventos, setEventos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("Todos");
+
+  useEffect(() => {
+    const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"));
+    
+    // Listener robusto anti-loop
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        try {
+            const lista = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+            setEventos(lista);
+        } catch (e) {
+            console.error("Erro eventos:", e);
+        } finally {
+            setLoading(false);
+        }
+    }, (error) => {
+        console.error("Erro conexão:", error);
+        setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const filteredEvents = filter === "Todos" 
+      ? eventos 
+      : eventos.filter(e => e.tipo === filter || e.categoria === filter);
+
+  if (loading) return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-emerald-500 gap-3">
+          <Loader2 className="animate-spin w-10 h-10"/>
+          <p className="text-xs font-black tracking-widest uppercase">Carregando Agenda...</p>
+      </div>
   );
 
+  return (
+    <div className="min-h-screen bg-[#050505] text-white p-6 font-sans pb-32">
+      
+      {/* HEADER */}
+      <header className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-3">
+            <Link href="/dashboard" className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 transition border border-zinc-800">
+                <ArrowLeft size={20} className="text-zinc-400"/>
+            </Link>
+            <div>
+                <h1 className="text-3xl font-black uppercase tracking-tighter italic">Agenda<span className="text-emerald-500">Tubarão</span></h1>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Próximos Eventos</p>
+            </div>
+        </div>
+      </header>
+
+      {/* FILTROS */}
+      <div className="flex gap-3 mb-8 overflow-x-auto pb-2 custom-scrollbar">
+          {["Todos", "Festa", "Esporte", "Liga"].map(f => (
+              <button 
+                  key={f} 
+                  onClick={() => setFilter(f)} 
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition whitespace-nowrap border ${filter === f ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
+              >
+                  {f}
+              </button>
+          ))}
+      </div>
+
+      {/* GRID RESPONSIVO (1 COL MOBILE, 2 TABLET, 3 PC) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
+          {filteredEvents.map((ev) => (
+              <EventCard key={ev.id} ev={ev} userId={user?.uid} />
+          ))}
+
+          {/* Estado Vazio */}
+          {filteredEvents.length === 0 && (
+              <div className="col-span-full text-center py-20 border-2 border-dashed border-zinc-800 rounded-[32px] bg-zinc-900/30 flex flex-col items-center justify-center gap-4">
+                  <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800">
+                      <Calendar size={32} className="text-zinc-600"/>
+                  </div>
+                  <div>
+                      <p className="text-zinc-300 font-bold uppercase">Nada por aqui...</p>
+                      <p className="text-zinc-600 text-xs mt-1">Nenhum evento encontrado nesta categoria.</p>
+                  </div>
+              </div>
+          )}
+      </div>
+    </div>
+  );
 }
