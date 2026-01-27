@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { 
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
-  UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart
+  UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
+  Zap, Gem, Trophy, ShoppingBag // 🦈 Ícones adicionados para suporte total
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
@@ -29,19 +30,30 @@ interface UserProfile {
   instagram?: string;
   whatsappPublico?: boolean;
   idadePublica?: boolean;
-  relacionamentoPublico?: boolean; // 🦈 Adicionado campo booleano
+  relacionamentoPublico?: boolean;
   telefone?: string;
   esportes?: string[];
   role?: string;
+  
+  // 🦈 Campos Visuais Vindos do Admin
+  plano?: string;        
+  plano_cor?: string;  // ex: 'yellow', 'emerald'
+  plano_icon?: string; // ex: 'crown', 'zap'
+  
+  patente?: string;
   tier?: 'bicho' | 'atleta' | 'lenda';
+  
   level?: number;
   xp?: number;
   pets?: string;
   stats?: {
     arenaWins?: number;
     arenaLosses?: number;
+    [key: string]: number | undefined;
   };
   statusRelacionamento?: string;
+  
+  [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
 interface FollowerUser {
@@ -70,32 +82,68 @@ const getSportInfo = (sport: string) => {
     return map[sport.toLowerCase()] || { emoji: "🏅", label: sport, color: "bg-zinc-800 text-zinc-400" };
 };
 
-// --- BADGES ---
+// --- BADGE DE GAMIFICATION ---
 const LevelBadge = ({ level }: { level: number }) => {
     let icon = <Fish size={14} />;
-    let color = "text-zinc-400";
+    let color = "text-zinc-500";
     let title = "Plâncton";
+    
     if (level >= 1) { icon = <Fish size={14} />; color = "text-orange-400"; title = "Peixe Palhaço"; }
     if (level >= 2) { icon = <Swords size={14} />; color = "text-blue-400"; title = "Barracuda"; }
     if (level >= 5) { icon = <Crown size={14} />; color = "text-yellow-400"; title = "Tubarão Rei"; }
+    
     return (
         <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 ${color} shadow-lg relative group cursor-help`}>
             {icon}
-            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">Nível {level}: {title}</span>
+            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">
+                Nível {level}: {title}
+            </span>
         </div>
     );
 };
 
-const PlanBadge = ({ tier }: { tier?: string }) => {
-    let icon = <Ghost size={14} />;
-    let color = "text-emerald-400";
-    let title = "Bicho Solto";
-    if (tier === 'atleta') { icon = <Star size={14} />; color = "text-zinc-300"; title = "Sócio Atleta"; }
-    if (tier === 'lenda') { icon = <Crown size={14} />; color = "text-yellow-500"; title = "Sócio Lenda"; }
+// --- 🦈 BADGE DE PLANO DINÂMICA (LÊ DO FIREBASE) ---
+const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
+    
+    // 1. Mapear string do banco para Componente React
+    const IconMap: Record<string, React.ElementType> = {
+        'ghost': Ghost,
+        'star': Star,
+        'crown': Crown,
+        'fish': Fish,
+        'zap': Zap,
+        'gem': Gem,
+        'trophy': Trophy,
+        'shopping': ShoppingBag
+    };
+
+    // 2. Definir Ícone (Fallback para Ghost)
+    const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
+    
+    // 3. Definir Título (Fallback para Bicho Solto)
+    const title = nome || "Bicho Solto";
+
+    // 4. Definir Estilo baseado na Cor do Admin
+    const getBadgeStyle = (c?: string) => {
+        switch(c) {
+            case 'yellow': return 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10';
+            case 'emerald': return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+            case 'zinc': return 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10';
+            case 'purple': return 'text-purple-400 border-purple-500/30 bg-purple-500/10';
+            case 'blue': return 'text-blue-400 border-blue-500/30 bg-blue-500/10';
+            case 'red': return 'text-red-500 border-red-500/30 bg-red-500/10';
+            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; // Default Cinza
+        }
+    };
+
+    const styleClass = getBadgeStyle(cor);
+
     return (
-        <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 ${color} shadow-lg relative group cursor-help`}>
-            {icon}
-            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">{title}</span>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${styleClass} shadow-lg relative group cursor-help transition-all hover:scale-105`}>
+            <IconComponent size={14} className="animate-pulse-slow" />
+            <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
+                {title}
+            </span>
         </div>
     );
 };
@@ -109,7 +157,6 @@ export default function PerfilPublicoPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Follow System
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -121,7 +168,6 @@ export default function PerfilPublicoPage() {
 
   const isOwnProfile = user?.uid === params.id;
 
-  // FETCH DATA
   useEffect(() => {
     if (!params.id) return;
     const uid = params.id as string;
@@ -133,11 +179,9 @@ export default function PerfilPublicoPage() {
             if (docSnap.exists()) {
                 setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
                 
-                // Seguidores
                 const followersSnap = await getDocs(collection(db, "users", uid, "followers"));
                 setFollowersCount(followersSnap.size);
 
-                // Seguindo (Novo campo estatístico)
                 const followingSnap = await getDocs(collection(db, "users", uid, "following"));
                 setFollowingCount(followingSnap.size);
 
@@ -155,7 +199,6 @@ export default function PerfilPublicoPage() {
     fetchProfile();
   }, [params.id, user]);
 
-  // FOLLOW ACTION
   const handleFollow = async () => {
       if (!user || !profile) return;
       
@@ -189,7 +232,6 @@ export default function PerfilPublicoPage() {
       } catch { addToast("Erro ao seguir.", "error"); }
   };
 
-  // MODAL HANDLERS
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile) return;
       setActiveListType(type);
@@ -218,7 +260,6 @@ export default function PerfilPublicoPage() {
       return null;
   };
 
-  // 🦈 CONTROLES DE PRIVACIDADE
   const showAge = isOwnProfile || profile.idadePublica;
   const showWhatsapp = isOwnProfile || profile.whatsappPublico;
   const showRelacionamento = isOwnProfile || profile.relacionamentoPublico;
@@ -235,8 +276,6 @@ export default function PerfilPublicoPage() {
         </div>
 
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
-            
-            {/* Foto + Logo */}
             <div className="relative mb-3 group">
                 <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
                     <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
@@ -266,16 +305,24 @@ export default function PerfilPublicoPage() {
             </div>
 
             <div className="flex items-center gap-4 mb-6">
-                <PlanBadge tier={profile.tier || 'bicho'} />
+                
+                {/* 🦈 BADGE CONECTADA AO FIREBASE */}
+                {/* Passamos o que vem do banco. Se vier vazio, o componente usa o fallback */}
+                <PlanBadge 
+                    nome={profile.plano} 
+                    cor={profile.plano_cor} 
+                    iconName={profile.plano_icon} 
+                />
+                
                 {isOwnProfile ? (
                     <Link href="/cadastro" className="px-6 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar</Link>
                 ) : (
                     <button onClick={handleFollow} className={`px-6 py-2 rounded-full text-xs font-bold uppercase border transition shadow-lg flex items-center gap-2 ${isFollowing ? 'bg-zinc-900 border-zinc-700 text-zinc-400' : 'bg-emerald-600 border-emerald-500 text-white hover:scale-105'}`}>{isFollowing ? <UserCheck size={14}/> : <UserPlus size={14}/>} {isFollowing ? "Seguindo" : "Seguir"}</button>
                 )}
+                
                 <LevelBadge level={profile.level || 1} />
             </div>
 
-            {/* STATS */}
             <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
                 <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
                     <span className="text-xl font-black text-white">{followersCount}</span>
@@ -293,10 +340,9 @@ export default function PerfilPublicoPage() {
 
             {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
 
-            {/* REDES SOCIAIS */}
             <div className="flex gap-3 mb-8">
                 {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
-                {/* 🦈 WhatsApp com Lógica de Privacidade */}
+                
                 {profile.telefone && (
                     <div className="relative">
                         {showWhatsapp ? (
@@ -310,7 +356,6 @@ export default function PerfilPublicoPage() {
                 <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
             </div>
 
-            {/* FICHA TÉCNICA */}
             <div className="w-full max-w-sm space-y-4">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha Técnica</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -319,7 +364,6 @@ export default function PerfilPublicoPage() {
                         <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
                     </div>
                     
-                    {/* 🦈 STATUS DE RELACIONAMENTO COM PRIVACIDADE */}
                     <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
                         <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
                         <div>
@@ -342,7 +386,6 @@ export default function PerfilPublicoPage() {
                     )}
                 </div>
 
-                {/* ESPORTES */}
                 {profile.esportes && profile.esportes.length > 0 && (
                     <div className="pt-4">
                         <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
@@ -358,7 +401,6 @@ export default function PerfilPublicoPage() {
         </div>
       </div>
 
-      {/* MODAL LISTAS */}
       {showFollowersModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">

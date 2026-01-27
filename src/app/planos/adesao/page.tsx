@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, CheckCircle, Ghost, Star, Crown, Copy, QrCode, Loader2, Upload, Image as ImageIcon, ShoppingBag, Clock } from "lucide-react";
+import { ArrowLeft, MessageCircle, Loader2, Send, Clock, Copy, CreditCard, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useToast } from "../../../context/ToastContext";
-import { useAuth } from "../../../context/AuthContext"; // Importante para pegar o ID do user
-import { db, storage } from "../../../lib/firebase";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 
 // Ícones locais
+import { Ghost, Star, Crown, ShoppingBag } from "lucide-react";
 const ICONS_MAP: any = { ghost: Ghost, star: Star, crown: Crown, shopping: ShoppingBag };
 
 export default function AdesaoPage() {
@@ -21,49 +21,69 @@ export default function AdesaoPage() {
   
   const planId = searchParams.get('plano');
   const [plano, setPlano] = useState<any>(null);
+  const [pixData, setPixData] = useState<any>({ chave: "Carregando...", banco: "...", titular: "..." });
+  
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
 
-  // Upload State
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-
+  // ID 205 - Buscar Configurações do PIX e WhatsApp do Admin
   useEffect(() => {
-      const fetchPlan = async () => {
-          if (!planId) return;
-          const docRef = doc(db, "planos", planId);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-              setPlano({ id: snap.id, ...snap.data() });
+      const fetchConfigAndPlan = async () => {
+          if (!planId || !user) return;
+
+          try {
+              // 1. ID 209: Verificar se já existe solicitação pendente
+              const q = query(
+                  collection(db, "solicitacoes_adesao"), 
+                  where("userId", "==", user.uid),
+                  where("status", "==", "pendente")
+              );
+              const pendingSnap = await getDocs(q);
+              if (!pendingSnap.empty) {
+                  setHasPendingRequest(true);
+                  setFetching(false);
+                  return;
+              }
+
+              // 2. Buscar Plano
+              const docRef = doc(db, "planos", planId);
+              const snap = await getDoc(docRef);
+              if (snap.exists()) {
+                  setPlano({ id: snap.id, ...snap.data() });
+              }
+
+              // 3. Buscar Dados PIX (Do banco ou Hardcoded se não tiver config ainda)
+              const configRef = doc(db, "app_config", "financeiro");
+              const configSnap = await getDoc(configRef);
+              if (configSnap.exists()) {
+                  setPixData(configSnap.data());
+              } else {
+                  // Fallback
+                  setPixData({
+                      chave: "financeiro@aaakn.com.br",
+                      banco: "Banco Inter",
+                      titular: "Assoc. Atlética Acad. Knight"
+                  });
+              }
+
+          } catch (error) {
+              console.error("Erro ao carregar:", error);
+          } finally {
+              setFetching(false);
           }
-          setFetching(false);
       };
-      fetchPlan();
-  }, [planId]);
+      fetchConfigAndPlan();
+  }, [planId, user]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          setReceiptFile(file);
-          setPreviewUrl(URL.createObjectURL(file));
-      }
-  };
-
+  // ID 206 - Registra intenção e manda pro Zap
   const handleFinish = async () => {
-      if (!receiptFile || !user || !plano) {
-          addToast("Por favor, anexe o comprovante.", "error");
-          return;
-      }
+      if (!user || !plano) return;
 
       setLoading(true);
       try {
-          // 1. Upload do Comprovante
-          const storageRef = ref(storage, `comprovantes/${user.uid}_${Date.now()}`);
-          await uploadBytes(storageRef, receiptFile);
-          const downloadUrl = await getDownloadURL(storageRef);
-
-          // 2. Criar Solicitação Pendente
+          // 1. Criar Solicitação "Pendente" no Banco
           await addDoc(collection(db, "solicitacoes_adesao"), {
               userId: user.uid,
               userName: user.nome || "Aluno",
@@ -71,24 +91,57 @@ export default function AdesaoPage() {
               planoId: plano.id,
               planoNome: plano.nome,
               valor: plano.precoVal,
-              comprovanteUrl: downloadUrl,
               dataSolicitacao: serverTimestamp(),
-              status: "pendente" // O segredo está aqui
+              status: "pendente", 
+              metodo: "whatsapp"
           });
 
-          setStep(3); // Tela de Sucesso/Espera
-          addToast("Comprovante enviado para análise!", "success");
+          // 2. ID 208: Gerar Link do WhatsApp
+          const adminPhone = pixData.whatsapp || "5512999999999"; 
+          const message = `🦈 Fala Tubarão! Fiz o PIX para o plano *${plano.nome}*. Segue meu ID: ${user.uid.slice(0,5)}. Posso mandar o comprovante?`;
+          const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
+
+          // 3. Redirecionar
+          window.open(whatsappUrl, '_blank');
+          setStep(3); // Tela de Sucesso
+          addToast("Solicitação iniciada!", "success");
 
       } catch (error) {
           console.error(error);
-          addToast("Erro ao enviar. Tente novamente.", "error");
+          addToast("Erro ao iniciar solicitação.", "error");
       } finally {
           setLoading(false);
       }
   };
 
-  if (fetching) return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500"><Loader2 className="animate-spin"/></div>;
-  if (!plano) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Plano não encontrado.</div>;
+  const copyPix = () => {
+      navigator.clipboard.writeText(pixData.chave);
+      addToast("Chave PIX copiada!", "success");
+  }
+
+  if (fetching) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500"><Loader2 className="animate-spin"/></div>;
+
+  // ID 209 - TELA DE BLOQUEIO
+  if (hasPendingRequest) {
+      return (
+          <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-center">
+              <div className="max-w-md w-full bg-zinc-900 border border-yellow-500/30 p-8 rounded-3xl relative overflow-hidden">
+                  <div className="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                      <Clock size={40} className="text-yellow-500"/>
+                  </div>
+                  <h2 className="text-xl font-black text-white uppercase mb-2">Solicitação em Análise</h2>
+                  <p className="text-zinc-400 text-sm mb-6">
+                      Você já tem um pedido pendente. Aguarde o Tesoureiro aprovar ou recusar antes de solicitar outro plano.
+                  </p>
+                  <Link href="/menu" className="block w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl uppercase text-xs tracking-wider transition">
+                      Voltar ao Menu
+                  </Link>
+              </div>
+          </div>
+      )
+  }
+
+  if (!plano) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Plano não encontrado.</div>;
 
   const Icon = ICONS_MAP[plano.icon] || Star;
   const colorClass = plano.cor === 'yellow' ? 'text-yellow-500' : plano.cor === 'zinc' ? 'text-purple-500' : 'text-emerald-500';
@@ -98,7 +151,7 @@ export default function AdesaoPage() {
         
         {/* Background Animado */}
         <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-emerald-600/15 blur-[120px] rounded-full pointer-events-none animate-pulse-slow"></div>
-        <div className="absolute bottom-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-[-20%] left-[-20%] w-[60%] h-[60%] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
 
         <Link href="/planos" className="absolute top-6 left-6 text-zinc-500 hover:text-white flex items-center gap-2 transition z-50 font-bold uppercase text-xs tracking-wider">
             <ArrowLeft size={18}/> Cancelar
@@ -121,82 +174,93 @@ export default function AdesaoPage() {
             {/* PASSO 1: CONFIRMAÇÃO */}
             {step === 1 && (
                 <div className="space-y-6 animate-in slide-in-from-right">
-                    <div className="bg-black/40 p-4 rounded-xl border border-zinc-700 space-y-3">
+                    <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800 space-y-3">
                         <div className="flex justify-between items-center text-sm">
-                            <span className="text-zinc-400">Plano Selecionado</span>
+                            <span className="text-zinc-400 font-medium">Plano Selecionado</span>
                             <span className="text-white font-bold">{plano.nome}</span>
                         </div>
-                        <div className="border-t border-zinc-700 pt-3 flex justify-between items-center">
-                            <span className="text-zinc-300 font-bold uppercase">Total</span>
-                            <span className="text-emerald-400 font-black text-xl">R$ {plano.preco}</span>
+                        <div className="border-t border-zinc-800 pt-3 flex justify-between items-center">
+                            <span className="text-zinc-300 font-bold uppercase text-xs tracking-wider">Valor Total</span>
+                            <span className="text-emerald-400 font-black text-2xl">R$ {plano.preco}</span>
                         </div>
                     </div>
-                    <button onClick={() => setStep(2)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 flex justify-center items-center gap-2">
-                        Ir para Pagamento <ArrowLeft size={18} className="rotate-180"/>
+                    <button onClick={() => setStep(2)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 flex justify-center items-center gap-2 group">
+                        Ir para Pagamento <ArrowLeft size={18} className="rotate-180 group-hover:translate-x-1 transition"/>
                     </button>
                 </div>
             )}
 
-            {/* PASSO 2: PIX + UPLOAD */}
+            {/* PASSO 2: DADOS PIX (ID 207 - SEM QR CODE) */}
             {step === 2 && (
                 <div className="space-y-6 animate-in slide-in-from-right text-center">
                     
-                    {/* ÁREA PIX */}
-                    <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700">
-                        <p className="text-xs text-zinc-400 mb-3 uppercase font-bold tracking-widest">1. Faça o Pix</p>
-                        <div className="bg-white p-2 rounded-xl inline-block mb-3">
-                            <QrCode size={120} className="text-black"/>
+                    {/* ÁREA DADOS BANCÁRIOS */}
+                    <div className="bg-zinc-800/30 p-5 rounded-2xl border border-zinc-700 text-left space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <CreditCard size={16} className="text-emerald-500"/>
+                            <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Dados para Transferência</p>
                         </div>
-                        <div className="bg-black p-3 rounded-lg flex items-center justify-between border border-zinc-700 cursor-pointer hover:border-emerald-500 transition" onClick={() => addToast("Chave Pix Copiada!", "success")}>
-                            <span className="text-xs text-zinc-300 font-mono truncate max-w-[200px]">00020126580014br.gov.bcb.pix...</span>
-                            <Copy size={14} className="text-emerald-500"/>
-                        </div>
-                    </div>
 
-                    {/* ÁREA UPLOAD */}
-                    <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700">
-                        <p className="text-xs text-zinc-400 mb-3 uppercase font-bold tracking-widest">2. Envie o Comprovante</p>
-                        
-                        <label className="block w-full cursor-pointer group">
-                            <div className={`border-2 border-dashed border-zinc-600 rounded-xl h-32 flex flex-col items-center justify-center transition group-hover:border-emerald-500 group-hover:bg-emerald-500/5 ${previewUrl ? 'border-emerald-500 bg-black' : ''}`}>
-                                {previewUrl ? (
-                                    <img src={previewUrl} className="h-full w-full object-contain rounded-lg"/>
-                                ) : (
-                                    <>
-                                        <Upload size={24} className="text-zinc-500 group-hover:text-emerald-500 mb-2"/>
-                                        <span className="text-[10px] text-zinc-400 uppercase font-bold">Toque para selecionar</span>
-                                    </>
-                                )}
+                        <div className="space-y-3">
+                            <div>
+                                <p className="text-[10px] text-zinc-500 font-bold uppercase">Chave Pix</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-white font-mono text-sm bg-black px-3 py-2 rounded-lg border border-zinc-700 flex-1 truncate">{pixData.chave}</p>
+                                    <button onClick={copyPix} className="bg-zinc-700 hover:bg-zinc-600 p-2 rounded-lg text-white transition"><Copy size={16}/></button>
+                                </div>
                             </div>
-                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange}/>
-                        </label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase">Banco</p>
+                                    <p className="text-zinc-300 text-xs font-bold mt-0.5">{pixData.banco}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase">Titular</p>
+                                    <p className="text-zinc-300 text-xs font-bold mt-0.5 truncate">{pixData.titular}</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <button onClick={handleFinish} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                        {loading ? <Loader2 className="animate-spin"/> : "Enviar para Análise"}
-                    </button>
+                    {/* BOTÃO ZAP (ID 208) */}
+                    <div className="space-y-3 pt-2">
+                        <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest flex items-center justify-center gap-2">
+                            <AlertCircle size={12}/> Próximo Passo
+                        </p>
+                        <button onClick={handleFinish} disabled={loading} className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-black uppercase py-4 rounded-xl shadow-[0_0_20px_rgba(37,211,102,0.2)] transition active:scale-95 flex justify-center items-center gap-2">
+                            {loading ? <Loader2 className="animate-spin"/> : (
+                                <>
+                                    <MessageCircle size={20} fill="black" className="text-black"/>
+                                    Enviar Comprovante
+                                </>
+                            )}
+                        </button>
+                        <p className="text-[10px] text-zinc-600 max-w-xs mx-auto leading-relaxed">
+                            Ao clicar, você vai para o WhatsApp da Atlética. Envie o comprovante lá para liberarmos seu acesso.
+                        </p>
+                    </div>
                 </div>
             )}
 
             {/* PASSO 3: AGUARDANDO APROVAÇÃO */}
             {step === 3 && (
-                <div className="space-y-6 animate-in zoom-in text-center py-6">
-                    <div className="w-24 h-24 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(234,179,8,0.2)] border border-yellow-500/50 animate-pulse">
-                        <Clock size={48} className="text-yellow-500"/>
+                <div className="space-y-6 animate-in zoom-in text-center py-4">
+                    <div className="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(16,185,129,0.2)] border border-emerald-500/50 animate-pulse">
+                        <Send size={40} className="text-emerald-500 ml-1 mt-1"/>
                     </div>
                     
                     <div>
-                        <h2 className="text-2xl font-black text-white uppercase italic">EM ANÁLISE!</h2>
-                        <p className="text-zinc-400 mt-2 text-sm max-w-xs mx-auto">Recebemos seu comprovante. O Tubarão Financeiro vai conferir e liberar seu acesso em breve.</p>
+                        <h2 className="text-2xl font-black text-white uppercase italic">Pedido Registrado!</h2>
+                        <p className="text-zinc-400 mt-2 text-sm max-w-xs mx-auto">
+                            Agora é só aguardar. O Tesoureiro vai conferir seu PIX no WhatsApp e liberar seu acesso manualmente.
+                        </p>
                     </div>
 
                     <div className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 text-left">
-                        <p className="text-xs text-zinc-300 mb-2">ℹ️ <span className="font-bold text-white">O que acontece agora?</span></p>
-                        <ul className="text-xs text-zinc-400 space-y-2 list-disc pl-4">
-                            <li>Seu perfil será atualizado automaticamente.</li>
-                            <li>Sua carteirinha mudará de cor.</li>
-                            <li>Você será notificado (em breve).</li>
-                        </ul>
+                        <p className="text-xs text-zinc-300 mb-2">ℹ️ <span className="font-bold text-white">Status do Pedido:</span></p>
+                        <div className="flex items-center gap-2 text-yellow-500 font-bold text-xs uppercase tracking-wide bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
+                            <Clock size={14}/> Em Análise
+                        </div>
                     </div>
 
                     <button onClick={() => router.push('/menu')} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">

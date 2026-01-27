@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { 
   ArrowLeft, Edit, Save, Plus, Trash2, CheckCircle, X, 
   LayoutDashboard, CreditCard, DollarSign, Crown, Star, Ghost, 
-  Users, TrendingUp, Calendar, Search, Megaphone, Sparkles, ChevronRight, Loader2, Database, RefreshCw, ShoppingBag, Eye, User, ClipboardList, Check
+  Users, TrendingUp, Calendar, Search, Megaphone, Sparkles, ChevronRight, Loader2, Database, RefreshCw, ShoppingBag, Eye, User, ClipboardList, Check,
+  Fish, Zap, Gem, Trophy // 🦈 Adicionados novos ícones
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -38,7 +39,7 @@ interface Assinatura {
     metodo: 'pix' | 'cartao';
 }
 
-// 🦈 NOVA INTERFACE PARA SOLICITAÇÕES
+// 🦈 INTERFACE PARA SOLICITAÇÕES
 interface Solicitacao {
     id: string;
     userId: string;
@@ -61,7 +62,7 @@ interface BannerConfig {
 // --- DADOS DE RESGATE ---
 const INITIAL_PLANOS = [
     { nome: "Bicho Solto", preco: "0,00", precoVal: 0, parcelamento: "Gratuito", descricao: "Plano de entrada para todos.", cor: "zinc", icon: "ghost", destaque: false, beneficios: ["Carteirinha Digital", "Descontos em Parceiros", "Acesso ao App"] },
-    { nome: "Cardume Livre", preco: "75,00", precoVal: 75, parcelamento: "Semestral", descricao: "Kit básico e economia.", cor: "emerald", icon: "shopping", destaque: false, beneficios: ["Kit: Caneca + Tirante", "15% OFF na Lojinha", "Fura-fila Open Cooler"] },
+    { nome: "Cardume Livre", preco: "75,00", precoVal: 75, parcelamento: "Semestral", descricao: "Kit básico e economia.", cor: "emerald", icon: "fish", destaque: false, beneficios: ["Kit: Caneca + Tirante", "15% OFF na Lojinha", "Fura-fila Open Cooler"] },
     { nome: "Atleta de Bar", preco: "160,00", precoVal: 160, parcelamento: "2x Sem Juros", descricao: "Vive a atlética.", cor: "zinc", icon: "star", destaque: true, beneficios: ["Kit: Caneca + Tirante", "Kit: Camiseta", "50% OFF em 2 festas", "Prioridade Jogos"] },
     { nome: "Lenda dos Jogos", preco: "250,00", precoVal: 250, parcelamento: "3x Sem Juros", descricao: "VIP e Jogos.", cor: "yellow", icon: "crown", destaque: false, beneficios: ["Kit Completo (Body/Colete)", "Acesso VIP Festas", "R$ 50 OFF no JIMESP", "Sorteio Camarote"] }
 ];
@@ -78,10 +79,10 @@ export default function AdminPlanosPage() {
   const { addToast } = useToast();
   
   // Estados de Controle
-  const [activeTab, setActiveTab] = useState<"dashboard" | "solicitacoes" | "config" | "marketing">("dashboard"); // 🦈 ABA NOVA ADICIONADA
+  const [activeTab, setActiveTab] = useState<"dashboard" | "solicitacoes" | "config" | "marketing">("dashboard");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
-  const [viewingReceipt, setViewingReceipt] = useState<Solicitacao | null>(null); // 🦈 Estado para ver comprovante
+  const [viewingReceipt, setViewingReceipt] = useState<Solicitacao | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -89,7 +90,7 @@ export default function AdminPlanosPage() {
   // Estados de Dados
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
-  const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]); // 🦈 NOVO LISTENER
+  const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
   const [editingPlan, setEditingPlan] = useState<Plano | null>(null);
   
   // Estado Marketing
@@ -106,7 +107,6 @@ export default function AdminPlanosPage() {
         setLoading(false);
     });
 
-    // 🦈 LISTENER DE SOLICITAÇÕES
     const qSolicitacoes = query(collection(db, "solicitacoes_adesao"), orderBy("dataSolicitacao", "desc"));
     const unsubSolicitacoes = onSnapshot(qSolicitacoes, (snap) => {
         setSolicitacoes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Solicitacao)));
@@ -151,7 +151,16 @@ export default function AdminPlanosPage() {
       return { totalFaturamento, totalSociosPagantes, totalGeral, ticketMedio, turmasStats, planosCountMap };
   }, [assinaturas, planos]);
 
-  // --- 🦈 FUNÇÃO DE APROVAÇÃO FINANCEIRA ---
+  // --- HELPER: MAPEAMENTO DE PLANO -> TIER (LEGADO/BACKUP) ---
+  const getTierByPlanName = (name: string): 'bicho' | 'atleta' | 'lenda' => {
+      const lower = name.toLowerCase();
+      if (lower.includes('lenda')) return 'lenda';
+      if (lower.includes('atleta')) return 'atleta';
+      // "Cardume Livre" e "Bicho Solto" caem aqui como 'bicho'
+      return 'bicho';
+  };
+
+  // --- 🦈 FUNÇÃO DE APROVAÇÃO INTELIGENTE (ATUALIZADA) ---
   const handleApprove = async (sol: Solicitacao) => {
       if(!confirm(`Confirmar pagamento de ${sol.userName}? Isso vai liberar o acesso dele.`)) return;
       setIsSaving(true);
@@ -160,14 +169,29 @@ export default function AdminPlanosPage() {
           // 1. Atualizar Status da Solicitação
           await updateDoc(doc(db, "solicitacoes_adesao", sol.id), { status: "aprovado" });
 
-          // 2. Atualizar Perfil do Usuário (Badge e Status)
+          // 2. BUSCA OS DADOS DO PLANO PARA GRAVAR NO USUÁRIO
+          // Procura o plano exato na lista carregada
+          const planoRef = planos.find(p => p.id === sol.planoId) || planos.find(p => p.nome === sol.planoNome);
+          
+          // Se achar o plano, usa a cor e icone dele. Se não, usa defaults.
+          const corPlano = planoRef?.cor || "zinc";
+          const iconPlano = planoRef?.icon || "ghost";
+
+          // Mantém a lógica de Tier para compatibilidade
+          const novoTier = getTierByPlanName(sol.planoNome);
+
+          // 3. Atualizar Perfil do Usuário
+          // Agora gravamos 'plano_cor' e 'plano_icon' dinamicamente!
           await updateDoc(doc(db, "users", sol.userId), {
-              plano_badge: sol.planoNome,
+              plano: sol.planoNome,
+              plano_cor: corPlano,   // 🦈 A Mágica acontece aqui
+              plano_icon: iconPlano, // 🦈 e aqui
+              tier: novoTier,       
               plano_status: "ativo",
               data_adesao: new Date().toISOString()
           });
 
-          // 3. Criar Registro Financeiro (Para o Dashboard somar a receita)
+          // 4. Criar Registro Financeiro
           await addDoc(collection(db, "assinaturas"), {
               aluno: sol.userName,
               turma: sol.userTurma,
@@ -180,8 +204,8 @@ export default function AdminPlanosPage() {
               userId: sol.userId
           });
 
-          addToast("Adesão Aprovada! O aluno já está com o plano ativo.", "success");
-          setViewingReceipt(null); // Fecha modal
+          addToast(`Adesão Aprovada! Badge definida como ${sol.planoNome} (${corPlano}) 🦈`, "success");
+          setViewingReceipt(null); 
 
       } catch (error) {
           console.error(error);
@@ -237,7 +261,6 @@ export default function AdminPlanosPage() {
           <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto">
               <button onClick={() => setActiveTab("dashboard")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 whitespace-nowrap transition ${activeTab === "dashboard" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}><LayoutDashboard size={16}/> Dashboard</button>
               
-              {/* 🦈 NOVA ABA DE AUDITORIA */}
               <button onClick={() => setActiveTab("solicitacoes")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 whitespace-nowrap transition ${activeTab === "solicitacoes" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}>
                   <ClipboardList size={16}/> Auditoria 
                   {solicitacoes.filter(s => s.status === 'pendente').length > 0 && (
@@ -474,7 +497,7 @@ export default function AdminPlanosPage() {
           </div>
       )}
 
-      {/* MODAL EDIÇÃO PLANO (MANTIDO) */}
+      {/* 🦈 MODAL EDIÇÃO PLANO COM NOVOS ÍCONES */}
       {isModalOpen && editingPlan && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
               <div className="bg-zinc-900 w-full max-w-2xl rounded-[2rem] border border-zinc-800 p-8 shadow-2xl relative my-auto">
@@ -489,8 +512,20 @@ export default function AdminPlanosPage() {
                           </div>
                           <div><label className="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Descrição</label><textarea rows={3} className="input-admin resize-none" value={editingPlan.descricao} onChange={e => setEditingPlan({...editingPlan, descricao: e.target.value})}/></div>
                           <div className="grid grid-cols-2 gap-3">
-                              <div><label className="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Cor</label><select className="input-admin" value={editingPlan.cor} onChange={e => setEditingPlan({...editingPlan, cor: e.target.value})}><option value="emerald">Esmeralda</option><option value="zinc">Zinco</option><option value="yellow">Amarelo</option></select></div>
-                              <div><label className="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Ícone</label><select className="input-admin" value={editingPlan.icon} onChange={e => setEditingPlan({...editingPlan, icon: e.target.value})}><option value="ghost">Fantasma</option><option value="shopping">Bolsa</option><option value="star">Estrela</option><option value="crown">Coroa</option></select></div>
+                              <div><label className="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Cor</label><select className="input-admin" value={editingPlan.cor} onChange={e => setEditingPlan({...editingPlan, cor: e.target.value})}><option value="emerald">Esmeralda</option><option value="zinc">Zinco</option><option value="yellow">Amarelo</option><option value="purple">Roxo</option><option value="blue">Azul</option><option value="red">Vermelho</option></select></div>
+                              <div>
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Ícone</label>
+                                <select className="input-admin" value={editingPlan.icon} onChange={e => setEditingPlan({...editingPlan, icon: e.target.value})}>
+                                    <option value="ghost">Fantasma (Bicho)</option>
+                                    <option value="shopping">Bolsa</option>
+                                    <option value="star">Estrela (Atleta)</option>
+                                    <option value="crown">Coroa (Lenda)</option>
+                                    <option value="fish">Peixe (Cardume)</option>
+                                    <option value="zap">Raio</option>
+                                    <option value="gem">Diamante</option>
+                                    <option value="trophy">Troféu</option>
+                                </select>
+                              </div>
                           </div>
                       </div>
                       <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800 flex flex-col h-full">

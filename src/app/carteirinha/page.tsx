@@ -2,31 +2,60 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  ArrowLeft,
-  CreditCard,
-  Crown,
-  ChevronRight,
-  ShieldCheck,
-  QrCode,
-  X,
-  UserCheck,
-  Star,
-  Ghost,
-  ShoppingBag
+  ArrowLeft, CreditCard, Crown, ChevronRight, ShieldCheck,
+  QrCode, X, User, Star, ShoppingBag, Award
 } from "lucide-react";
 import Link from "next/link";
-import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
+import SharkLoader from "@/app/components/SharkLoader";
+
+// 🦈 CONFIGURAÇÃO VISUAL DOS TIERS
+// Aqui definimos como cada Nível se parece. Fácil de manter.
+const TIER_STYLES = {
+    lenda: {
+        name: "Sócio Lenda",
+        color: "text-yellow-400",
+        border: "border-yellow-500/50",
+        bgBadge: "bg-yellow-500/20",
+        glow: "shadow-yellow-500/20",
+        icon: Crown
+    },
+    atleta: {
+        name: "Sócio Atleta",
+        color: "text-purple-400",
+        border: "border-purple-500/50",
+        bgBadge: "bg-purple-500/20",
+        glow: "shadow-purple-500/20",
+        icon: Star
+    },
+    cardume: {
+        name: "Sócio Cardume",
+        color: "text-emerald-400",
+        border: "border-emerald-500/50",
+        bgBadge: "bg-emerald-500/20",
+        glow: "shadow-emerald-500/20",
+        icon: ShoppingBag
+    },
+    bicho: {
+        name: "Bicho Solto",
+        color: "text-zinc-300",
+        border: "border-zinc-600",
+        bgBadge: "bg-zinc-800",
+        glow: "shadow-zinc-500/10",
+        icon: User
+    }
+};
 
 export default function CarteirinhaPage() {
-  const { user } = useAuth();
-  const [config, setConfig] = useState<any>(null);
+  const { user, loading } = useAuth();
+  const [config, setConfig] = useState<any>(null); // Configurações visuais (Backgrounds)
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [showQrModal, setShowQrModal] = useState(false);
 
-  // 1. Buscar Configuração Visual do Admin (Validade e Backgrounds customizados)
+  // 1. Buscar Configuração Visual do Admin
   useEffect(() => {
       const fetchConfig = async () => {
           try {
@@ -44,206 +73,202 @@ export default function CarteirinhaPage() {
       fetchConfig();
   }, []);
 
+  if (loading) return <SharkLoader />;
   if (!user) return null;
 
   // --- LÓGICA DE FUNDO (BACKGROUND) ---
-  // 1. Tenta pegar do Admin. 2. Tenta pegar da pasta public (ex: turma5.jpeg). 3. Fallback cinza.
   const numTurma = user.turma ? user.turma.replace(/\D/g, "") : "1";
   const bgPadrao = `/turma${numTurma}.jpeg`;
   const bgFinal = config?.backgrounds?.[user.turma || ""] || bgPadrao;
   const validadeTexto = config?.validade || "DEZ/2026";
 
-  // --- LÓGICA VISUAL DO PLANO ---
-  // Define cores e ícones baseados no nome do plano
-  const getPlanStyle = (plano: string) => {
-      const p = (plano || "").toLowerCase();
-      
-      if (p.includes("lenda")) {
-          return { label: "Lenda", color: "text-yellow-500", border: "border-yellow-500/30", bg: "bg-yellow-500/10", icon: Crown };
-      }
-      if (p.includes("atleta")) {
-          return { label: "Atleta", color: "text-purple-500", border: "border-purple-500/30", bg: "bg-purple-500/10", icon: Star };
-      }
-      if (p.includes("cardume") || p.includes("livre")) {
-          return { label: "Cardume", color: "text-emerald-500", border: "border-emerald-500/30", bg: "bg-emerald-500/10", icon: ShoppingBag };
-      }
-      // Padrão (Sócio Standard / Bicho Solto)
-      return { label: "Standard", color: "text-zinc-400", border: "border-zinc-700", bg: "bg-zinc-800", icon: UserCheck };
-  };
-
-  const currentPlanName = user.plano_badge || "Sócio Standard";
-  const style = getPlanStyle(currentPlanName);
+  // --- 🦈 LÓGICA VISUAL BASEADA NO TIER (SIMPLIFICADA) ---
+  // Se o usuário não tiver tier definido, assume 'bicho'.
+  // Se for 'cardume' (caso tenhamos adicionado essa lógica no admin), ele pega.
+  // Se for 'atleta' (padrão para cardume/atleta), pega roxo.
+  const userTier = (user.tier || "bicho").toLowerCase() as keyof typeof TIER_STYLES;
+  
+  // Fallback seguro se vier um tier desconhecido
+  const style = TIER_STYLES[userTier] || TIER_STYLES.bicho;
+  
   const PlanIcon = style.icon;
-  const isStandard = style.label === "Standard"; // Flag para mostrar botão de upgrade
+  const canUpgrade = userTier === 'bicho' || userTier === 'cardume';
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans flex flex-col selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#050505] text-white font-sans flex flex-col selection:bg-emerald-500/30 pb-24">
       
       {/* HEADER */}
-      <header className="p-4 flex items-center justify-between sticky top-0 z-20 bg-[#050505]/80 backdrop-blur-md">
+      <header className="px-6 py-5 flex items-center justify-between sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-white/5">
         <Link
-          href="/"
-          className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900"
+          href="/dashboard"
+          className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-white/5"
         >
           <ArrowLeft size={24} />
         </Link>
-        <h1 className="font-bold text-sm uppercase tracking-widest flex items-center gap-2 text-emerald-500">
-          <CreditCard size={16} /> Identidade Digital
+        <h1 className="font-bold text-sm uppercase tracking-[0.2em] flex items-center gap-2 text-emerald-500">
+          <CreditCard size={16} /> Identidade
         </h1>
         <div className="w-8"></div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden space-y-8">
+      <main className="flex-1 flex flex-col items-center justify-start pt-8 px-6 relative overflow-hidden space-y-8 w-full max-w-md mx-auto">
         
-        {/* Luz de fundo ambiente */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+        {/* Luz de fundo ambiente baseada na cor do Tier */}
+        <div className={`absolute top-20 left-1/2 -translate-x-1/2 w-[300px] h-[300px] blur-[100px] rounded-full pointer-events-none opacity-20 ${style.color.replace('text-', 'bg-')}`}></div>
 
         {/* --- CARTÃO DIGITAL --- */}
-        <div className="relative w-full max-w-[380px] aspect-[1.58/1] rounded-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(16,185,129,0.25)] border border-zinc-800 bg-[#0a0a0a]">
+        <div className={`relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 border border-white/10 ${style.glow}`}>
           
           {/* === CAMADA DE FUNDO === */}
-          <div className="absolute inset-0 z-0">
-            <div className="absolute inset-0 bg-zinc-900">
-                <img
-                    src={bgFinal}
-                    alt="Background Turma"
-                    className="w-full h-full object-cover opacity-50 mix-blend-luminosity brightness-75 blur-[1px] scale-110"
-                    onError={(e) => (e.currentTarget.src = "/carteirinha-bg-default.jpg")}
-                />
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-[#0a2e23]/80 to-black/90 mix-blend-multiply"></div>
-            <div className="absolute inset-0 opacity-[0.1] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+          <div className="absolute inset-0 z-0 bg-zinc-900">
+             <div className="absolute inset-0 bg-zinc-900" />
+             <img
+                src={bgFinal}
+                alt="Background Turma"
+                className="w-full h-full object-cover opacity-60 mix-blend-overlay brightness-75 scale-105"
+                onError={(e) => (e.currentTarget.src = "/carteirinha-bg-default.jpg")}
+             />
+             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/80"></div>
+             <div className="absolute inset-0 opacity-[0.07] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
           </div>
 
-          {/* CONTEÚDO PRINCIPAL DO CARTÃO */}
-          <div className="relative h-full p-4 flex flex-col justify-between z-10">
+          {/* === CONTEÚDO DO CARTÃO === */}
+          <div className="relative z-10 w-full h-full p-5 flex flex-col justify-between">
             
-            {/* CABEÇALHO */}
-            <div className="flex justify-between items-start border-b border-white/10 pb-2">
+            {/* 1. TOPO: Logo e Status */}
+            <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center shadow-lg border border-zinc-700 p-1">
-                  <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                <div className="w-10 h-10 bg-black/80 backdrop-blur rounded-lg flex items-center justify-center border border-white/10 shadow-lg">
+                  <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
                 </div>
-                <div className="drop-shadow-md">
-                  <h2 className="font-black text-white text-base leading-none tracking-tight">AAAKN</h2>
-                  <p className="text-emerald-400 text-[8px] uppercase tracking-widest font-bold mt-0.5">Medicina Caraguá</p>
+                <div>
+                  <h2 className="font-black text-white text-lg leading-none tracking-tight">AAAKN</h2>
+                  <p className="text-emerald-500 text-[9px] uppercase tracking-widest font-bold">Medicina</p>
                 </div>
               </div>
 
-              {/* Status + Plano (Com cores dinâmicas) */}
-              <div className="flex flex-col items-end gap-1">
-                <div className="bg-black/40 backdrop-blur-md text-emerald-400 text-[9px] font-black px-3 py-0.5 rounded-full border border-emerald-500/30 uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div> ATIVO
-                </div>
-                <div className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border flex items-center gap-1 ${style.color} ${style.border} ${style.bg}`}>
-                    <PlanIcon size={8} /> {currentPlanName}
-                </div>
+              {/* Badge do Plano (Lê do objeto TIER_STYLES) */}
+              <div className={`px-2.5 py-1 rounded-md border backdrop-blur-md flex items-center gap-1.5 shadow-lg ${style.color} ${style.border} ${style.bgBadge}`}>
+                  <PlanIcon size={10} className="stroke-[3]" />
+                  <span className="text-[9px] font-black uppercase tracking-wider">{style.name}</span>
               </div>
             </div>
 
-            {/* DADOS DO ALUNO */}
-            <div className="flex gap-3 items-center mt-1 flex-1">
-              <div className="w-20 h-24 flex-shrink-0 rounded-xl border border-emerald-500/50 p-0.5 bg-black/60 shadow-2xl relative overflow-hidden group">
+            {/* 2. MEIO: Foto e Dados */}
+            <div className="flex items-center gap-4 mt-2">
+              <div className={`w-[72px] h-[96px] flex-shrink-0 rounded-lg border-2 p-[2px] bg-black/50 shadow-xl overflow-hidden relative ${style.border}`}>
                 <img
                   src={user.foto || "https://github.com/shadcn.png"}
-                  className="w-full h-full object-cover rounded-lg opacity-95"
-                  alt="Foto"
+                  className="w-full h-full object-cover object-top rounded-[4px]"
+                  alt="Foto do Atleta"
                 />
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent pointer-events-none"></div>
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 pointer-events-none rounded-[4px]"></div>
               </div>
 
-              <div className="flex-1 space-y-1.5 drop-shadow-lg">
-                <div>
-                  <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider mb-0.5 text-shadow">Nome do Atleta</p>
-                  <h3 className="text-white font-black text-sm leading-tight line-clamp-2 uppercase">{user.nome || user.apelido}</h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider mb-0.5 text-shadow">Curso</p>
-                    <p className="text-xs text-zinc-100 font-bold">MEDICINA</p>
-                  </div>
-                  <div>
-                    <p className="text-[8px] text-emerald-500 uppercase font-bold tracking-wider mb-0.5 text-shadow">Turma</p>
-                    <p className="text-xs text-emerald-400 font-black">{user.turma || "CALOURO"}</p>
-                  </div>
-                </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                 <div>
+                    <p className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider leading-none mb-1">Nome do Atleta</p>
+                    <h3 className="text-white font-black text-base uppercase leading-tight truncate">{user.nome}</h3>
+                 </div>
+                 
+                 <div className="flex items-center gap-4 mt-2">
+                    <div>
+                        <p className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider leading-none mb-0.5">Turma</p>
+                        <p className="text-sm font-bold text-white">{user.turma || "CALOURO"}</p>
+                    </div>
+                    <div>
+                        <p className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider leading-none mb-0.5">Matrícula</p>
+                        <p className="text-sm font-mono text-zinc-300 tracking-tight">{user.matricula || "---"}</p>
+                    </div>
+                 </div>
               </div>
             </div>
 
-            {/* RODAPÉ E QR PEQUENO */}
-            <div className="flex justify-between items-end mt-1 pt-2 border-t border-white/10">
-              <div className="space-y-2 drop-shadow-md">
+            {/* 3. RODAPÉ */}
+            <div className="flex justify-between items-end border-t border-white/10 pt-2.5 mt-1">
                 <div>
-                  <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider mb-0.5 leading-none text-shadow">Matrícula</p>
-                  <p className="text-xs text-white font-mono tracking-tight leading-none">{user.matricula || "---"}</p>
+                    <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-0.5">Validade</p>
+                    {loadingConfig ? (
+                        <div className="h-3 w-12 bg-white/10 animate-pulse rounded"></div>
+                    ) : (
+                        <p className="text-[10px] text-emerald-400 font-mono font-bold tracking-wider">{validadeTexto}</p>
+                    )}
                 </div>
-                <div>
-                  <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider mb-0.5 leading-none text-shadow">Validade</p>
-                  {loadingConfig ? <div className="h-3 w-16 bg-white/10 animate-pulse rounded"></div> : <p className="text-xs text-white font-mono leading-none">{validadeTexto}</p>}
+
+                <div className="flex items-center gap-2">
+                    <span className="text-[8px] text-right text-zinc-500 font-medium uppercase hidden sm:block">
+                        Escaneie para<br/>validar acesso
+                    </span>
+                    <div className="bg-white p-1 rounded shadow-lg">
+                        <QRCodeSVG value={user.uid} size={36} />
+                    </div>
                 </div>
-              </div>
-              <div className="bg-white p-1 rounded-md shadow-xl flex-shrink-0 ml-2">
-                <QRCodeSVG value={user.uid} size={48} />
-              </div>
             </div>
+
           </div>
         </div>
 
         {/* --- AÇÕES INFERIORES --- */}
-        <div className="w-full max-w-[380px] space-y-3">
+        <div className="w-full space-y-3">
           
-          {/* BOTÃO UPGRADE (SÓ APARECE SE FOR STANDARD) */}
-          {isStandard && (
+          {canUpgrade && (
               <Link
                 href="/planos"
-                className="block w-full bg-gradient-to-r from-emerald-600 to-emerald-800 p-4 rounded-xl border border-emerald-500/30 group relative overflow-hidden shadow-lg transform active:scale-95 transition"
+                className="group relative w-full block overflow-hidden rounded-xl bg-gradient-to-r from-emerald-900/50 to-black border border-emerald-500/30 p-4 transition-all active:scale-[0.98]"
               >
-                <div className="relative z-10 flex items-center justify-between">
+                <div className="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="bg-black/30 p-2 rounded-full text-emerald-200"><Crown size={20} /></div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+                      <Award size={20} />
+                    </div>
                     <div>
-                      <span className="block text-xs font-bold text-emerald-200 uppercase tracking-wider">Seja Sócio</span>
-                      <span className="block text-sm font-black text-white">Fazer Upgrade Agora</span>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Nível Atual: {style.name}</p>
+                      <p className="text-sm font-bold text-white">Fazer Upgrade</p>
                     </div>
                   </div>
-                  <ChevronRight className="text-emerald-200 group-hover:translate-x-1 transition" />
+                  <ChevronRight size={18} className="text-zinc-500 group-hover:text-white transition-colors" />
                 </div>
               </Link>
           )}
 
-          {/* BOTÃO QR CODE AMPLIADO */}
           <button 
             onClick={() => setShowQrModal(true)}
-            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition w-full py-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-zinc-800 shadow-lg"
+            className="w-full bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600 text-zinc-300 hover:text-white transition py-4 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 shadow-sm"
           >
-            <QrCode size={16} /> Apresente este QR Code na entrada
+            <QrCode size={18} /> Ampliar QR Code
           </button>
 
-          <p className="text-emerald-700/60 text-[10px] flex items-center justify-center gap-1 uppercase font-bold tracking-widest mt-2">
-            <ShieldCheck size={12} /> Documento Oficial Validado
+          <p className="text-zinc-600 text-[10px] text-center uppercase font-medium tracking-widest mt-4">
+             Documento Digital Oficial • AAAKN
           </p>
         </div>
       </main>
 
       {/* --- MODAL QR CODE --- */}
       {showQrModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-6 animate-in fade-in duration-200" onClick={() => setShowQrModal(false)}>
-              <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center relative shadow-[0_0_50px_rgba(255,255,255,0.1)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setShowQrModal(false)} className="absolute top-5 right-5 text-zinc-400 hover:text-black bg-zinc-100 p-2 rounded-full transition"><X size={24}/></button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-6 animate-in fade-in zoom-in duration-200" onClick={() => setShowQrModal(false)}>
+              <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 text-center relative shadow-[0_0_100px_rgba(16,185,129,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
                   
-                  <div className="mb-6">
-                      <h3 className="text-black font-black text-2xl uppercase italic">Seu Passe</h3>
-                      <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Aproxime do Leitor</p>
+                  <button onClick={() => setShowQrModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-black bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full transition">
+                    <X size={20}/>
+                  </button>
+                  
+                  <div className="mb-6 mt-2">
+                      <div className="w-12 h-12 bg-black rounded-xl mx-auto flex items-center justify-center mb-3">
+                        <img src="/logo.png" className="w-8 h-8 object-contain" />
+                      </div>
+                      <h3 className="text-black font-black text-xl uppercase tracking-tighter">Acesso Atleta</h3>
+                      <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Aproxime do Leitor</p>
                   </div>
 
-                  <div className="p-4 border-4 border-black rounded-3xl mb-6">
-                      <QRCodeSVG value={user.uid} size={250} />
+                  <div className="p-4 border-[6px] border-black rounded-3xl mb-6 shadow-xl">
+                      <QRCodeSVG value={user.uid} size={220} />
                   </div>
 
-                  <div className="w-full bg-zinc-100 py-3 rounded-xl">
-                      <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-widest mb-1">ID do Usuário</p>
-                      <p className="text-xs text-black font-mono font-bold truncate px-4">{user.uid}</p>
+                  <div className="w-full bg-zinc-50 border border-zinc-200 py-3 rounded-xl">
+                      <p className="text-[9px] text-zinc-400 uppercase font-bold tracking-widest mb-1">ID Segurança</p>
+                      <p className="text-xs text-black font-mono font-bold truncate px-4">{user.uid.slice(0, 12)}...</p>
                   </div>
               </div>
           </div>

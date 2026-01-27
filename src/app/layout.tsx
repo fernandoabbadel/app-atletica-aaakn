@@ -2,13 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// 🦈 COMPONENTES GLOBAIS
-import BottomNav from "./components/BottomNav"; 
-import RouteGuard from "./components/RouteGuard"; 
+// 🦈 CONTEXTOS (A ordem de importação não altera a lógica, mas organiza)
+import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
+import { CartProvider } from "@/context/CartContext"; // <--- O Novo Jogador
 
-// 🦈 CONTEXTOS
-import { AuthProvider } from "../context/AuthContext";
-import { ToastProvider } from "../context/ToastContext";
+// 🦈 COMPONENTES GLOBAIS
+import BottomNav from "@/app/components/BottomNav";
+import RouteGuard from "@/app/components/RouteGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +21,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 1. METADATA (Apenas SEO)
+// 1. METADATA (SEO)
 export const metadata: Metadata = {
   title: "Tubarão App - AAAKN",
   description: "Portal oficial da Atlética Medicina Caraguá",
@@ -30,13 +31,13 @@ export const metadata: Metadata = {
   },
 };
 
-// 2. VIEWPORT (Visual e Tema - A Correção do Erro)
+// 2. VIEWPORT (Visual Mobile)
 export const viewport: Viewport = {
-  themeColor: "#050505", // A cor da barra do navegador fica aqui agora
+  themeColor: "#050505",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Evita zoom indesejado no mobile
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -49,24 +50,28 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen selection:bg-emerald-500/30`}
       >
-        {/* Provedor de Autenticação (Firebase) */}
+        {/* 1. Autenticação (Quem é o usuário?) */}
         <AuthProvider>
-          {/* Provedor de Notificações (Toasts) */}
+          
+          {/* 2. Feedback Visual (Toasts/Alertas) */}
           <ToastProvider>
             
-            {/* O RouteGuard protege todas as rotas e mostra o Tubarão carregando */}
-            <RouteGuard>
+            {/* 3. Estado do Carrinho (Precisa do Toast para avisar) */}
+            <CartProvider>
               
-              {/* Conteúdo Principal da Página */}
-              <main className="pb-24 min-h-screen relative z-10">
-                {children}
-              </main>
+              {/* 4. Proteção de Rotas (Verifica se pode acessar) */}
+              <RouteGuard>
+                
+                {/* Conteúdo Principal */}
+                <main className="pb-24 min-h-screen relative z-10">
+                  {children}
+                </main>
 
-              {/* Barra de Navegação Flutuante (Fixa embaixo) */}
-              <BottomNav />
-            
-            </RouteGuard>
-          
+                {/* Navegação Fixa (Sempre visível para quem está logado) */}
+                <BottomNav />
+
+              </RouteGuard>
+            </CartProvider>
           </ToastProvider>
         </AuthProvider>
       </body>

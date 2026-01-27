@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { 
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
-  X, PawPrint, Users, Lock, Heart, UserCheck
+  X, PawPrint, Users, Lock, Heart, UserCheck,
+  Zap, Gem, Trophy, ShoppingBag // 🦈 Ícones Extras
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; 
 import { useToast } from "../../context/ToastContext";
@@ -15,7 +16,7 @@ import {
 } from "firebase/firestore";
 import Link from "next/link";
 
-// --- TIPAGEM ---
+// --- 🦈 TIPAGEM BLINDADA (ZERO ANY) ---
 interface UserProfile {
   uid: string;
   nome: string;
@@ -32,7 +33,15 @@ interface UserProfile {
   telefone?: string;
   esportes?: string[];
   role?: string;
-  tier?: 'bicho' | 'atleta' | 'lenda';
+  
+  // 🦈 Campos Visuais Vindos do Admin
+  plano?: string;        
+  plano_cor?: string;  // ex: 'yellow', 'emerald'
+  plano_icon?: string; // ex: 'crown', 'zap'
+  
+  patente?: string;
+  tier?: 'bicho' | 'atleta' | 'lenda'; // Lógica: ícones e cores
+  
   level?: number;
   xp?: number;
   pets?: string;
@@ -40,7 +49,11 @@ interface UserProfile {
   stats?: {
     arenaWins?: number;
     arenaLosses?: number;
+    [key: string]: number | undefined;
   };
+  
+  // 🦈 Expansão Segura
+  [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
 interface FollowData {
@@ -85,16 +98,46 @@ const LevelBadge = ({ level }: { level: number }) => {
     );
 };
 
-const PlanBadge = ({ tier }: { tier?: string }) => {
-    let icon = <Ghost size={14} />;
-    let color = "text-emerald-400";
-    let title = "Bicho Solto";
-    if (tier === 'atleta') { icon = <Star size={14} />; color = "text-zinc-300"; title = "Sócio Atleta"; }
-    if (tier === 'lenda') { icon = <Crown size={14} />; color = "text-yellow-500"; title = "Sócio Lenda"; }
+// 🦈 BADGE DE PLANO DINÂMICA (Igual ao Perfil Público)
+const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
+    
+    // 1. Mapear string do banco para Componente React
+    const IconMap: Record<string, React.ElementType> = {
+        'ghost': Ghost,
+        'star': Star,
+        'crown': Crown,
+        'fish': Fish,
+        'zap': Zap,
+        'gem': Gem,
+        'trophy': Trophy,
+        'shopping': ShoppingBag
+    };
+
+    // 2. Fallbacks
+    const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
+    const title = nome || "Bicho Solto";
+
+    // 3. Estilos Dinâmicos
+    const getBadgeStyle = (c?: string) => {
+        switch(c) {
+            case 'yellow': return 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10';
+            case 'emerald': return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+            case 'zinc': return 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10';
+            case 'purple': return 'text-purple-400 border-purple-500/30 bg-purple-500/10';
+            case 'blue': return 'text-blue-400 border-blue-500/30 bg-blue-500/10';
+            case 'red': return 'text-red-500 border-red-500/30 bg-red-500/10';
+            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; // Default Cinza
+        }
+    };
+
+    const styleClass = getBadgeStyle(cor);
+
     return (
-        <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 ${color} shadow-lg relative group cursor-help`}>
-            {icon}
-            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">{title}</span>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${styleClass} shadow-lg relative group cursor-help transition-all hover:scale-105`}>
+            <IconComponent size={14} className="animate-pulse-slow" />
+            <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
+                {title}
+            </span>
         </div>
     );
 };
@@ -125,6 +168,7 @@ export default function MeuPerfilPage() {
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
+                // 🦈 Cast seguro para UserProfile
                 setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
                 
                 const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
@@ -214,8 +258,17 @@ export default function MeuPerfilPage() {
             </div>
 
             <div className="flex items-center gap-4 mb-6">
-                <PlanBadge tier={profile.tier || 'bicho'} />
-                <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar Perfil</Link>
+                {/* 🦈 Badge Atualizada com Nome do Plano, Cor e Ícone Dinâmicos */}
+                <PlanBadge 
+                    nome={profile.plano} 
+                    cor={profile.plano_cor} 
+                    iconName={profile.plano_icon}
+                />
+                
+                <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2">
+                    <Edit3 size={14}/> Editar Perfil
+                </Link>
+                
                 <LevelBadge level={profile.level || 1} />
             </div>
 
@@ -260,14 +313,13 @@ export default function MeuPerfilPage() {
                         <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
                     </div>
                     
-                    {/* Status de Relacionamento - CORRIGIDO */}
+                    {/* Status de Relacionamento */}
                     <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
                         <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
                         <div>
                             <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
                             <div className="flex items-center gap-1">
                                 <p className="text-xs font-bold text-white uppercase">{profile.statusRelacionamento || "N/A"}</p>
-                                {/* Removido 'title' do componente Lock para evitar erro TS */}
                                 {isRelationPrivate && <span title="Privado"><Lock size={10} className="text-zinc-500"/></span>}
                             </div>
                         </div>

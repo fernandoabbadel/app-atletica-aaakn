@@ -10,11 +10,9 @@ import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase"; 
 import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
-// 🦈 IMPORTA SEU LOADING OFICIAL (O Tubarão)
 import LoadingScreen from "../app/loading";
 
 // --- TIPAGEM ---
-// Adicionado 'vendas' que estava faltando
 export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master" | "vendas";
 export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused" | "bloqueado";
 
@@ -41,20 +39,21 @@ export interface UserStats {
     eventsAcademic?: number;
     solidarityCount?: number;
     accountCreated?: number;
+    // Expansão segura para números (stats geralmente são contadores)
     [key: string]: number | undefined; 
 }
 
+// 🦈 INTERFACE USER BLINDADA (SEM ANY)
 export interface User {
   uid: string;
   nome: string;
   email: string;
-  idade?: number;
-  cidadeOrigem?: string;
   foto: string;
   role: UserRole | string;
   
   // Controle
   status?: UserStatus;
+  isAnonymous?: boolean; 
   saved_role?: string;
   
   // Gamification
@@ -82,12 +81,17 @@ export interface User {
   pets?: string;
   apelido?: string;
   idadePublica?: boolean;
+  cidadeOrigem?: string;
+  idade?: number;
 
-  // Visual
-  plano?: string;
+  // Visual & Planos
+  plano?: string;        
   patente?: string;
-  plano_badge?: string;
   tier?: 'bicho' | 'atleta' | 'lenda'; 
+  
+  // 🦈 EXPANSÃO SEGURA: Substituímos 'any' por tipos primitivos permitidos no Firestore.
+  // Isso permite adicionar campos novos sem desligar o TypeScript.
+  [key: string]: string | number | boolean | undefined | null | UserStats | string[] | object; 
 }
 
 interface AuthContextType {
@@ -95,6 +99,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   loginGoogle: () => Promise<void>;
+  loginAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
   checkPermission: (allowedRoles: string[]) => boolean;
   updateUser: (data: Partial<User>) => Promise<void>;
@@ -106,12 +111,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [mounted, setMounted] = useState(false); // Controle de Hidratação
+  const [mounted, setMounted] = useState(false);
+  
+  // Estado para saber se é um visitante virtual
+  const [isLocalGuest, setIsLocalGuest] = useState(false);
   
   const router = useRouter();
   const pathname = usePathname(); 
 
-  // 1. PREVINE ERRO DE HIDRATAÇÃO (CLIENT-SIDE ONLY)
+  // 1. PREVINE ERRO DE HIDRATAÇÃO
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -119,18 +127,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 2. MONITORAR AUTH & DADOS
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
+      // Se estamos no modo "Visitante Virtual", ignoramos o Firebase
+      if (isLocalGuest) {
+          setLoading(false);
+          return;
+      }
+
       if (fbUser) {
         try {
           const userRef = doc(db, "users", fbUser.uid);
           
-          // Listener em tempo real dos dados do usuário
           const unsubDoc = onSnapshot(userRef, async (userSnap) => {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
                 
                 // Atualiza User e Admin Status
-                setUser({ ...userData, uid: fbUser.uid });
-                // Define quem é Admin (inclui master, geral e gestor)
+                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
                 setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
 
                 // Garante status de primeiro login
@@ -142,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
 
               } else {
-                // Cadastro Inicial (Se não existir no Firestore)
+                // Cadastro Novo (Google)
                 const newUser: User = {
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
@@ -154,7 +166,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   xp: 50,
                   stats: { accountCreated: 1, loginCount: 1 }, 
                   plano: "Bicho Solto",
-                  tier: "bicho"
+                  tier: "bicho",
+                  isAnonymous: false
                 };
                 
                 await setDoc(userRef, newUser);
@@ -174,17 +187,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       } else {
-        // Deslogado
-        setUser(null);
-        setIsAdmin(false);
-        setLoading(false);
+        // Se não tem user Firebase e nem Guest Local -> Deslogado
+        if (!isLocalGuest) {
+            setUser(null);
+            setIsAdmin(false);
+            setLoading(false);
+        }
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isLocalGuest]);
 
-  // 3. SEGURANÇA E REDIRECIONAMENTOS (Fallback do RouteGuard)
+  // 3. SEGURANÇA E REDIRECIONAMENTOS
   useEffect(() => {
       if (loading || !user) return;
 
@@ -199,19 +214,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
   }, [user, pathname, loading, router]); 
 
+  // --- FUNÇÕES DE LOGIN ---
+
   const loginGoogle = async () => {
     try {
+      // Se estava como visitante local, reseta
+      if (isLocalGuest) {
+          setIsLocalGuest(false);
+          setUser(null);
+      }
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Login falhou:", error);
     }
   };
 
+  const loginAsGuest = async () => {
+    setLoading(true);
+    
+    // Cria um usuário Fake na memória
+    const guestUser: User = {
+        uid: "guest_virtual_" + Date.now(),
+        nome: "Visitante Tubarão",
+        email: "visitante@aaakn.com",
+        foto: "/logo.png",
+        role: "guest",
+        status: "ativo",
+        isAnonymous: true,
+        stats: { loginCount: 1 },
+        tier: "bicho",       
+        plano: "Visitante",
+        level: 1,
+        xp: 0
+    };
+
+    setIsLocalGuest(true);
+    setUser(guestUser);
+    setIsAdmin(false);
+    
+    setTimeout(() => {
+        setLoading(false);
+    }, 800);
+  };
+
   const logout = async () => {
     if (user) {
-        await logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Logout realizado");
+        // Tenta logar saída apenas se tiver UID real
+        if (!user.uid.startsWith("guest_virtual")) {
+            await logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Logout realizado").catch(() => {});
+            await signOut(auth);
+        }
     }
-    await signOut(auth);
+    
+    setIsLocalGuest(false);
     setUser(null);
     setIsAdmin(false);
     router.push("/");
@@ -224,7 +279,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUser = async (data: Partial<User>) => {
-    if (!user) return;
+    // Proteção: Visitante virtual não grava no banco
+    if (!user || isLocalGuest) {
+        if (isLocalGuest && user) {
+            setUser({ ...user, ...data });
+        }
+        return; 
+    }
+    
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, data);
@@ -233,17 +295,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🦈 RENDERIZAÇÃO BLINDADA: Evita erro de Hidratação
   if (!mounted) return null;
 
-  // 🦈 LOADING UNIFICADO:
-  // Usa o mesmo LoadingScreen (Tubarão) do app/loading.tsx
   if (loading) {
       return <LoadingScreen />;
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, loginGoogle, logout, checkPermission, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, loginGoogle, loginAsGuest, logout, checkPermission, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

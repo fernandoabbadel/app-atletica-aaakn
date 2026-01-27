@@ -34,49 +34,52 @@ PAGINA 30 - C:\Users\User\app-atletica-aaakn\src\app\components\events\EventCard
 PAGINA 31 - C:\Users\User\app-atletica-aaakn\src\app\components\BottomNav.tsx
 PAGINA 32 - C:\Users\User\app-atletica-aaakn\src\app\components\RouteGuard.tsx
 PAGINA 33 - C:\Users\User\app-atletica-aaakn\src\app\components\SharkAvatar.tsx
-PAGINA 34 - C:\Users\User\app-atletica-aaakn\src\app\comunidade\page.tsx
-PAGINA 35 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\seguranca\page.tsx
-PAGINA 36 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\suporte\page.tsx
-PAGINA 37 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\termos\page.tsx
-PAGINA 38 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\page.tsx
-PAGINA 39 - C:\Users\User\app-atletica-aaakn\src\app\conquistas\page.tsx
-PAGINA 40 - C:\Users\User\app-atletica-aaakn\src\app\dashboard\page.tsx
-PAGINA 41 - C:\Users\User\app-atletica-aaakn\src\app\em-breve\page.tsx
-PAGINA 42 - C:\Users\User\app-atletica-aaakn\src\app\empresa\cadastro\page.tsx
-PAGINA 43 - C:\Users\User\app-atletica-aaakn\src\app\empresa\[id]\page.tsx
-PAGINA 44 - C:\Users\User\app-atletica-aaakn\src\app\empresa\page.tsx
-PAGINA 45 - C:\Users\User\app-atletica-aaakn\src\app\eventos\[id]\page.tsx
-PAGINA 46 - C:\Users\User\app-atletica-aaakn\src\app\eventos\page.tsx
-PAGINA 47 - C:\Users\User\app-atletica-aaakn\src\app\fidelidade\page.tsx
-PAGINA 48 - C:\Users\User\app-atletica-aaakn\src\app\games\page.tsx
-PAGINA 49 - C:\Users\User\app-atletica-aaakn\src\app\guia\page.tsx
-PAGINA 50 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\details\page.tsx
-PAGINA 51 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\page.tsx
-PAGINA 52 - C:\Users\User\app-atletica-aaakn\src\app\gym\page.tsx
-PAGINA 53 - C:\Users\User\app-atletica-aaakn\src\app\historico\page.tsx
-PAGINA 54 - C:\Users\User\app-atletica-aaakn\src\app\ligas\page.tsx
-PAGINA 55 - C:\Users\User\app-atletica-aaakn\src\app\ligas_unitau\page.tsx
-PAGINA 56 - C:\Users\User\app-atletica-aaakn\src\app\login\page.tsx
-PAGINA 57 - C:\Users\User\app-atletica-aaakn\src\app\loja\[id]\page.tsx
-PAGINA 58 - C:\Users\User\app-atletica-aaakn\src\app\loja\page.tsx
-PAGINA 59 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
-PAGINA 60 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
-PAGINA 61 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
-PAGINA 62 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
-PAGINA 63 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
-PAGINA 64 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
-PAGINA 65 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
-PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
-PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
-PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
-PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
-PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
-PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
-PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
-PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
-PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
-PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
-PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
+PAGINA 34 - C:\Users\User\app-atletica-aaakn\src\app\components\SharkLoader.tsx
+PAGINA 35 - C:\Users\User\app-atletica-aaakn\src\app\components\SmartLink.tsx
+PAGINA 36 - C:\Users\User\app-atletica-aaakn\src\app\comunidade\page.tsx
+PAGINA 37 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\seguranca\page.tsx
+PAGINA 38 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\suporte\page.tsx
+PAGINA 39 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\termos\page.tsx
+PAGINA 40 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\page.tsx
+PAGINA 41 - C:\Users\User\app-atletica-aaakn\src\app\conquistas\page.tsx
+PAGINA 42 - C:\Users\User\app-atletica-aaakn\src\app\dashboard\page.tsx
+PAGINA 43 - C:\Users\User\app-atletica-aaakn\src\app\em-breve\page.tsx
+PAGINA 44 - C:\Users\User\app-atletica-aaakn\src\app\empresa\cadastro\page.tsx
+PAGINA 45 - C:\Users\User\app-atletica-aaakn\src\app\empresa\[id]\page.tsx
+PAGINA 46 - C:\Users\User\app-atletica-aaakn\src\app\empresa\page.tsx
+PAGINA 47 - C:\Users\User\app-atletica-aaakn\src\app\eventos\[id]\page.tsx
+PAGINA 48 - C:\Users\User\app-atletica-aaakn\src\app\eventos\page.tsx
+PAGINA 49 - C:\Users\User\app-atletica-aaakn\src\app\fidelidade\page.tsx
+PAGINA 50 - C:\Users\User\app-atletica-aaakn\src\app\games\page.tsx
+PAGINA 51 - C:\Users\User\app-atletica-aaakn\src\app\guia\page.tsx
+PAGINA 52 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\details\page.tsx
+PAGINA 53 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\page.tsx
+PAGINA 54 - C:\Users\User\app-atletica-aaakn\src\app\gym\page.tsx
+PAGINA 55 - C:\Users\User\app-atletica-aaakn\src\app\historico\page.tsx
+PAGINA 56 - C:\Users\User\app-atletica-aaakn\src\app\ligas\page.tsx
+PAGINA 57 - C:\Users\User\app-atletica-aaakn\src\app\ligas_unitau\page.tsx
+PAGINA 58 - C:\Users\User\app-atletica-aaakn\src\app\login\page.tsx
+PAGINA 59 - C:\Users\User\app-atletica-aaakn\src\app\loja\[id]\page.tsx
+PAGINA 60 - C:\Users\User\app-atletica-aaakn\src\app\loja\page.tsx
+PAGINA 61 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
+PAGINA 62 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
+PAGINA 63 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
+PAGINA 64 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
+PAGINA 65 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
+PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
+PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
+PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
+PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
+PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
+PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
+PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
+PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
+PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
+PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
+PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
+PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
+PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
+PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
 
 // ==================================================
 //             CONTEÚDO DOS ARQUIVOS
@@ -5169,127 +5172,329 @@ export default function AdminParceirosPage() {
 
 "use client";
 
-// ðŸ¦ˆ CAMINHO CORRIGIDO: Sai de components, sai de app, entra em context
-import { useAuth } from ../../../context/AuthContext"; 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import { 
+  ArrowLeft, Search, Shield, User, Briefcase, 
+  Dumbbell, Crown, Lock, Save, CheckSquare, 
+  LayoutList, Users, DollarSign, Ghost, Loader2,
+  AlertTriangle, Settings, Zap
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../../context/AuthContext"; 
+import { useToast } from "../../../context/ToastContext";
+import { db } from "../../../lib/firebase";
+import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
-export default function RouteGuard({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // Casting 'as any' mantido como solicitado
-  const { user, loading } = useAuth() as any; 
+// --- 1. DEFINIÃ‡ÃƒO DE CARGOS COMPLETA (Baseada no AuthContext) ---
+const ROLES = [
+    { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
+    
+    // Admins EspecÃ­ficos
+    { id: 'admin_geral', label: 'Admin Geral', icon: Shield, color: 'text-emerald-500' },
+    { id: 'admin_gestor', label: 'Gestor', icon: Settings, color: 'text-blue-500' },
+    { id: 'admin_treino', label: 'Adm Treino', icon: Zap, color: 'text-orange-600' },
+    
+    // Operacional
+    { id: 'vendas', label: 'Vendas', icon: DollarSign, color: 'text-yellow-400' },
+    { id: 'treinador', label: 'Coach', icon: Dumbbell, color: 'text-orange-500' },
+    { id: 'empresa', label: 'Empresa', icon: Briefcase, color: 'text-cyan-400' },
+    
+    // Base
+    { id: 'user', label: 'Membro', icon: User, color: 'text-zinc-400' },
+    { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' }
+];
+
+// --- 2. TODAS AS PÃGINAS DO SISTEMA ---
+const PAGES = [
+    // --- PÃšBLICO / MEMBROS ---
+    { path: '/dashboard', label: 'ðŸ  Dashboard' },
+    { path: '/carteirinha', label: 'ðŸªª Carteirinha' },
+    { path: '/loja', label: 'ðŸ›ï¸ Loja' },
+    { path: '/carrinho', label: 'ðŸ›’ Carrinho' },
+    { path: '/eventos', label: 'ðŸŽ‰ Eventos' },
+    { path: '/treinos', label: 'ðŸ’ª Treinos' },
+    { path: '/ligas', label: 'ðŸ† Ligas' },
+    { path: '/ranking', label: 'ðŸ“Š Ranking' },
+    { path: '/album', label: 'ðŸ“¸ Ãlbum' },
+    { path: '/comunidade', label: 'ðŸ’¬ Comunidade' },
+    { path: '/conquistas', label: 'ðŸ… Conquistas' },
+    { path: '/fidelidade', label: 'ðŸ’Ž Fidelidade' },
+    { path: '/games', label: 'ðŸŽ® Games' },
+    { path: '/guia', label: 'ðŸ“˜ Guia' },
+    { path: '/gym', label: 'ðŸ‹ï¸ Gym / Check-in' },
+    { path: '/historico', label: 'ðŸ“œ HistÃ³rico' },
+    { path: '/parceiros', label: 'ðŸ¤ Parceiros' },
+    { path: '/perfil', label: 'ðŸ‘¤ Perfil' },
+    { path: '/planos', label: 'ðŸ“ Planos' },
+    { path: '/sharkround', label: 'ðŸ¦ˆ SharkRound' },
+    { path: '/empresa', label: 'ðŸ’¼ Painel Empresa' },
+
+    // --- ADMINISTRAÃ‡ÃƒO (BACKOFFICE) ---
+    { path: '/admin', label: 'ðŸ‘® Admin Geral' },
+    { path: '/admin/permissoes', label: 'ðŸ”‘ PermissÃµes (CrÃ­tico)' },
+    { path: '/admin/usuarios', label: 'ðŸ‘¥ UsuÃ¡rios' },
+    { path: '/admin/financeiro', label: 'ðŸ’° Financeiro' },
+    { path: '/admin/album', label: 'ðŸ“· Adm Ãlbum' },
+    { path: '/admin/carteirinha', label: 'ðŸªª Adm Carteirinha' },
+    { path: '/admin/comunidade', label: 'ðŸ’¬ Adm Comunidade' },
+    { path: '/admin/configuracoes', label: 'âš™ï¸ ConfiguraÃ§Ãµes' },
+    { path: '/admin/conquistas', label: 'ðŸ… Adm Conquistas' },
+    { path: '/admin/denuncias', label: 'ðŸš¨ DenÃºncias' },
+    { path: '/admin/eventos', label: 'ðŸ“… Adm Eventos' },
+    { path: '/admin/fidelidade', label: 'ðŸ’Ž Adm Fidelidade' },
+    { path: '/admin/games', label: 'ðŸŽ® Adm Games' },
+    { path: '/admin/guia', label: 'ðŸ“˜ Adm Guia' },
+    { path: '/admin/gym', label: 'ðŸ‹ï¸ Adm Gym' },
+    { path: '/admin/historico', label: 'ðŸ“œ Adm HistÃ³rico' },
+    { path: '/admin/logs', label: 'ðŸ“ Logs do Sistema' },
+    { path: '/admin/loja', label: 'ðŸ‘• Adm Loja' },
+    { path: '/admin/parceiros', label: 'ðŸ¤ Adm Parceiros' },
+    { path: '/admin/planos', label: 'ðŸ“ Adm Planos' },
+    { path: '/admin/sharkround', label: 'ðŸ¦ˆ Adm SharkRound' },
+    { path: '/admin/treinos', label: 'ðŸ’ª Adm Treinos' },
+];
+
+export default function AdminPermissoesPage() {
+  const { user, checkPermission } = useAuth();
+  const { addToast } = useToast();
   const router = useRouter();
-  const pathname = usePathname();
-  const [authorized, setAuthorized] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<'users' | 'matrix'>('matrix');
+  const [loading, setLoading] = useState(true);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
+  const [savingMatrix, setSavingMatrix] = useState(false);
+
+  // SeguranÃ§a local
+  const isMaster = checkPermission(["master"]);
 
   useEffect(() => {
-    // 0. Se o Firebase ainda estÃ¡ carregando, aguarda...
-    if (loading) return;
-
-    // DefiniÃ§Ã£o de rotas pÃºblicas
-    const publicPaths = [
-      "/login", 
-      "/", 
-      "/historico", 
-      "/cadastro", 
-      "/termos", 
-      "/empresa/cadastro"
-    ];
-    
-    // Ignora query params (ex: ?id=123)
-    const path = pathname.split("?")[0];
-
-    // 1. BLOQUEIO DE VISITANTE ðŸš« (NÃ£o logado)
-    if (!user) {
-      if (!publicPaths.includes(path)) {
-        setAuthorized(false);
-        // Se tentar acessar Ã¡rea restrita, manda pro Login (Home)
-        router.push("/"); 
-      } else {
-        setAuthorized(true);
+      if (!isMaster && !loading) {
+          router.push('/dashboard');
+          return;
       }
-      return;
-    }
 
-    // A partir daqui, user existe. Pegamos a role.
-    const role = (user.role || 'usuario') as string;
+      const fetchData = async () => {
+          try {
+              // 1. Puxa UsuÃ¡rios
+              const snapUsers = await getDocs(collection(db, "users"));
+              setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() })));
 
-    // 2. LÃ“GICA DA EMPRESA ðŸ’¼
-    if (role === 'empresa') {
-      if (!path.startsWith('/empresa')) {
-        setAuthorized(false);
-        router.push("/empresa");
-        return;
+              // 2. Puxa Matriz
+              const docRef = doc(db, "settings", "permissions");
+              const docSnap = await getDoc(docRef);
+              
+              if (docSnap.exists()) {
+                  setPermissionMatrix(docSnap.data() as Record<string, string[]>);
+              } else {
+                  const defaultMatrix: Record<string, string[]> = {};
+                  PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
+                  setPermissionMatrix(defaultMatrix);
+              }
+
+          } catch (e) {
+              console.error(e);
+              addToast("Erro ao carregar dados.", "error");
+          } finally {
+              setLoading(false);
+          }
+      };
+
+      if (isMaster) fetchData();
+  }, [isMaster, loading, router, addToast]);
+
+  const handleUpdateRole = async (userId: string, newRole: string) => {
+      try {
+          await updateDoc(doc(db, "users", userId), { role: newRole });
+          setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+          addToast(`Cargo atualizado para ${newRole.toUpperCase()}`, "success");
+      } catch (e) {
+          addToast("Erro ao atualizar cargo.", "error");
       }
-    }
+  };
 
-    // 3. BLOQUEIO DE ALUNO / GUEST ðŸ›¡ï¸
-    if (role === 'usuario' || role === 'guest') {
+  const filteredUsers = usersList.filter(u => 
+      (u.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (u.email || "").toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const togglePermission = (path: string, roleId: string) => {
+      setPermissionMatrix(prev => {
+          const currentRoles = prev[path] || [];
+          const hasAccess = currentRoles.includes(roleId);
+          let newRoles;
+          if (hasAccess) newRoles = currentRoles.filter(r => r !== roleId);
+          else newRoles = [...currentRoles, roleId];
+          return { ...prev, [path]: newRoles };
+      });
+  };
+
+  const saveMatrix = async () => {
+      setSavingMatrix(true);
+      try {
+          await setDoc(doc(db, "settings", "permissions"), permissionMatrix);
+          addToast("Matriz de acesso salva e aplicada!", "success");
+      } catch (e) {
+          addToast("Erro ao salvar matriz.", "error");
+      } finally {
+          setSavingMatrix(false);
+      }
+  };
+
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
+  if (!isMaster) return null;
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      // ðŸ¦ˆ TRAVA DO NOVATO: Se for 'guest', SÃ“ PODE ir pro /cadastro
-      if (role === 'guest' && path !== '/cadastro' && path !== '/' && path !== '/login') {
-         router.push("/cadastro");
-         return;
-      }
+      {/* HEADER */}
+      <header className="p-6 border-b border-zinc-800 bg-[#09090b]/95 backdrop-blur sticky top-0 z-30 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+              <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20}/></Link>
+              <div>
+                  <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-red-600"/> Controle de Acesso</h1>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Acesso Exclusivo Master</p>
+              </div>
+          </div>
+      </header>
 
-      // Se o aluno jÃ¡ terminou o cadastro, mas tenta voltar pro /cadastro, joga pro dashboard
-      if (role === 'usuario' && path === '/cadastro') {
-         router.push("/dashboard");
-         return;
-      }
+      {/* CONTEÃšDO */}
+      <div className="p-6 max-w-[90vw] mx-auto overflow-hidden">
+          
+          {/* SELETOR DE ABAS */}
+          <div className="flex justify-center mb-8">
+              <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+                  <button onClick={() => setActiveTab('matrix')} className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase transition ${activeTab === 'matrix' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><LayoutList size={14}/> Matriz de Acesso</button>
+                  <button onClick={() => setActiveTab('users')} className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase transition ${activeTab === 'users' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><Users size={14}/> Gerenciar UsuÃ¡rios</button>
+              </div>
+          </div>
 
-      // Trava de Admin para usuÃ¡rios comuns
-      if (path.startsWith('/admin') || (path.startsWith('/empresa') && path !== '/empresa/cadastro')) {
-        setAuthorized(false);
-        router.push("/dashboard");
-        return;
-      }
-    }
+          {/* === MATRIZ === */}
+          {activeTab === 'matrix' && (
+              <div className="space-y-6 animate-in fade-in">
+                  <div className="bg-yellow-900/20 border border-yellow-600/30 p-4 rounded-xl flex items-start gap-3">
+                      <AlertTriangle className="text-yellow-500 shrink-0" size={20}/>
+                      <div>
+                          <h3 className="text-sm font-bold text-yellow-500 uppercase">AtenÃ§Ã£o, Master!</h3>
+                          <p className="text-xs text-zinc-400 mt-1">
+                              Novos cargos detectados! Verifique as permissÃµes para <strong>Gestor</strong> e <strong>Adm Treino</strong>.
+                          </p>
+                      </div>
+                  </div>
 
-    // 4. REGRAS DENTRO DO ADMIN ðŸ‘®â€â™‚ï¸
-    if (path.startsWith('/admin')) {
-      // 4.1 Treinador
-      if (role === 'treinador') {
-        const allowedRoutes = ['/admin/treinos', '/admin/gym'];
-        const isAllowed = allowedRoutes.some(p => path.startsWith(p));
-        if (!isAllowed) {
-          setAuthorized(false);
-          router.push("/admin/treinos");
-          return;
-        }
-      }
-      // 4.2 Admin Comum
-      if (role === 'admin') {
-        if (path.startsWith('/admin/permissoes')) {
-          setAuthorized(false);
-          router.push("/admin");
-          return;
-        }
-      }
-    }
+                  <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-2xl">
+                      <table className="w-full text-left border-collapse">
+                          <thead>
+                              <tr className="bg-zinc-900 border-b border-zinc-800">
+                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 bg-zinc-900 z-10 min-w-[200px]">
+                                      PÃ¡gina / Rota
+                                  </th>
+                                  {ROLES.map(role => (
+                                      <th key={role.id} className="p-4 min-w-[100px] text-center bg-zinc-900/95 backdrop-blur">
+                                          <div className="flex flex-col items-center gap-1.5">
+                                              <div className={`p-2 rounded-full bg-black/50 ${role.color}`}>
+                                                  <role.icon size={16}/>
+                                              </div>
+                                              <span className={`text-[9px] font-black uppercase ${role.color}`}>{role.label}</span>
+                                          </div>
+                                      </th>
+                                  ))}
+                              </tr>
+                          </thead>
+                          <tbody className="bg-black">
+                              {PAGES.map((page, idx) => (
+                                  <tr key={page.path} className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''}`}>
+                                      <td className="p-4 text-xs font-bold text-white sticky left-0 bg-black group-hover:bg-zinc-900/30 transition z-10 border-r border-zinc-800/50">
+                                          <div className="flex flex-col">
+                                              <span className="text-sm">{page.label}</span>
+                                              <span className="text-[10px] text-zinc-600 font-mono mt-0.5">{page.path}</span>
+                                          </div>
+                                      </td>
+                                      {ROLES.map(role => {
+                                          const isAllowed = (permissionMatrix[page.path] || []).includes(role.id) || role.id === 'master';
+                                          return (
+                                              <td key={`${page.path}-${role.id}`} className="p-4 text-center">
+                                                  <button 
+                                                      onClick={() => togglePermission(page.path, role.id)}
+                                                      disabled={role.id === 'master'}
+                                                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all mx-auto ${isAllowed ? 'bg-emerald-500 text-black shadow-lg scale-100' : 'bg-zinc-900 text-zinc-700 border border-zinc-800 scale-90 grayscale'} ${role.id === 'master' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
+                                                  >
+                                                      {isAllowed ? <CheckSquare size={16} strokeWidth={3}/> : <Lock size={14}/>}
+                                                  </button>
+                                              </td>
+                                          );
+                                      })}
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
 
-    setAuthorized(true);
+                  <div className="fixed bottom-6 right-6 z-50">
+                      <button 
+                          onClick={saveMatrix} 
+                          disabled={savingMatrix}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-8 rounded-full flex items-center gap-3 transition-all shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95 border-4 border-[#050505]"
+                      >
+                          {savingMatrix ? <Loader2 className="animate-spin"/> : <Save size={20}/>}
+                          SALVAR ALTERAÃ‡Ã•ES
+                      </button>
+                  </div>
+              </div>
+          )}
 
-  }, [user, loading, pathname, router]);
+          {/* === USUÃRIOS === */}
+          {activeTab === 'users' && (
+              <div className="space-y-6 animate-in fade-in">
+                  <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex items-center gap-2 sticky top-24 z-20 shadow-lg">
+                      <Search className="text-zinc-500" size={18}/>
+                      <input 
+                          type="text" 
+                          placeholder="Buscar usuÃ¡rio..." 
+                          className="bg-transparent outline-none text-sm text-white w-full placeholder:text-zinc-600"
+                          value={searchTerm}
+                          onChange={e => setSearchTerm(e.target.value)}
+                      />
+                  </div>
 
-  // Spinner de carregamento
-  if (loading || !authorized) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-emerald-500 font-bold text-xs uppercase tracking-widest animate-pulse">
-            Verificando Acesso...
-          </p>
-        </div>
+                  <div className="grid gap-3 pb-20">
+                      {filteredUsers.map(u => (
+                          <div key={u.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 group hover:border-zinc-700 transition">
+                              <div className="flex items-center gap-4 w-full md:w-auto">
+                                  <img src={u.foto || "https://github.com/shadcn.png"} className="w-12 h-12 rounded-full bg-zinc-800 object-cover border-2 border-zinc-800"/>
+                                  <div>
+                                      <p className="font-bold text-sm text-white flex items-center gap-2">
+                                          {u.nome || "Sem Nome"}
+                                          {u.id === user?.uid && <span className="text-[9px] bg-emerald-500/20 text-emerald-500 px-2 rounded-full border border-emerald-500/30">VOCÃŠ</span>}
+                                      </p>
+                                      <p className="text-xs text-zinc-500">{u.email}</p>
+                                  </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 w-full md:w-auto bg-black p-1.5 rounded-lg border border-zinc-800">
+                                  <label className="text-[10px] text-zinc-500 uppercase font-bold pl-2">Cargo:</label>
+                                  <select 
+                                      value={u.role || 'guest'} 
+                                      onChange={(e) => handleUpdateRole(u.id, e.target.value)}
+                                      className="bg-zinc-900 text-white text-xs rounded px-3 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer uppercase font-bold w-full md:w-40 border border-zinc-700"
+                                      disabled={u.id === user?.uid}
+                                  >
+                                      {ROLES.map(role => (
+                                          <option key={role.id} value={role.id}>{role.label}</option>
+                                      ))}
+                                  </select>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+
       </div>
-    );
-  }
-
-  return <>{children}</>;
+    </div>
+  );
 }
 
 // ==================================================
@@ -10562,11 +10767,19 @@ export default function BottomNavbar() {
 
 "use client";
 
-import { useAuth } from "../context/AuthContext"; 
+// 1. CORREÃ‡ÃƒO DE IMPORTAÃ‡Ã•ES (Ajuste de pastas ../../)
+import { useAuth } from "../../context/AuthContext"; 
+import { db } from "../../lib/firebase"; 
+import { doc, getDoc } from "firebase/firestore";
+
+// 2. IMPORTA O COMPONENTE PURO DO TUBARÃƒO (NÃ£o a pÃ¡gina loading)
+import SharkLoader from "./SharkLoader"; 
+
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../lib/firebase"; 
+
+// Mude para false quando for para produÃ§Ã£o
+const SHOW_DEBUG_ON_SCREEN = true;
 
 export default function RouteGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -10577,22 +10790,39 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]> | null>(null);
   const [loadingRules, setLoadingRules] = useState(true);
 
-  // 1. BUSCAR AS REGRAS DO FIREBASE (SÃ“ UMA VEZ)
-  // Isso garante que o Guard leia o que vocÃª definiu no painel admin
+  // Debug Info
+  const [debugInfo, setDebugInfo] = useState({
+    role: "...",
+    path: "",
+    decision: "..."
+  });
+
+  // ------------------------------------------------------------------
+  // 1. CARREGA AS REGRAS (CACHE PRIMEIRO, DEPOIS FIREBASE)
+  // ------------------------------------------------------------------
   useEffect(() => {
     const fetchRules = async () => {
+        // A. Tenta Cache Local (Velocidade Extrema)
+        const cachedRules = localStorage.getItem("shark_permissions");
+        if (cachedRules) {
+            setPermissionMatrix(JSON.parse(cachedRules));
+            setLoadingRules(false); // Libera o app imediatamente
+        }
+
         try {
-            const docRef = doc(db, "settings", "permissions");
-            const docSnap = await getDoc(docRef);
+            // B. Sincroniza com Firebase em Segundo Plano
+            const docSnap = await getDoc(doc(db, "settings", "permissions"));
             if (docSnap.exists()) {
-                setPermissionMatrix(docSnap.data() as Record<string, string[]>);
-            } else {
-                // Se nÃ£o tiver regras salvas, libera o bÃ¡sico para nÃ£o travar o app
-                console.warn("âš ï¸ Nenhuma matriz de permissÃ£o encontrada. Usando fallback.");
-                setPermissionMatrix({}); 
+                const liveRules = docSnap.data() as Record<string, string[]>;
+                
+                // Se o banco mudou em relaÃ§Ã£o ao cache, atualiza
+                if (JSON.stringify(liveRules) !== cachedRules) {
+                    setPermissionMatrix(liveRules);
+                    localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
+                }
             }
         } catch (error) {
-            console.error("Erro crÃ­tico ao carregar regras de acesso:", error);
+            console.error("Erro ao atualizar regras de seguranÃ§a:", error);
         } finally {
             setLoadingRules(false);
         }
@@ -10600,100 +10830,125 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     fetchRules();
   }, []);
 
-  // 2. VERIFICAR PERMISSÃƒO A CADA MUDANÃ‡A DE ROTA
+  // ------------------------------------------------------------------
+  // 2. O GUARDA: ANALISA CADA ROTA
+  // ------------------------------------------------------------------
   useEffect(() => {
-    // Se o Firebase ou as Regras ainda estÃ£o carregando, espera...
+    // Se o Auth ou as Regras ainda carregam, pausa tudo.
     if (loading || loadingRules) return;
 
-    // Remove query params para verificar a rota base (ex: /admin/usuarios?id=1 -> /admin/usuarios)
     const path = pathname.split("?")[0]; 
+    // Garante que a role seja minÃºscula para bater com a matriz
+    const userRole = user ? (user.role || 'user').toLowerCase() : 'visitante';
+    
+    // --- LÃ“GICA DE DECISÃƒO ---
 
-    // --- A. REGRAS PÃšBLICAS (LIBERADO PRA TODOS, SEMPRE) ---
-    const publicPaths = [
-      "/login", 
-      "/", 
-      "/historico", 
-      "/cadastro", 
-      "/termos", 
-      "/empresa/cadastro",
-      "/banned" // Jaula sempre liberada senÃ£o dÃ¡ loop infinito
-    ];
-
+    // A. Rotas PÃºblicas (Sempre liberadas, Logado ou NÃ£o)
+    const publicPaths = ["/login", "/", "/historico", "/cadastro", "/termos", "/empresa/cadastro", "/banned"];
     if (publicPaths.includes(path)) {
         setAuthorized(true);
         return;
     }
 
-    // --- B. SE NÃƒO TIVER LOGADO ---
+    // B. Bloqueio de NÃ£o Logado
     if (!user) {
         setAuthorized(false);
-        router.push("/"); // Manda pro Login
+        router.push("/");
         return;
     }
 
-    // --- C. REGRAS DE STATUS (JAULA) ---
-    // Se estiver banido/bloqueado e tentar sair da jaula
+    // C. Bloqueio de Banidos (A Jaula)
     if ((user.status === 'banned' || user.status === 'bloqueado') && path !== '/banned') {
-        setAuthorized(false);
         router.push("/banned");
         return;
     }
 
-    // --- D. TRAVA DO GUEST (NOVATO) ---
-    // Guest sÃ³ pode ir pro cadastro terminar o registro
-    if (user.role === 'guest' && path !== '/cadastro') {
+    // D. Bloqueio de Guest (Cadastro Incompleto)
+    if (userRole === 'guest' && path !== '/cadastro') {
         router.push("/cadastro");
         return;
     }
 
-    // --- E. REGRA ESPECÃFICA DE EMPRESA ---
-    // Empresa sÃ³ vÃª dashboard e Ã¡rea dela.
-    if (user.role === 'empresa' && !path.startsWith('/empresa') && path !== '/dashboard') {
-        router.push("/empresa");
-        return;
-    }
-
-    // --- F. A GRANDE MÃGICA: VERIFICAÃ‡ÃƒO DINÃ‚MICA VIA MATRIZ ---
-    // Verifica se existe uma regra no banco para essa pÃ¡gina exata
-    if (permissionMatrix && permissionMatrix[path]) {
-        const allowedRoles = permissionMatrix[path];
-        const userRole = (user.role || 'user') as string;
-
-        // MASTER TEM PASSE LIVRE (Hardcoded Safety para nÃ£o se trancar fora)
+    // E. Matriz de PermissÃµes (O CoraÃ§Ã£o da SeguranÃ§a)
+    if (permissionMatrix) {
+        // Master tem a Chave Mestra
         if (userRole === 'master') {
             setAuthorized(true);
             return;
         }
 
-        // Se o cargo do usuÃ¡rio NÃƒO estiver na lista permitida baixada do banco
-        if (!allowedRoles.includes(userRole)) {
-            console.warn(`â›” Acesso negado: ${userRole} tentou acessar ${path}`);
-            setAuthorized(false);
-            router.push("/dashboard"); // Chuta pro Dashboard
-            return;
+        // Busca a regra mais especÃ­fica (Longest Prefix Match)
+        // Ex: "/admin/usuarios/123" tenta achar regra para "/admin/usuarios" antes de "/admin"
+        const matchedPath = Object.keys(permissionMatrix)
+            .filter(rulePath => path === rulePath || path.startsWith(rulePath + '/'))
+            .sort((a, b) => b.length - a.length)[0];
+
+        if (matchedPath) {
+            const allowedRoles = permissionMatrix[matchedPath].map(r => r.toLowerCase());
+            
+            // Atualiza o Debugger Visual
+            setDebugInfo({ 
+                role: userRole, 
+                path: path, 
+                decision: allowedRoles.includes(userRole) ? "âœ… OK" : `â›” BLOQ (Regra: ${matchedPath})` 
+            });
+
+            // O VEREDITO FINAL
+            if (!allowedRoles.includes(userRole)) {
+                console.warn(`â›” ACESSO NEGADO: ${userRole} em ${path}`);
+                setAuthorized(false);
+                router.push("/dashboard"); // Chuta para seguranÃ§a
+                return;
+            }
+        } else {
+             // Se nÃ£o tem regra, a gente assume que estÃ¡ "Liberado" por padrÃ£o, mas avisa no debug
+             setDebugInfo({ role: userRole, path, decision: "âš ï¸ Sem Regra (Liberado)" });
         }
     }
 
-    // Se passou por todas as barreiras, libera!
+    // F. Regra de Empresa (Hardcoded Safety)
+    if (userRole === 'empresa' && !path.startsWith('/empresa') && path !== '/dashboard') {
+        router.push("/empresa");
+        return;
+    }
+
+    // Se passou por tudo, libera o acesso
     setAuthorized(true);
 
   }, [user, loading, loadingRules, pathname, router, permissionMatrix]);
 
-  // SPINNER DE CARREGAMENTO (Enquanto verifica o crachÃ¡ e baixa as leis)
+  // ------------------------------------------------------------------
+  // 3. RENDERIZAÃ‡ÃƒO: CARREGANDO OU CONTEÃšDO
+  // ------------------------------------------------------------------
+  
   if (loading || loadingRules || !authorized) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-emerald-500 font-bold text-xs uppercase tracking-widest animate-pulse">
-             Verificando Credenciais...
-          </p>
-        </div>
-      </div>
-    );
+    const path = pathname?.split("?")[0];
+    const publicPaths = ["/login", "/", "/historico", "/cadastro", "/termos", "/empresa/cadastro", "/banned"];
+    
+    // EXCEÃ‡ÃƒO: Se for pÃ¡gina pÃºblica e o user nÃ£o estiver logado, 
+    // mostramos a pÃ¡gina (ex: Login) em vez do Loading.
+    if (!user && publicPaths.includes(path)) {
+       return <>{children}</>;
+    }
+
+    // MOSTRA O TUBARÃƒO (Cobre a tela inteira com z-index alto)
+    return <SharkLoader />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+        {children}
+        
+        {/* DEBUGGER VISUAL (SÃ³ aparece se ativado e nÃ£o for Master) */}
+        {SHOW_DEBUG_ON_SCREEN && user?.role !== 'master' && (
+            <div className="fixed bottom-1 right-1 bg-black/90 text-[9px] font-mono text-emerald-500 p-2 rounded-lg border border-emerald-900 pointer-events-none z-[10000] shadow-xl">
+               <span className="text-zinc-500">USER:</span> {debugInfo.role} <br/>
+               <span className="text-zinc-500">ROTA:</span> {debugInfo.path} <br/>
+               <span className="text-white font-bold">{debugInfo.decision}</span>
+            </div>
+        )}
+    </>
+  );
 }
 
 // ==================================================
@@ -10864,7 +11119,140 @@ export default function SharkAvatar({
 }
 
 // ==================================================
-// PAGINA 34 - C:\Users\User\app-atletica-aaakn\src\app\comunidade\page.tsx
+// PAGINA 34 - C:\Users\User\app-atletica-aaakn\src\app\components\SharkLoader.tsx
+// ==================================================
+
+"use client";
+import React, { useState, useEffect } from "react";
+
+export default function SharkLoader() {
+  const [frase, setFrase] = useState("Carregando...");
+  const frases = [
+    "Afiando o bisturi... e os dentes. ðŸ¦ˆ",
+    "Os tubarÃµes estÃ£o revisando Anatomia...",
+    "Procurando a veia certa... aguarde.",
+    "TubarÃ£o nÃ£o dorme, estuda Fisiologia.",
+    "Calibrando a mordida para o Intermed. ðŸ†",
+    "Mergulhando em um mar de apostilas.",
+    "Oxigenando as brÃ¢nquias para o plantÃ£o. ðŸ«"
+  ];
+
+  useEffect(() => {
+    setFrase(frases[Math.floor(Math.random() * frases.length)]);
+    const interval = setInterval(() => {
+      setFrase(frases[Math.floor(Math.random() * frases.length)]);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center">
+      <div className="relative w-32 h-32 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
+        <div className="relative z-20 w-20 h-20 flex items-center justify-center">
+          <img src="/logo.png" alt="Loading" className="w-full h-full object-contain drop-shadow-2xl animate-pulse" 
+             onError={(e) => {
+               e.currentTarget.style.display = "none";
+               e.currentTarget.parentElement!.innerHTML = '<span style="font-size:3rem">ðŸ¦ˆ</span>';
+             }}
+          />
+        </div>
+        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/20 rounded-[40%] animate-wave-fill z-10"></div>
+        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-500/10 rounded-[45%] animate-wave-fill z-0" style={{ animationDuration: "4s", animationDelay: "1s" }}></div>
+      </div>
+      <div className="text-center px-6 max-w-sm">
+        <h2 className="text-emerald-500 font-black text-xl tracking-[0.2em] animate-pulse mb-3 uppercase">Carregando</h2>
+        <p className="text-zinc-400 text-sm font-medium italic leading-relaxed min-h-[3rem] transition-all duration-500">"{frase}"</p>
+      </div>
+      <style jsx>{`
+        @keyframes wave-fill {
+          0% { transform: rotate(0deg) translateY(0); top: 100%; }
+          100% { transform: rotate(360deg) translateY(0); top: 20%; }
+        }
+        .animate-wave-fill { animation: wave-fill 2.5s ease-in-out infinite alternate; }
+      `}</style>
+    </div>
+  );
+}
+
+// ==================================================
+// PAGINA 35 - C:\Users\User\app-atletica-aaakn\src\app\components\SmartLink.tsx
+// ==================================================
+
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { Lock } from "lucide-react";
+
+interface SmartLinkProps {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+  showLockIcon?: boolean; // Mostra um cadeado se bloqueado?
+}
+
+export default function SmartLink({ href, children, className, showLockIcon = false }: SmartLinkProps) {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const router = useRouter();
+
+  // FunÃ§Ã£o que verifica a permissÃ£o SEM navegar
+  const checkAccess = () => {
+    if (!user) return false;
+    if (user.role === 'master') return true; // Master entra em tudo
+
+    // 1. Pega as regras do cache (mesma lÃ³gica do RouteGuard)
+    const cachedRules = localStorage.getItem("shark_permissions");
+    if (!cachedRules) return true; // Se nÃ£o tem regra carregada, assume liberado (ou bloqueado, depende da sua polÃ­tica)
+
+    const permissionMatrix = JSON.parse(cachedRules);
+    const path = href.toString().split("?")[0];
+    const userRole = (user.role || 'user').toLowerCase();
+
+    // 2. Acha a regra
+    const matchedPath = Object.keys(permissionMatrix)
+        .filter(rulePath => path === rulePath || path.startsWith(rulePath + '/'))
+        .sort((a, b) => b.length - a.length)[0];
+
+    // 3. Verifica
+    if (matchedPath) {
+        const allowedRoles = permissionMatrix[matchedPath].map((r: string) => r.toLowerCase());
+        return allowedRoles.includes(userRole);
+    }
+
+    return true; // Sem regra explÃ­cita = liberado
+  };
+
+  const hasPermission = checkAccess();
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!hasPermission) {
+      e.preventDefault(); // ðŸš« IMPEDE A NAVEGAÃ‡ÃƒO
+      addToast("Acesso Bloqueado: VocÃª nÃ£o tem permissÃ£o para essa Ã¡rea.", "error");
+    }
+  };
+
+  // Se vocÃª quiser que o botÃ£o fique visualmente desabilitado ou com cadeado:
+  if (!hasPermission && showLockIcon) {
+      return (
+          <div className={`${className} opacity-50 cursor-not-allowed flex items-center gap-2`} onClick={handleClick}>
+              {children} <Lock size={14} />
+          </div>
+      );
+  }
+
+  return (
+    <Link href={href} className={className} onClick={handleClick}>
+      {children}
+    </Link>
+  );
+}
+
+// ==================================================
+// PAGINA 36 - C:\Users\User\app-atletica-aaakn\src\app\comunidade\page.tsx
 // ==================================================
 
 "use client";
@@ -11235,7 +11623,7 @@ export default function ComunidadePage() {
 }
 
 // ==================================================
-// PAGINA 35 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\seguranca\page.tsx
+// PAGINA 37 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\seguranca\page.tsx
 // ==================================================
 
 "use client";
@@ -11420,7 +11808,7 @@ export default function SecurityPage() {
 }
 
 // ==================================================
-// PAGINA 36 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\suporte\page.tsx
+// PAGINA 38 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\suporte\page.tsx
 // ==================================================
 
 "use client";
@@ -11605,7 +11993,7 @@ export default function SecurityPage() {
 }
 
 // ==================================================
-// PAGINA 37 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\termos\page.tsx
+// PAGINA 39 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\termos\page.tsx
 // ==================================================
 
 "use client";
@@ -11796,7 +12184,7 @@ export default function TermosLegaisPage() {
 }
 
 // ==================================================
-// PAGINA 38 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\page.tsx
+// PAGINA 40 - C:\Users\User\app-atletica-aaakn\src\app\configuracoes\page.tsx
 // ==================================================
 
 "use client";
@@ -12018,7 +12406,7 @@ export default function SettingsPage() {
 }
 
 // ==================================================
-// PAGINA 39 - C:\Users\User\app-atletica-aaakn\src\app\conquistas\page.tsx
+// PAGINA 41 - C:\Users\User\app-atletica-aaakn\src\app\conquistas\page.tsx
 // ==================================================
 
 "use client";
@@ -12250,7 +12638,7 @@ export default function ConquistasPage() {
 }
 
 // ==================================================
-// PAGINA 40 - C:\Users\User\app-atletica-aaakn\src\app\dashboard\page.tsx
+// PAGINA 42 - C:\Users\User\app-atletica-aaakn\src\app\dashboard\page.tsx
 // ==================================================
 
 "use client";
@@ -12583,7 +12971,7 @@ export default function DashboardPage() {
 }
 
 // ==================================================
-// PAGINA 41 - C:\Users\User\app-atletica-aaakn\src\app\em-breve\page.tsx
+// PAGINA 43 - C:\Users\User\app-atletica-aaakn\src\app\em-breve\page.tsx
 // ==================================================
 
 "use client";
@@ -12648,7 +13036,7 @@ export default function ComingSoonPage() {
 }
 
 // ==================================================
-// PAGINA 42 - C:\Users\User\app-atletica-aaakn\src\app\empresa\cadastro\page.tsx
+// PAGINA 44 - C:\Users\User\app-atletica-aaakn\src\app\empresa\cadastro\page.tsx
 // ==================================================
 
 "use client";
@@ -12924,7 +13312,7 @@ export default function CompanyRegisterPage() {
 }
 
 // ==================================================
-// PAGINA 43 - C:\Users\User\app-atletica-aaakn\src\app\empresa\[id]\page.tsx
+// PAGINA 45 - C:\Users\User\app-atletica-aaakn\src\app\empresa\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -13180,7 +13568,7 @@ export default function EmpresaDashboard() {
 }
 
 // ==================================================
-// PAGINA 44 - C:\Users\User\app-atletica-aaakn\src\app\empresa\page.tsx
+// PAGINA 46 - C:\Users\User\app-atletica-aaakn\src\app\empresa\page.tsx
 // ==================================================
 
 "use client";
@@ -13301,7 +13689,7 @@ export default function EmpresaLoginPage() {
 }
 
 // ==================================================
-// PAGINA 45 - C:\Users\User\app-atletica-aaakn\src\app\eventos\[id]\page.tsx
+// PAGINA 47 - C:\Users\User\app-atletica-aaakn\src\app\eventos\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -13831,7 +14219,7 @@ export default function DetalhesEventoPage() {
 }
 
 // ==================================================
-// PAGINA 46 - C:\Users\User\app-atletica-aaakn\src\app\eventos\page.tsx
+// PAGINA 48 - C:\Users\User\app-atletica-aaakn\src\app\eventos\page.tsx
 // ==================================================
 
 "use client";
@@ -14158,7 +14546,7 @@ export default function EventosPage() {
 }
 
 // ==================================================
-// PAGINA 47 - C:\Users\User\app-atletica-aaakn\src\app\fidelidade\page.tsx
+// PAGINA 49 - C:\Users\User\app-atletica-aaakn\src\app\fidelidade\page.tsx
 // ==================================================
 
 "use client";
@@ -14453,7 +14841,7 @@ function RegraItem({ texto }: { texto: string }) {
 }
 
 // ==================================================
-// PAGINA 48 - C:\Users\User\app-atletica-aaakn\src\app\games\page.tsx
+// PAGINA 50 - C:\Users\User\app-atletica-aaakn\src\app\games\page.tsx
 // ==================================================
 
 "use client";
@@ -15221,7 +15609,7 @@ export default function SharkLegendsPage() {
 }
 
 // ==================================================
-// PAGINA 49 - C:\Users\User\app-atletica-aaakn\src\app\guia\page.tsx
+// PAGINA 51 - C:\Users\User\app-atletica-aaakn\src\app\guia\page.tsx
 // ==================================================
 
 "use client";
@@ -15416,7 +15804,7 @@ function CardTurismo({ nome, desc, img }: { nome: string; desc: string; img: str
 }
 
 // ==================================================
-// PAGINA 50 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\details\page.tsx
+// PAGINA 52 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\details\page.tsx
 // ==================================================
 
 "use client";
@@ -15589,7 +15977,7 @@ export default function CheckinDetailsPage() {
 }
 
 // ==================================================
-// PAGINA 51 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\page.tsx
+// PAGINA 53 - C:\Users\User\app-atletica-aaakn\src\app\gym\checkin\page.tsx
 // ==================================================
 
 "use client";
@@ -15723,7 +16111,7 @@ export default function CheckinPage() {
 }
 
 // ==================================================
-// PAGINA 52 - C:\Users\User\app-atletica-aaakn\src\app\gym\page.tsx
+// PAGINA 54 - C:\Users\User\app-atletica-aaakn\src\app\gym\page.tsx
 // ==================================================
 
 "use client";
@@ -16023,7 +16411,7 @@ export default function GymPage() {
 }
 
 // ==================================================
-// PAGINA 53 - C:\Users\User\app-atletica-aaakn\src\app\historico\page.tsx
+// PAGINA 55 - C:\Users\User\app-atletica-aaakn\src\app\historico\page.tsx
 // ==================================================
 
 "use client";
@@ -16219,7 +16607,7 @@ export default function HistoricoPage() {
 }
 
 // ==================================================
-// PAGINA 54 - C:\Users\User\app-atletica-aaakn\src\app\ligas\page.tsx
+// PAGINA 56 - C:\Users\User\app-atletica-aaakn\src\app\ligas\page.tsx
 // ==================================================
 
 "use client";
@@ -16810,7 +17198,7 @@ export default function LigasAdminPage() {
 }
 
 // ==================================================
-// PAGINA 55 - C:\Users\User\app-atletica-aaakn\src\app\ligas_unitau\page.tsx
+// PAGINA 57 - C:\Users\User\app-atletica-aaakn\src\app\ligas_unitau\page.tsx
 // ==================================================
 
 "use client";
@@ -16972,7 +17360,7 @@ export default function LigasUnitauPage() {
 }
 
 // ==================================================
-// PAGINA 56 - C:\Users\User\app-atletica-aaakn\src\app\login\page.tsx
+// PAGINA 58 - C:\Users\User\app-atletica-aaakn\src\app\login\page.tsx
 // ==================================================
 
 "use client";
@@ -17171,7 +17559,7 @@ export default function LoginPage() {
 }
 
 // ==================================================
-// PAGINA 57 - C:\Users\User\app-atletica-aaakn\src\app\loja\[id]\page.tsx
+// PAGINA 59 - C:\Users\User\app-atletica-aaakn\src\app\loja\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -17540,7 +17928,7 @@ export default function DetalheProdutoPage() {
 }
 
 // ==================================================
-// PAGINA 58 - C:\Users\User\app-atletica-aaakn\src\app\loja\page.tsx
+// PAGINA 60 - C:\Users\User\app-atletica-aaakn\src\app\loja\page.tsx
 // ==================================================
 
 "use client";
@@ -17813,7 +18201,7 @@ export default function LojaPage() {
 }
 
 // ==================================================
-// PAGINA 59 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
+// PAGINA 61 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
 // ==================================================
 
 "use client";
@@ -18166,7 +18554,7 @@ function MenuItem({
 }
 
 // ==================================================
-// PAGINA 60 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
+// PAGINA 62 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -18313,7 +18701,7 @@ export default function ParceiroDetalhePage() {
 }
 
 // ==================================================
-// PAGINA 61 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
+// PAGINA 63 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
 // ==================================================
 
 "use client";
@@ -18435,7 +18823,7 @@ export default function EmpresaLoginPage() {
 }
 
 // ==================================================
-// PAGINA 62 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
+// PAGINA 64 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -18829,7 +19217,7 @@ export default function PerfilPublicoPage() {
 }
 
 // ==================================================
-// PAGINA 63 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
+// PAGINA 65 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
 // ==================================================
 
 "use client";
@@ -19162,7 +19550,7 @@ export default function MeuPerfilPage() {
 }
 
 // ==================================================
-// PAGINA 64 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
+// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
 // ==================================================
 
 "use client";
@@ -19378,7 +19766,7 @@ export default function AdesaoPage() {
 }
 
 // ==================================================
-// PAGINA 65 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
+// PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
 // ==================================================
 
 "use client";
@@ -19536,7 +19924,7 @@ export default function PlanosPage() {
 }
 
 // ==================================================
-// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
+// PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
 // ==================================================
 
 "use client";
@@ -19717,7 +20105,7 @@ export default function TurmaRankingPage({
 }
 
 // ==================================================
-// PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
+// PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
 // ==================================================
 
 "use client";
@@ -19974,7 +20362,109 @@ export default function RankingPage() {
 }
 
 // ==================================================
-// PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
+// PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
+// ==================================================
+
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { ShieldAlert, ArrowLeft } from "lucide-react";
+
+export default function SemPermissao() {
+  const [frase, setFrase] = useState("Acesso Negado.");
+
+  // Frases de "Barreira" com humor mÃ©dico/atlÃ©tica
+  const frases = [
+    "Sem CRM para realizar essa cirurgia, doutor(a). ðŸš«",
+    "VocÃª nadou fundo demais... volte para o raso. ðŸ¦ˆ",
+    "Ãrea de isolamento. Risco biolÃ³gico (e de ban). â˜£ï¸",
+    "Acesso restrito apenas para Predadores Alfa.",
+    "Opa! VocÃª bateu num recife de corais. DÃª meia volta.",
+    "Nem o Harrison explica o que vocÃª tÃ¡ fazendo aqui. ðŸ“š",
+    "Sua carteirinha nÃ£o abre essa porta. Tente a Diretoria.",
+    "Calma, bixo! VocÃª ainda nÃ£o tem level para essa Ã¡rea.",
+    "Ãrea estÃ©ril. Sua entrada contaminaria o ambiente. ðŸ˜·",
+    "Acesso negado. O tubarÃ£o estÃ¡ de olho. ðŸ‘€",
+  ];
+
+  useEffect(() => {
+    // Escolhe frase aleatÃ³ria apenas uma vez na montagem
+    const randomIndex = Math.floor(Math.random() * frases.length);
+    setFrase(frases[randomIndex]);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center overflow-hidden">
+      
+      {/* CONTAINER DA ANIMAÃ‡ÃƒO (Bolinha Laranja) */}
+      <div className="relative w-40 h-40 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_60px_rgba(249,115,22,0.4)] mb-8 flex items-center justify-center group">
+        
+        {/* ÃCONE NO CENTRO (Frente da Ã¡gua) */}
+        <div className="relative z-20 flex items-center justify-center">
+           <ShieldAlert size={64} className="text-white drop-shadow-lg animate-pulse" />
+        </div>
+
+        {/* ONDA LARANJA (Fundo) */}
+        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-orange-600/20 rounded-[40%] animate-wave-fill z-10"></div>
+        
+        {/* Segunda onda para dar profundidade (Amber) */}
+        <div
+          className="absolute left-[-50%] w-[200%] h-[200%] bg-orange-500/10 rounded-[45%] animate-wave-fill z-0"
+          style={{ animationDuration: "5s", animationDelay: "1s" }}
+        ></div>
+      </div>
+
+      {/* TEXTO */}
+      <div className="text-center px-6 max-w-md space-y-4">
+        <div>
+            <h2 className="text-orange-500 font-black text-3xl tracking-[0.2em] uppercase mb-1 drop-shadow-[0_0_10px_rgba(249,115,22,0.5)]">
+            Restrito
+            </h2>
+            <div className="h-1 w-24 bg-orange-600 mx-auto rounded-full"></div>
+        </div>
+
+        <p className="text-zinc-400 text-lg font-medium italic leading-relaxed">
+          "{frase}"
+        </p>
+
+        {/* BOTÃƒO DE VOLTAR */}
+        <div className="pt-6">
+            <Link 
+                href="/dashboard"
+                className="group relative inline-flex items-center gap-3 px-8 py-3 bg-transparent border border-orange-600/50 rounded-full text-orange-500 font-bold uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all duration-300 hover:shadow-[0_0_20px_rgba(249,115,22,0.4)] hover:scale-105"
+            >
+                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                <span>Voltar pro Raso</span>
+            </Link>
+        </div>
+      </div>
+
+      {/* BACKGROUND PARTICLES (Opcional - Poeira flutuando) */}
+      <div className="absolute inset-0 pointer-events-none opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+
+      {/* STYLES */}
+      <style jsx>{`
+        @keyframes wave-fill {
+          0% {
+            transform: rotate(0deg) translateY(0);
+            top: 60%; /* ComeÃ§a mais alto que o loading, indicando "cheio/bloqueado" */
+          }
+          100% {
+            transform: rotate(360deg) translateY(0);
+            top: 40%; 
+          }
+        }
+        .animate-wave-fill {
+          animation: wave-fill 4s ease-in-out infinite alternate;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ==================================================
+// PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
 // ==================================================
 
 "use client";
@@ -20464,7 +20954,7 @@ export default function SharkRoundPage() {
 }
 
 // ==================================================
-// PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
+// PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
 // ==================================================
 
 "use client";
@@ -20541,7 +21031,7 @@ export default function TermosLegaisPage() {
 }
 
 // ==================================================
-// PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
+// PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -20900,7 +21390,7 @@ export default function TreinoDetalhesPage() {
 }
 
 // ==================================================
-// PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
+// PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
 // ==================================================
 
 "use client";
@@ -21238,16 +21728,16 @@ export default function TreinosPage() {
 }
 
 // ==================================================
-// PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
+// PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
 // ==================================================
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 // ðŸ¦ˆ COMPONENTES GLOBAIS
-import BottomNav from "./components/BottomNav"; // Verifique se o caminho da pasta bate com seu projeto
-import RouteGuard from "./components/RouteGuard"; // Assumindo que este componente existe
+import BottomNav from "./components/BottomNav"; 
+import RouteGuard from "./components/RouteGuard"; 
 
 // ðŸ¦ˆ CONTEXTOS
 import { AuthProvider } from "../context/AuthContext";
@@ -21263,11 +21753,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// 1. METADATA (Apenas SEO)
 export const metadata: Metadata = {
   title: "TubarÃ£o App - AAAKN",
   description: "Portal oficial da AtlÃ©tica Medicina CaraguÃ¡",
-  manifest: "/manifest.json", 
-  themeColor: "#050505",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
+
+// 2. VIEWPORT (Visual e Tema - A CorreÃ§Ã£o do Erro)
+export const viewport: Viewport = {
+  themeColor: "#050505", // A cor da barra do navegador fica aqui agora
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Evita zoom indesejado no mobile
 };
 
 export default function RootLayout({
@@ -21280,16 +21782,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen selection:bg-emerald-500/30`}
       >
+        {/* Provedor de AutenticaÃ§Ã£o (Firebase) */}
         <AuthProvider>
+          {/* Provedor de NotificaÃ§Ãµes (Toasts) */}
           <ToastProvider>
-            {/* O RouteGuard protege todas as rotas internas */}
+            
+            {/* O RouteGuard protege todas as rotas e mostra o TubarÃ£o carregando */}
             <RouteGuard>
+              
+              {/* ConteÃºdo Principal da PÃ¡gina */}
               <main className="pb-24 min-h-screen relative z-10">
                 {children}
               </main>
-              {/* Barra de NavegaÃ§Ã£o Flutuante */}
+
+              {/* Barra de NavegaÃ§Ã£o Flutuante (Fixa embaixo) */}
               <BottomNav />
+            
             </RouteGuard>
+          
           </ToastProvider>
         </AuthProvider>
       </body>
@@ -21298,7 +21808,7 @@ export default function RootLayout({
 }
 
 // ==================================================
-// PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
+// PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
 // ==================================================
 
 "use client";
@@ -21401,7 +21911,7 @@ export default function Loading() {
 }
 
 // ==================================================
-// PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
+// PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
 // ==================================================
 
 "use client";
@@ -21476,7 +21986,7 @@ export default function NotFound() {
 }
 
 // ==================================================
-// PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
+// PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
 // ==================================================
 
 "use client";
@@ -21890,7 +22400,7 @@ export default function LandingPage() {
 }
 
 // ==================================================
-// PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
+// PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
 // ==================================================
 
 "use client";
