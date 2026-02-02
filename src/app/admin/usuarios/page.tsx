@@ -153,7 +153,7 @@ export default function AdminUsuariosPage() {
         a.click();
     };
 
-    // Helper Cores
+    // Helper Cores - CORRIGIDO PARA PADRÃO VISUAL
     const getStatusColor = (s: string) => {
         if (s === 'ativo') return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
         if (s === 'inadimplente') return "text-red-500 bg-red-500/10 border-red-500/20";
@@ -163,8 +163,9 @@ export default function AdminUsuariosPage() {
 
     const getPlanColor = (p: string) => {
         if (p === 'lenda') return "text-yellow-500 border-yellow-500/30 bg-yellow-500/10";
-        if (p === 'atleta') return "text-zinc-300 border-zinc-500/30 bg-zinc-500/10";
-        return "text-emerald-500 border-emerald-500/30 bg-emerald-500/10"; // Bicho/Cardume
+        if (p === 'atleta') return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"; // Atleta = Verde
+        if (p === 'cardume') return "text-blue-400 border-blue-500/30 bg-blue-500/10"; // Cardume = Azul (Opcional, ou verde)
+        return "text-zinc-500 border-zinc-700 bg-zinc-900"; // Bicho = Cinza
     };
 
     return (

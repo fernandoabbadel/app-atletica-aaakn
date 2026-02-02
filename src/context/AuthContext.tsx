@@ -6,7 +6,7 @@ import {
   signOut, 
   User as FirebaseUser 
 } from "firebase/auth";
-import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore"; 
 import { auth, db, googleProvider } from "../lib/firebase"; 
 import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
@@ -39,11 +39,10 @@ export interface UserStats {
     eventsAcademic?: number;
     solidarityCount?: number;
     accountCreated?: number;
-    // Expansão segura para números (stats geralmente são contadores)
     [key: string]: number | undefined; 
 }
 
-// 🦈 INTERFACE USER BLINDADA (SEM ANY)
+// 🦈 INTERFACE USER BLINDADA
 export interface User {
   uid: string;
   nome: string;
@@ -55,6 +54,7 @@ export interface User {
   status?: UserStatus;
   isAnonymous?: boolean; 
   saved_role?: string;
+  ultimoLoginDiario?: string;
   
   // Gamification
   level?: number;
@@ -86,11 +86,12 @@ export interface User {
 
   // Visual & Planos
   plano?: string;        
-  patente?: string;
+  patente?: string; // Agora calculado dinamicamente
   tier?: 'bicho' | 'atleta' | 'lenda'; 
+  plano_badge?: string;
+  plano_cor?: string;
+  plano_icon?: string;
   
-  // 🦈 EXPANSÃO SEGURA: Substituímos 'any' por tipos primitivos permitidos no Firestore.
-  // Isso permite adicionar campos novos sem desligar o TypeScript.
   [key: string]: string | number | boolean | undefined | null | UserStats | string[] | object; 
 }
 
@@ -113,21 +114,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mounted, setMounted] = useState(false);
   
-  // Estado para saber se é um visitante virtual
   const [isLocalGuest, setIsLocalGuest] = useState(false);
+  const [patentesCache, setPatentesCache] = useState<any[]>([]); // Cache para cálculo rápido
   
   const router = useRouter();
   const pathname = usePathname(); 
 
-  // 1. PREVINE ERRO DE HIDRATAÇÃO
+  // 1. PREVINE ERRO DE HIDRATAÇÃO E CARREGA PATENTES
   useEffect(() => {
     setMounted(true);
+    // Carrega patentes uma vez para o contexto usar no cálculo
+    const fetchPatentes = async () => {
+        const q = query(collection(db, "patentes_config"), orderBy("minXp", "desc")); // Do maior para o menor
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+            setPatentesCache(snap.docs.map(d => d.data()));
+        } else {
+            // Fallback se não tiver nada no banco
+             setPatentesCache([
+                { titulo: "Megalodon", minXp: 50000 },
+                { titulo: "Tubarão Branco", minXp: 15000 },
+                { titulo: "Barracuda", minXp: 2000 },
+                { titulo: "Peixe Palhaço", minXp: 500 },
+                { titulo: "Plâncton", minXp: 0 }
+            ]);
+        }
+    };
+    fetchPatentes();
   }, []);
 
-  // 2. MONITORAR AUTH & DADOS
+  // 🦈 Helper: Calcula Patente baseada no XP
+  const calculatePatente = (xp: number) => {
+      if (patentesCache.length === 0) return "Novato";
+      const found = patentesCache.find(p => xp >= p.minXp);
+      return found ? found.titulo : "Novato";
+  };
+
+  // 2. MONITORAR AUTH & DADOS & LOGIN DIÁRIO
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
-      // Se estamos no modo "Visitante Virtual", ignoramos o Firebase
+      
       if (isLocalGuest) {
           setLoading(false);
           return;
@@ -141,20 +167,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
                 
-                // Atualiza User e Admin Status
-                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
+                // --- LÓGICA DE LOGIN DIÁRIO ---
+                const hoje = new Date().toLocaleDateString('pt-BR'); 
+                const ultimoLogin = userData.ultimoLoginDiario || "";
+
+                if (hoje !== ultimoLogin) {
+                    console.log("🦈 Tubarão detectou: Primeiro login do dia! Contabilizando...");
+                    
+                    const novosStats = {
+                        ...userData.stats,
+                        loginCount: (userData.stats?.loginCount || 0) + 1
+                    };
+                    
+                    await updateDoc(userRef, {
+                        "stats.loginCount": novosStats.loginCount,
+                        "ultimoLoginDiario": hoje,
+                        "xp": (userData.xp || 0) + 10 
+                    });
+                    
+                    await logActivity(fbUser.uid, userData.nome, "LOGIN", "Sistema", "Check-in Diário Realizado (+10 XP)");
+                } 
+                // ------------------------------
+
+                // 🦈 CÁLCULO DINÂMICO DE PATENTE NO CONTEXTO
+                const currentPatente = calculatePatente(userData.xp || 0);
+                
+                // Se a patente mudou, atualiza no banco também para ficar registrado
+                if (userData.patente !== currentPatente && patentesCache.length > 0) {
+                     await updateDoc(userRef, { patente: currentPatente });
+                     userData.patente = currentPatente; // Atualiza localmente para renderizar já certo
+                }
+
+                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false, patente: currentPatente });
                 setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
 
-                // Garante status de primeiro login
                 if (!userData.stats?.accountCreated) {
-                    await updateDoc(userRef, { 
-                        "stats.accountCreated": 1,
-                        "stats.loginCount": (userData.stats?.loginCount || 0) + 1
-                    });
+                    await updateDoc(userRef, { "stats.accountCreated": 1 });
                 }
 
               } else {
-                // Cadastro Novo (Google)
+                // Cadastro Novo
                 const newUser: User = {
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
@@ -167,7 +219,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   stats: { accountCreated: 1, loginCount: 1 }, 
                   plano: "Bicho Solto",
                   tier: "bicho",
-                  isAnonymous: false
+                  patente: "Plâncton",
+                  isAnonymous: false,
+                  ultimoLoginDiario: new Date().toLocaleDateString('pt-BR')
                 };
                 
                 await setDoc(userRef, newUser);
@@ -187,7 +241,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       } else {
-        // Se não tem user Firebase e nem Guest Local -> Deslogado
         if (!isLocalGuest) {
             setUser(null);
             setIsAdmin(false);
@@ -197,28 +250,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [isLocalGuest]);
+  }, [isLocalGuest, patentesCache]); // Recalcula se as patentes carregarem depois
 
   // 3. SEGURANÇA E REDIRECIONAMENTOS
   useEffect(() => {
       if (loading || !user) return;
 
-      // BLOQUEIO: Se user for banned e não estiver na jaula
       if ((user.status === 'banned' || user.status === 'bloqueado') && pathname !== '/banned') {
           router.replace('/banned');
       }
 
-      // DESBLOQUEIO: Se user for ativo e estiver na jaula
       if (user.status !== 'banned' && user.status !== 'bloqueado' && pathname === '/banned') {
           router.replace('/dashboard');
       }
   }, [user, pathname, loading, router]); 
 
-  // --- FUNÇÕES DE LOGIN ---
+  // --- FUNÇÕES ---
 
   const loginGoogle = async () => {
     try {
-      // Se estava como visitante local, reseta
       if (isLocalGuest) {
           setIsLocalGuest(false);
           setUser(null);
@@ -231,8 +281,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginAsGuest = async () => {
     setLoading(true);
-    
-    // Cria um usuário Fake na memória
     const guestUser: User = {
         uid: "guest_virtual_" + Date.now(),
         nome: "Visitante Tubarão",
@@ -244,28 +292,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         stats: { loginCount: 1 },
         tier: "bicho",       
         plano: "Visitante",
+        patente: "Visitante",
         level: 1,
         xp: 0
     };
-
     setIsLocalGuest(true);
     setUser(guestUser);
     setIsAdmin(false);
-    
-    setTimeout(() => {
-        setLoading(false);
-    }, 800);
+    setTimeout(() => setLoading(false), 800);
   };
 
   const logout = async () => {
     if (user) {
-        // Tenta logar saída apenas se tiver UID real
         if (!user.uid.startsWith("guest_virtual")) {
             await logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Logout realizado").catch(() => {});
             await signOut(auth);
         }
     }
-    
     setIsLocalGuest(false);
     setUser(null);
     setIsAdmin(false);
@@ -279,14 +322,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUser = async (data: Partial<User>) => {
-    // Proteção: Visitante virtual não grava no banco
     if (!user || isLocalGuest) {
         if (isLocalGuest && user) {
             setUser({ ...user, ...data });
         }
         return; 
     }
-    
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, data);

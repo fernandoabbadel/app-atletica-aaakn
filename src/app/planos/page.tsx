@@ -31,22 +31,37 @@ export default function PlanosPage() {
     return () => unsubscribe();
   }, []);
 
-  // ID 202 - CORRIGIDO: Zinc agora é CINZA mesmo. Purple é Roxo.
+  // 🦈 CORREÇÃO DE CORES: Sincronia com Admin e Identidade Visual
   const getColorClasses = (cor: string, nome: string) => {
+      const lowerNome = nome.toLowerCase();
+
       // Força Bicho Solto a ser Cinza sempre
-      if (nome.toLowerCase().includes("bicho") || nome.toLowerCase().includes("solto")) {
+      if (lowerNome.includes("bicho") || lowerNome.includes("solto")) {
           return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
       }
 
-      // Se o plano tiver 'atleta' no nome ou cor 'purple', fica Roxo
-      if (cor === 'purple' || nome.toLowerCase().includes("atleta")) {
+      // Se o plano tiver 'atleta' no nome ou cor 'purple', fica Roxo (Padrão Atleta de Bar)
+      if (cor === 'purple' || lowerNome.includes("atleta")) {
           return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
       }
 
+      // Se for Lenda, Amarelo/Dourado
+      if (cor === 'yellow' || lowerNome.includes("lenda")) {
+          return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+      }
+
+      // Se for Cardume, Esmeralda/Verde
+      if (cor === 'emerald' || lowerNome.includes("cardume")) {
+          return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+      }
+
+      // Fallback genérico baseado apenas na cor do admin
       switch(cor) {
-          case 'yellow': return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' }; // Lenda
-          case 'emerald': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' }; // Cardume
-          // Default (Zinc) agora é realmente Cinza
+          case 'yellow': return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+          case 'emerald': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+          case 'purple': return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
+          case 'blue': return { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' };
+          case 'red': return { text: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30' };
           default: return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
       }
   };
@@ -72,20 +87,25 @@ export default function PlanosPage() {
               {planos.map(plano => {
                   const Icon = ICONS_MAP[plano.icon] || Star;
                   
-                  // Lógica do Plano Atual
+                  // 🦈 LÓGICA INTELIGENTE DE PLANO ATIVO
                   const isFree = plano.precoVal === 0;
-                  const userHasNoPlan = !user?.plano_badge;
-                  const isMyPlan = (userHasNoPlan && isFree) || (user?.plano_badge === plano.nome);
+                  // Se o usuário não tem 'plano_badge' definido, assume que ele é Free (Bicho Solto)
+                  const userHasNoPlan = !user?.plano_badge && !user?.plano; 
+                  
+                  // Verifica correspondência exata pelo nome do plano
+                  const isMyPlan = 
+                    (userHasNoPlan && isFree) || 
+                    (user?.plano_badge === plano.nome) || 
+                    (user?.plano === plano.nome);
 
-                  // Passamos o nome para garantir as cores certas
                   const styles = getColorClasses(plano.cor, plano.nome); 
 
                   return (
                       <div key={plano.id} className={`
                         bg-zinc-900/80 backdrop-blur-xl border rounded-[2rem] p-6 flex flex-col relative transition-all duration-300 h-full group
                         ${isMyPlan 
-                            ? 'border-emerald-600 shadow-[0_0_40px_rgba(16,185,129,0.2)] scale-105 z-20 bg-zinc-900 cursor-default' // Plano Atual (Fixo)
-                            : `cursor-pointer hover:-translate-y-3 hover:shadow-2xl hover:border-zinc-500 ${styles.border}` // ID 203 - TODOS os outros se mexem muito agora (-translate-y-3)
+                            ? 'border-emerald-600 shadow-[0_0_40px_rgba(16,185,129,0.2)] scale-105 z-20 bg-zinc-900 cursor-default' 
+                            : `cursor-pointer hover:-translate-y-3 hover:shadow-2xl hover:border-zinc-500 ${styles.border}`
                         }
                         ${!isMyPlan && plano.destaque ? 'md:pb-12 md:pt-10 z-10' : ''}
                       `}>

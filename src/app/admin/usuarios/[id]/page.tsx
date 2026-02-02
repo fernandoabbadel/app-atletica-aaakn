@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useToast } from "../../../../context/ToastContext";
-import { db } from "../../../../lib/firebase";
+import { useToast } from "../../../../context/ToastContext"; // 🦈 Corrected path
+import { db } from "../../../../lib/firebase"; // 🦈 Corrected path
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, deleteDoc } from "firebase/firestore";
 
 // --- TIPOS AUXILIARES ---
@@ -83,9 +83,9 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
 
   // --- AÇÃO: ATIVAR / DESATIVAR (Toggle Status) ---
   const handleToggleStatus = async () => {
-      // Se estiver ativo, vira inativo (banned/suspenso). Se não, vira ativo.
-      const newStatus = user.status === 'ativo' ? 'inativo' : 'ativo';
-      const msg = newStatus === 'inativo' 
+      // Se estiver ativo, vira bloqueado (banned/suspenso). Se não, vira ativo.
+      const newStatus = user.status === 'ativo' ? 'bloqueado' : 'ativo';
+      const msg = newStatus === 'bloqueado' 
         ? "Tem certeza? O usuário perderá acesso imediato ao app." 
         : "Reativar acesso do usuário?";
       
@@ -94,7 +94,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
           try {
               await updateDoc(doc(db, "users", id), { status: newStatus });
               setUser({ ...user, status: newStatus });
-              addToast(newStatus === 'inativo' ? "Conta desativada." : "Conta reativada!", newStatus === 'inativo' ? "info" : "success");
+              addToast(newStatus === 'bloqueado' ? "Conta desativada." : "Conta reativada!", newStatus === 'bloqueado' ? "info" : "success");
           } catch (e) {
               addToast("Erro ao atualizar status.", "error");
           } finally {
@@ -197,7 +197,8 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <span className="badge-shark bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{user.plano_badge || "Sem Plano"}</span>
+                        {/* 🦈 EXIBE O PLANO BADGE (Nome Personalizado) */}
+                        <span className="badge-shark bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{user.plano_badge || user.tier || "Sem Plano"}</span>
                         <span className="badge-shark bg-purple-500/10 text-purple-500 border-purple-500/20">{user.patente || "Novato"}</span>
                     </div>
                 </div>

@@ -5,7 +5,7 @@ import {
   Lock, ArrowRight, Upload, Plus, Trash2, Save, LogOut, 
   Image as ImageIcon, Layout, Edit3, Eye, Bell, 
   Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Tag, 
-  Loader2, Ticket
+  Loader2, Ticket, MessageCircle
 } from 'lucide-react';
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
@@ -51,7 +51,8 @@ interface LeagueEvent {
     lotes: Lote[]; 
     descricao: string; 
     linkEvento?: string; 
-    globalEventId?: string; 
+    globalEventId?: string;
+    pollQuestion?: string; // 🦈 NOVO CAMPO: Pergunta da Enquete
 }
 
 interface LigaData {
@@ -96,12 +97,12 @@ export default function LigasAdminPage() {
   const [ligaData, setLigaData] = useState<LigaData | null>(null);
   const [sendNotification, setSendNotification] = useState(false);
 
-  // --- MODAL DE BUSCA DE USUÁRIOS (ID 148) ---
+  // --- MODAL DE BUSCA DE USUÁRIOS ---
   const [searchUserModal, setSearchUserModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]); 
 
-  // --- MODAL DE EVENTOS (ID 151) ---
+  // --- MODAL DE EVENTOS ---
   const [eventModal, setEventModal] = useState(false);
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
@@ -231,7 +232,7 @@ export default function LigasAdminPage() {
           setCurrentEvent({ 
               id: Date.now().toString(), titulo: "", data: "", hora: "", local: "", 
               tipo: "Festa", destaque: "", imagem: "", imagePositionY: 50, 
-              lotes: [], descricao: "" 
+              lotes: [], descricao: "", pollQuestion: "" 
           });
           setEditingEventIdx(null);
       }
@@ -280,6 +281,7 @@ export default function LigasAdminPage() {
                   ev.globalEventId = eventId;
                   ev.linkEvento = `/eventos/${eventId}`;
                   
+                  // Salva o evento principal
                   await setDoc(doc(db, "eventos", eventId), {
                       titulo: `[${ligaData.sigla}] ${ev.titulo}`,
                       data: ev.data,
@@ -290,13 +292,25 @@ export default function LigasAdminPage() {
                       imagem: ev.imagem || ligaData.logoBase64,
                       imagePositionY: ev.imagePositionY,
                       lotes: ev.lotes,
-                      descricao: ev.descricao, // Agora tem descrição!
+                      descricao: ev.descricao, 
                       categoria: "Liga",
                       criadorId: ligaData.id,
                       criadorNome: ligaData.sigla,
                       status: "ativo",
                       createdAt: serverTimestamp() 
                   }, { merge: true });
+
+                  // 🦈 CRIA A ENQUETE SE HOUVER PERGUNTA DEFINIDA
+                  if (ev.pollQuestion) {
+                      await addDoc(collection(db, "eventos", eventId, "enquetes"), {
+                          question: ev.pollQuestion,
+                          options: [],
+                          voters: [],
+                          createdAt: serverTimestamp(),
+                          creatorId: ligaData.id, // Liga como criadora
+                          isOfficial: true // Marca como oficial da liga
+                      });
+                  }
               });
               
               await Promise.all(batchPromises);
@@ -540,17 +554,29 @@ export default function LigasAdminPage() {
                       </div>
                       {currentEvent.imagem && <div className="bg-zinc-900 p-2 rounded-xl"><div className="flex justify-between text-[10px] text-zinc-400 uppercase mb-1"><span>Ajuste Vertical</span><span>{currentEvent.imagePositionY || 50}%</span></div><input type="range" min="0" max="100" value={currentEvent.imagePositionY || 50} onChange={(e) => setCurrentEvent({ ...currentEvent, imagePositionY: Number(e.target.value) })} className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/></div>}
                       
-                      <input type="text" placeholder="Título do Evento" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={currentEvent.titulo} onChange={(e) => setCurrentEvent({ ...currentEvent, titulo: e.target.value })} />
+                      <input type="text" placeholder="Título do Evento" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={currentEvent.titulo || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, titulo: e.target.value })} />
                       <div className="grid grid-cols-2 gap-3">
-                          <input type="text" placeholder="Data (ex: 12 OUT)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.data} onChange={(e) => setCurrentEvent({ ...currentEvent, data: e.target.value })} />
-                          <input type="text" placeholder="Hora (ex: 22:00)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.hora} onChange={(e) => setCurrentEvent({ ...currentEvent, hora: e.target.value })} />
+                          <input type="text" placeholder="Data (ex: 12 OUT)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.data || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, data: e.target.value })} />
+                          <input type="text" placeholder="Hora (ex: 22:00)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.hora || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, hora: e.target.value })} />
                       </div>
-                      <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
+                      <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
                       
                       {/* 🔥 DESCRIÇÃO DO EVENTO (NOVO) */}
                       <div>
                           <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Descrição do Evento</label>
                           <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" placeholder="Detalhes, regras, atrações..." value={currentEvent.descricao || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, descricao: e.target.value })} />
+                      </div>
+
+                      {/* 🦈 1. NOVA OPÇÃO: ENQUETE INICIAL */}
+                      <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl">
+                          <label className="text-[10px] text-purple-400 font-bold uppercase mb-2 flex items-center gap-2"><MessageCircle size={12}/> Pergunta da Enquete (Opcional)</label>
+                          <input 
+                              type="text" 
+                              className="w-full bg-black border border-purple-900/50 rounded-lg p-3 text-sm outline-none focus:border-purple-500" 
+                              value={currentEvent.pollQuestion || ""} 
+                              onChange={e => setCurrentEvent({...currentEvent, pollQuestion: e.target.value})} 
+                              placeholder="Ex: Qual tema vocês preferem?"
+                          />
                       </div>
 
                       {/* Gestão de Lotes */}

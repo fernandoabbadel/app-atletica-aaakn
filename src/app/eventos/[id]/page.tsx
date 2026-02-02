@@ -5,19 +5,31 @@ import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
   Users, CheckCircle, HelpCircle, XCircle, Lock, 
   Loader2, Crown, MessageCircle, AlertTriangle, 
-  Heart, Send, Plus, Trash2, ShieldAlert, Star
+  Heart, Send, Plus, Trash2, ShieldAlert, Star,
+  Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
     doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove 
+    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc 
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// --- IMAGENS ASSETS ---
+// --- MAPEAMENTO DE ÍCONES (IGUAL AO PLANOS) ---
+const ICONS_MAP: any = {
+  ghost: Ghost,
+  star: Star,
+  crown: Crown,
+  shopping: ShoppingBag,
+  zap: Zap,
+  gem: Gem,
+  trophy: Trophy,
+  fish: Fish
+};
+
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -32,9 +44,8 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
         };
-        // Remove acentos e joga pra maiúsculo
         const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const parts = cleanDate.split(' '); // Ex: ["12", "OUT"]
+        const parts = cleanDate.split(' '); 
         
         if (parts.length < 2) return null;
         
@@ -49,7 +60,6 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         
         let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
         
-        // Se a data já passou este ano, assume ano que vem
         if (eventDate < now) eventDate.setFullYear(year + 1);
         
         return eventDate;
@@ -58,7 +68,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     }
 };
 
-// --- COMPONENTE CONTADOR REAL (ID 160/166) ---
+// --- COMPONENTE CONTADOR ---
 function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
   const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
 
@@ -98,9 +108,21 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
   );
 }
 
+// --- HELPER DE CORES DE PLANO ---
+const getPlanColorClass = (cor?: string) => {
+    switch(cor) {
+        case 'yellow': return "text-yellow-500";
+        case 'emerald': return "text-emerald-400";
+        case 'purple': return "text-purple-400";
+        case 'blue': return "text-blue-400";
+        case 'red': return "text-red-500";
+        default: return "text-white"; // Padrão
+    }
+};
+
 export default function DetalhesEventoPage() {
   const params = useParams();
-  const { user, isAdmin } = useAuth(); // isAdmin deve vir do AuthContext
+  const { user, isAdmin } = useAuth(); 
   const { addToast } = useToast();
   
   const [evento, setEvento] = useState<any>(null);
@@ -110,7 +132,6 @@ export default function DetalhesEventoPage() {
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
   
-  // MODAIS E INTERAÇÕES
   const [modalUsersType, setModalUsersType] = useState<"going" | "maybe" | null>(null);
   const [newComment, setNewComment] = useState("");
   const [newPollOption, setNewPollOption] = useState("");
@@ -137,13 +158,13 @@ export default function DetalhesEventoPage() {
           }
       });
 
-      // Comentários (ID 163)
+      // Comentários
       const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
       const unsubCom = onSnapshot(qCom, (snap) => {
           setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
 
-      // Enquetes (ID 168)
+      // Enquetes
       const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
           setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
@@ -151,9 +172,8 @@ export default function DetalhesEventoPage() {
       return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); };
   }, [params.id, user]);
 
-  // --- ACTIONS (BACKEND REAL) ---
+  // --- ACTIONS ---
 
-  // RSVP
   const handleRSVP = async (status: "going" | "maybe") => {
       if (!user) return addToast("Faça login para confirmar!", "error");
       try {
@@ -178,13 +198,25 @@ export default function DetalhesEventoPage() {
       } catch (e) { addToast("Erro ao atualizar.", "error"); }
   };
 
-  // COMENTÁRIOS (ID 163)
+  // 🦈 ID 505: SALVAR DADOS DO PERFIL NO COMENTÁRIO
   const handleSendComment = async () => {
       if (!newComment.trim() || !user) return;
       await addDoc(collection(db, "eventos", evento.id, "comentarios"), {
-          text: newComment, userId: user.uid, userName: user.nome || "Anônimo",
-          userAvatar: user.foto || "", userTurma: user.turma || "",
-          createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
+          text: newComment, 
+          userId: user.uid, 
+          userName: user.nome || "Anônimo",
+          userAvatar: user.foto || "", 
+          userTurma: user.turma || "",
+          
+          // Dados Visuais Extras (Snapshot)
+          userPlanoCor: user.plano_cor || "zinc",
+          userPlanoIcon: user.plano_icon || "ghost",
+          userPatente: user.patente || "Novato",
+
+          createdAt: serverTimestamp(), 
+          likes: [], 
+          reports: [], 
+          hidden: false
       });
       setNewComment("");
   };
@@ -192,10 +224,24 @@ export default function DetalhesEventoPage() {
   const handleLikeComment = async (comId: string, currentLikes: string[]) => {
       if (!user) return;
       const ref = doc(db, "eventos", evento.id, "comentarios", comId);
-      if (currentLikes.includes(user.uid)) {
+      // 🦈 CORREÇÃO DE ERRO: GARANTINDO QUE É ARRAY
+      const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
+      
+      if (safeLikes.includes(user.uid)) {
           await updateDoc(ref, { likes: arrayRemove(user.uid) });
       } else {
           await updateDoc(ref, { likes: arrayUnion(user.uid) });
+      }
+  };
+
+  // 🦈 ID 506: DELETAR COMENTÁRIO
+  const handleDeleteComment = async (comId: string) => {
+      if (!confirm("Apagar este comentário?")) return;
+      try {
+          await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
+          addToast("Comentário apagado.", "info");
+      } catch (error) {
+          addToast("Erro ao apagar.", "error");
       }
   };
 
@@ -206,12 +252,11 @@ export default function DetalhesEventoPage() {
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
-     // Admin Action
      await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
      addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
   };
 
-  // ENQUETES (ID 168) - Lógica Real
+  // ENQUETES
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
       if (!user) return addToast("Login necessário.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
@@ -240,7 +285,6 @@ export default function DetalhesEventoPage() {
 
   const handleCreatePollOption = async (pollId: string) => {
       if(!newPollOption || !user) return;
-      // Adiciona nova opção ao array
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ text: newPollOption, votes: 0, creator: user.uid })
@@ -249,16 +293,14 @@ export default function DetalhesEventoPage() {
       addToast("Opção adicionada!", "success");
   };
 
-  // ALERTA DE VAGAS (ID 167) - Persistência Real
   const toggleLowStock = async () => {
-      if (!isAdmin) return; // Segurança básica frontend
+      if (!isAdmin) return; 
       await updateDoc(doc(db, "eventos", evento.id), {
           isLowStock: !evento.isLowStock
       });
       addToast("Status de Vagas atualizado.", "success");
   };
 
-  // COMPARTILHAR (ID 165)
   const handleShare = () => {
       if (typeof navigator !== 'undefined' && navigator.share) {
           navigator.share({ title: evento.titulo, url: window.location.href });
@@ -268,13 +310,11 @@ export default function DetalhesEventoPage() {
       }
   };
 
-  // FILTRO PARA MODAL DE USUÁRIOS
   const modalUsers = useMemo(() => {
       if (!modalUsersType) return [];
       return rsvps.filter(r => r.status === modalUsersType);
   }, [rsvps, modalUsersType]);
 
-  // RANKING FLUTUANTE
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
       rsvps.forEach(r => r.status === 'going' && (counts[(r.userTurma || "Geral").toUpperCase()] = (counts[(r.userTurma || "Geral").toUpperCase()] || 0) + 1));
@@ -287,34 +327,30 @@ export default function DetalhesEventoPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* --- HERO --- */}
+      {/* HERO */}
       <div className="relative h-[50vh] w-full">
         <img src={evento.imagem || "https://placehold.co/600x400/111/333"} className="w-full h-full object-cover" style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}/>
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
-        {/* HEADER NAV (ID 164: Voltar para app/eventos) */}
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
             <Link href="/eventos" className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-white hover:text-black transition">
                 <ArrowLeft size={20} />
             </Link>
-            {/* ID 165: SHARE */}
             <button onClick={handleShare} className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-emerald-500 hover:text-black transition">
                 <Share2 size={20} />
             </button>
         </div>
 
-        {/* CONTADOR REAL (ID 160/166) */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
             <EventCountdown dateStr={evento.data} timeStr={evento.hora} />
         </div>
 
-        {/* ADMIN TRIGGER: VAGAS (ID 167) */}
-        {/* Este botão só deve aparecer para admin. Como não tenho certeza da prop isAdmin, deixo oculto visualmente mas clicável para teste */}
-        <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold opacity-0 hover:opacity-100 transition">
-            ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
-        </button>
+        {isAdmin && (
+            <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold hover:opacity-100 transition shadow-lg border border-red-400">
+                ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
+            </button>
+        )}
 
-        {/* RANKING FLUTUANTE */}
         <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
             {rankingTurmas.map((t) => (
                 <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
@@ -324,7 +360,6 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* TITULO */}
         <div className="absolute bottom-0 left-0 p-6 w-full z-20">
             <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black uppercase rounded mb-2 inline-block">{evento.tipo}</span>
             <h1 className="text-3xl font-black italic uppercase leading-none text-white drop-shadow-xl mb-2">{evento.titulo}</h1>
@@ -335,10 +370,9 @@ export default function DetalhesEventoPage() {
         </div>
       </div>
 
-      {/* --- CONTEÚDO --- */}
+      {/* CONTEÚDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
-        {/* ALERTA DOURADO REAL (ID 167) */}
         {evento.isLowStock && (
             <div className="bg-gradient-to-r from-yellow-600 to-yellow-400 p-0.5 rounded-2xl animate-pulse shadow-[0_0_30px_rgba(234,179,8,0.3)]">
                 <div className="bg-black rounded-[14px] p-4 flex items-center justify-between">
@@ -354,7 +388,6 @@ export default function DetalhesEventoPage() {
             </div>
         )}
 
-        {/* RSVP ACTIONS */}
         <div className="grid grid-cols-2 gap-3">
             <button onClick={() => handleRSVP('going')} className={`py-4 rounded-xl flex flex-col items-center gap-1 transition border ${userRsvp === 'going' ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg' : 'bg-zinc-900 border-zinc-800'}`}>
                 <CheckCircle size={20}/> <span className="text-xs font-black uppercase">Eu Vou</span>
@@ -364,7 +397,6 @@ export default function DetalhesEventoPage() {
             </button>
         </div>
 
-        {/* CONTADORES (ID 161/162 - MODAIS) */}
         <div className="flex justify-center gap-6 text-[10px] font-bold uppercase text-zinc-500">
             <button onClick={() => setModalUsersType('going')} className="hover:text-emerald-500 transition underline decoration-dashed underline-offset-4 flex items-center gap-1">
                 <Users size={12}/> {evento.stats?.confirmados || 0} Confirmados
@@ -374,7 +406,6 @@ export default function DetalhesEventoPage() {
             </button>
         </div>
 
-        {/* INGRESSOS */}
         <div className="space-y-3">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-emerald-500"/> Ingressos</h3>
             {evento.lotes?.map((l: any, i: number) => (
@@ -390,13 +421,12 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* ENQUETES (ID 168) - Real Firebase */}
+        {/* ENQUETES (ID 168) */}
         <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                     <MessageCircle size={14} className="text-purple-500"/> Enquete da Galera
                 </h3>
-                {/* Admin pode criar enquetes - aqui simplificado para user criar opcoes */}
             </div>
 
             {enquetes.length > 0 ? enquetes.map(poll => (
@@ -417,7 +447,6 @@ export default function DetalhesEventoPage() {
                         })}
                     </div>
                     
-                    {/* Criar Opção */}
                     <div className="flex gap-2 mt-2 pt-2 border-t border-zinc-800/50">
                         <input 
                             value={newPollOption}
@@ -433,7 +462,7 @@ export default function DetalhesEventoPage() {
             )}
         </div>
 
-        {/* COMENTÁRIOS (ID 163) - Completo */}
+        {/* COMENTÁRIOS (ID 163, 505, 506) */}
         <div className="space-y-6 pt-4 border-t border-zinc-800">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do Rolê</h3>
             
@@ -450,39 +479,75 @@ export default function DetalhesEventoPage() {
             </div>
 
             <div className="space-y-4">
-                {comentarios.map((c) => (
-                    (!c.hidden || isAdmin) && (
+                {comentarios.map((c) => {
+                    // ID 505: Preparar ícones e cores
+                    const PlanIcon = ICONS_MAP[c.userPlanoIcon || 'ghost'] || Ghost;
+                    const nameColorClass = getPlanColorClass(c.userPlanoCor || 'zinc');
+                    // 🦈 CORREÇÃO CRÍTICA DO ERRO DE .includes()
+                    const likesArray = Array.isArray(c.likes) ? c.likes : [];
+
+                    return (!c.hidden || isAdmin) && (
                         <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
-                            <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full bg-zinc-800 object-cover border border-zinc-800"/>
-                            <div className="flex-1">
-                                <div className="flex justify-between items-start">
-                                    <p className="text-xs font-bold text-white">{c.userName} <span className="text-[10px] text-zinc-500 font-normal">• {c.userTurma}</span></p>
-                                    <div className="flex gap-3 text-zinc-500">
-                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${c.likes?.includes(user?.uid) ? 'text-red-500' : ''}`}>
-                                            <Heart size={12} className={c.likes?.includes(user?.uid) ? "fill-current" : ""}/> 
-                                            <span className="text-[9px]">{c.likes?.length || 0}</span>
-                                        </button>
-                                        <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
-                                        
-                                        {/* ADMIN ONLY (Ocultar) */}
-                                        <button onClick={() => handleToggleHideComment(c.id, c.hidden)} className="hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {c.hidden ? <CheckCircle size={12}/> : <Trash2 size={12}/>}
-                                        </button>
+                            <Link href={`/perfil/${c.userId}`}>
+                                <div className="relative group/avatar cursor-pointer">
+                                    <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
+                                    {/* Mini Badge Patente (Opcional) */}
+                                    <div className="absolute -bottom-1 -right-1 bg-black rounded-full p-0.5 border border-zinc-800">
+                                        <div className={`w-3 h-3 rounded-full ${c.userPlanoCor === 'yellow' ? 'bg-yellow-500' : c.userPlanoCor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-600'}`}></div>
                                     </div>
                                 </div>
-                                <p className="text-xs text-zinc-300 mt-1">{c.text}</p>
-                                {c.hidden && <span className="text-[9px] text-red-500 font-bold uppercase block mt-1">OCULTO PELO ADMIN</span>}
+                            </Link>
+                            
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-1.5">
+                                            {/* ID 505: Nome com Cor do Plano e Ícone */}
+                                            <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
+                                                <PlanIcon size={10} className="stroke-[3]"/> 
+                                                {c.userName}
+                                            </p>
+                                            <span className="text-[9px] text-zinc-500 font-normal border border-zinc-800 px-1 rounded flex items-center gap-1">
+                                                {c.userPatente || "Novato"}
+                                            </span>
+                                        </div>
+                                        <span className="text-[9px] text-zinc-600 font-mono mt-0.5">{c.userTurma || "Visitante"}</span>
+                                    </div>
+
+                                    <div className="flex gap-2 text-zinc-500">
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
+                                            <Heart size={12} className={likesArray.includes(user?.uid) ? "fill-current" : ""}/> 
+                                            <span className="text-[9px]">{likesArray.length || 0}</span>
+                                        </button>
+                                        
+                                        <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
+                                        
+                                        {/* ID 506: BOTÃO DE DELETAR (Dono ou Admin) */}
+                                        {(user?.uid === c.userId || isAdmin) && (
+                                            <button onClick={() => handleDeleteComment(c.id)} className="hover:text-red-500 transition-colors" title="Apagar">
+                                                <Trash2 size={12}/>
+                                            </button>
+                                        )}
+
+                                        {isAdmin && (
+                                            <button onClick={() => handleToggleHideComment(c.id, c.hidden)} className="hover:text-red-500 opacity-50 hover:opacity-100">
+                                                {c.hidden ? <CheckCircle size={12}/> : <div className="w-3 h-3 bg-zinc-700 rounded-full"></div>}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{c.text}</p>
+                                {c.hidden && <span className="text-[9px] text-red-500 font-bold uppercase block mt-1 border border-red-900/30 bg-red-900/10 px-2 py-0.5 rounded w-fit">Oculto pelo Admin</span>}
                             </div>
                         </div>
-                    )
-                ))}
+                    );
+                })}
                 {comentarios.length === 0 && <p className="text-center text-xs text-zinc-600 py-4">Seja o primeiro a comentar!</p>}
             </div>
         </div>
 
       </div>
 
-      {/* MODAL USERS (ID 161/162) - Real com Foto e Link */}
       {modalUsersType && (
           <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 max-h-[70vh] flex flex-col shadow-2xl">

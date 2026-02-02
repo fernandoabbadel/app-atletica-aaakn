@@ -1,15 +1,19 @@
+// src/app/cadastro/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import { 
   User, Hash, Instagram, FileText, Phone, Save, Loader2, ShieldAlert, 
   Eye, EyeOff, CheckCircle2, MapPin, Calendar, Heart, Trophy, PawPrint, 
-  ArrowLeft, BadgeCheck, Lock 
+  ArrowLeft, BadgeCheck, Lock, Camera, UploadCloud 
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { db, storage } from "../../lib/firebase"; 
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
 const TURMAS = [
@@ -56,18 +60,42 @@ const PETS_OPTIONS = [
     { id: "nenhum", label: "Sem Pet", icon: "🚫" },
 ];
 
+// 🦈 INTERFACE ESTRITA
+interface UserFormData {
+    nome: string;
+    apelido: string;
+    matricula: string;
+    turma: string;
+    instagram: string;
+    telefone: string;
+    whatsappPublico: boolean;
+    bio: string;
+    dataNascimento: string;
+    idadePublica: boolean;
+    cidadeOrigem: string;
+    estadoOrigem: string;
+    statusRelacionamento: string;
+    relacionamentoPublico: boolean;
+    esportes: string[];
+    pets: string;
+    foto: string;
+}
+
 export default function CadastroPage() {
   const { user, updateUser, loading: authLoading } = useAuth();
+  const { addToast } = useToast();
   const router = useRouter();
   
   const [loading, setLoading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false); 
   const [error, setError] = useState("");
   
   const [ufs, setUfs] = useState<any[]>([]);
   const [cidades, setCidades] = useState<any[]>([]);
   const [ufSelected, setUfSelected] = useState("");
 
-  const [formData, setFormData] = useState({
+  // 🦈 ESTADO TIPADO
+  const [formData, setFormData] = useState<UserFormData>({
     nome: "",
     apelido: "",
     matricula: "",
@@ -77,12 +105,14 @@ export default function CadastroPage() {
     whatsappPublico: true,
     bio: "",
     dataNascimento: "",
-    idadePublica: true, // 🦈 Novo Estado: Idade Visível
+    idadePublica: true,
     cidadeOrigem: "",
+    estadoOrigem: "", 
     statusRelacionamento: "Solteiro(a)",
     relacionamentoPublico: true,
-    esportes: [] as string[],
-    pets: "nenhum"
+    esportes: [],
+    pets: "nenhum",
+    foto: "" 
   });
 
   // APIs IBGE
@@ -95,31 +125,70 @@ export default function CadastroPage() {
     if (ufSelected) {
       fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${ufSelected}/municipios?orderBy=nome`)
         .then(res => res.json()).then(data => setCidades(data)).catch(console.error);
+      
+      setFormData(prev => ({...prev, estadoOrigem: ufSelected}));
     }
   }, [ufSelected]);
 
-  // Load User Data
+  // 🦈 LOAD DE DADOS COM SANITIZAÇÃO
   useEffect(() => {
     if (user) {
+      if (user.estadoOrigem) {
+          setUfSelected(String(user.estadoOrigem));
+      }
+
       setFormData({
-        nome: user.nome || "",
-        apelido: user.apelido || "",
-        matricula: user.matricula || "",
-        turma: user.turma || "",
-        instagram: user.instagram?.replace("@", "") || "",
-        telefone: user.telefone || "",
-        whatsappPublico: user.whatsappPublico ?? true,
-        bio: user.bio || "",
-        dataNascimento: user.dataNascimento || "",
-        idadePublica: user.idadePublica ?? true, // 🦈 Carrega preferência
-        cidadeOrigem: user.cidadeOrigem || "",
-        statusRelacionamento: user.statusRelacionamento || "Solteiro(a)",
-        relacionamentoPublico: user.relacionamentoPublico ?? true,
-        esportes: user.esportes || [],
-        pets: user.pets || "nenhum"
+        nome: String(user.nome || ""),
+        apelido: String(user.apelido || ""),
+        matricula: String(user.matricula || ""),
+        turma: String(user.turma || ""),
+        instagram: String(user.instagram || "").replace("@", ""),
+        telefone: String(user.telefone || ""),
+        whatsappPublico: Boolean(user.whatsappPublico ?? true),
+        bio: String(user.bio || ""),
+        dataNascimento: String(user.dataNascimento || ""),
+        idadePublica: Boolean(user.idadePublica ?? true),
+        cidadeOrigem: String(user.cidadeOrigem || ""),
+        estadoOrigem: String(user.estadoOrigem || ""),
+        statusRelacionamento: String(user.statusRelacionamento || "Solteiro(a)"),
+        relacionamentoPublico: Boolean(user.relacionamentoPublico ?? true),
+        esportes: Array.isArray(user.esportes) ? user.esportes : [],
+        pets: String(user.pets || "nenhum"),
+        foto: String(user.foto || "")
       });
     }
   }, [user]);
+
+  // 🦈 Lógica de Upload de Foto
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (file.size > 5 * 1024 * 1024) {
+          addToast("A imagem deve ter no máximo 5MB!", "error");
+          return;
+      }
+      if (!file.type.startsWith("image/")) {
+          addToast("Apenas arquivos de imagem são permitidos.", "error");
+          return;
+      }
+
+      setImageLoading(true);
+      try {
+          const storageRef = ref(storage, `users/${user?.uid}/profile_${Date.now()}.jpg`);
+          await uploadBytes(storageRef, file);
+          const downloadURL = await getDownloadURL(storageRef);
+
+          setFormData(prev => ({ ...prev, foto: downloadURL }));
+          addToast("Foto carregada com sucesso! 🦈", "success");
+
+      } catch (error) {
+          console.error("Erro upload:", error);
+          addToast("Erro ao enviar foto. Tente novamente.", "error");
+      } finally {
+          setImageLoading(false);
+      }
+  };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ""); 
@@ -137,7 +206,6 @@ export default function CadastroPage() {
       });
   };
 
-  // 🦈 VALIDAÇÃO E SUBMIT
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -149,6 +217,8 @@ export default function CadastroPage() {
     if (!formData.cidadeOrigem) { setLoading(false); return setError("Selecione sua cidade de origem!"); }
     if (!formData.telefone) { setLoading(false); return setError("Telefone é obrigatório para contato!"); }
     if (!formData.turma) { setLoading(false); return setError("Selecione sua turma!"); }
+    
+    if (!formData.foto) { setLoading(false); return setError("A foto de perfil é obrigatória!"); }
 
     try {
       await updateUser({
@@ -156,6 +226,7 @@ export default function CadastroPage() {
         instagram: formData.instagram ? `@${formData.instagram.replace("@", "")}` : "",
         role: user?.role === 'guest' ? 'user' : user?.role 
       });
+      addToast("Perfil atualizado! Bem-vindo ao cardume. 🦈", "success");
       router.push("/perfil"); 
     } catch (err) {
       setError("Erro ao salvar no QG.");
@@ -167,7 +238,7 @@ export default function CadastroPage() {
   if (!authLoading && !user) { router.push("/"); return null; }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 pb-20 flex flex-col items-center">
+    <div className="min-h-screen bg-[#050505] text-white p-4 pb-20 flex flex-col items-center overflow-hidden">
         
         {/* LOGO FUNDO */}
         <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] pointer-events-none opacity-5 z-0">
@@ -184,11 +255,42 @@ export default function CadastroPage() {
         <div className="w-full max-w-3xl bg-zinc-900/90 backdrop-blur-xl border border-zinc-800 p-6 md:p-10 rounded-[2.5rem] shadow-2xl relative z-10">
             
             <div className="text-center mb-8">
-                <div className="relative w-24 h-24 mx-auto mb-4 group">
-                    <img src={user?.foto || "https://github.com/shadcn.png"} alt="Avatar" className="w-full h-full object-cover rounded-full border-4 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)]" />
+                {/* 🦈 UPLOAD DE FOTO */}
+                <div className="relative w-32 h-32 mx-auto mb-4 group">
+                    <div className="relative w-full h-full rounded-full border-4 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] overflow-hidden bg-zinc-800">
+                        {imageLoading ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+                                <Loader2 className="animate-spin text-emerald-500" size={32}/>
+                            </div>
+                        ) : (
+                            <img src={formData.foto || "https://github.com/shadcn.png"} alt="Avatar" className="w-full h-full object-cover" />
+                        )}
+                        
+                        {/* Overlay de Edição */}
+                        <label className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10 backdrop-blur-[2px]">
+                            <Camera className="text-white mb-1" size={24}/>
+                            <span className="text-[10px] uppercase font-bold text-white tracking-widest">Alterar</span>
+                            <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                        </label>
+                    </div>
+                    {/* Botão flutuante mobile */}
+                    <label className="absolute bottom-0 right-0 bg-emerald-600 p-2 rounded-full border-2 border-[#050505] shadow-lg cursor-pointer md:hidden z-30">
+                        <UploadCloud size={16} className="text-white"/>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                    </label>
                 </div>
+
                 <h1 className="text-3xl font-black uppercase italic tracking-tighter">Ficha do <span className="text-emerald-500">Tubarão</span></h1>
-                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-2">Atualização Cadastral Obrigatória</p>
+                
+                {/* AVISO DE FOTO */}
+                <div className="mt-4 bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-xl max-w-sm mx-auto">
+                    <p className="text-[10px] text-yellow-400 font-bold uppercase tracking-wide flex items-center justify-center gap-2">
+                        <ShieldAlert size={14}/> Atenção: Use sua foto real!
+                    </p>
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                        Perfis com fotos fake, desenhos ou conteúdo impróprio serão <span className="text-red-400 font-bold underline">bloqueados</span> sem aviso.
+                    </p>
+                </div>
             </div>
 
             {error && <div className="mb-6 bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-sm font-bold flex items-center gap-2 animate-pulse"><ShieldAlert size={18}/> {error}</div>}
@@ -204,7 +306,6 @@ export default function CadastroPage() {
                         <User className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
                         <input type="text" placeholder="Nome Completo" className="input-field pl-14 cursor-not-allowed bg-zinc-950" value={formData.nome} readOnly title="Nome oficial não pode ser alterado aqui." />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600">
-                             {/* 🦈 ERRO CORRIGIDO: Lock simples sem props extras */}
                             <Lock size={14}/> 
                         </div>
                     </div>
@@ -222,7 +323,6 @@ export default function CadastroPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* 🦈 CAMPO DATA + IDADE INVISÍVEL */}
                         <div className="flex gap-2">
                              <div className="relative group flex-1">
                                 <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
@@ -251,8 +351,11 @@ export default function CadastroPage() {
                         </div>
                     </div>
 
+                    {/* 🦈 ID 305: Persistência de Localização */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <select className="input-field" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
+                        {/* 🦈 CORREÇÃO RESPONSIVIDADE E ALINHAMENTO */}
+                        {/* Adicionado 'px-4' pois este select não tem ícone, evitando que o texto cole na borda */}
+                        <select className="input-field px-4" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
                             <option value="">Estado de Origem</option>
                             {ufs.map(uf => <option key={uf.id} value={uf.sigla}>{uf.nome}</option>)}
                         </select>
@@ -363,7 +466,7 @@ export default function CadastroPage() {
                     </div>
                 </div>
                 
-                <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase py-5 rounded-[2rem] shadow-xl shadow-emerald-900/20 transition-all flex justify-center items-center gap-2">
+                <button type="submit" disabled={loading || imageLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase py-5 rounded-[2rem] shadow-xl shadow-emerald-900/20 transition-all flex justify-center items-center gap-2">
                     {loading ? <Loader2 className="animate-spin"/> : <Save size={20} />}
                     {loading ? "Gravando Ficha..." : "Finalizar & Ir pro Perfil"}
                 </button>
@@ -372,7 +475,23 @@ export default function CadastroPage() {
         </div>
 
         <style jsx>{`
-            .input-field { width: 100%; background: #000; border: 1px solid #27272a; border-radius: 1.25rem; color: white; padding: 0 1rem; outline: none; transition: 0.3s; height: 3.5rem; font-size: 0.875rem; font-weight: 600; }
+            /* 🦈 CORREÇÃO CSS:
+               Removido 'padding: 0 1rem;' que causava conflito.
+               Agora usamos apenas padding-right aqui e deixamos o padding-left para o Tailwind (pl-14 ou px-4).
+            */
+            .input-field { 
+                width: 100%; 
+                background: #000; 
+                border: 1px solid #27272a; 
+                border-radius: 1.25rem; 
+                color: white; 
+                padding-right: 1rem; /* Apenas direita */
+                outline: none; 
+                transition: 0.3s; 
+                height: 3.5rem; 
+                font-size: 0.875rem; 
+                font-weight: 600; 
+            }
             .input-field:focus { border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.1); }
             textarea.input-field { height: auto; }
             .custom-scrollbar::-webkit-scrollbar { width: 4px; }

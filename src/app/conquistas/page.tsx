@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   ArrowLeft, Search, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
   Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
@@ -9,7 +9,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
-import { ACHIEVEMENTS_CATALOG, Achievement, AchievementCategory } from "../../lib/achievements";
+import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../lib/firebase";
 
 // Mapeamento de Ícones
 const IconMap: any = {
@@ -22,6 +24,7 @@ const IconMap: any = {
     Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />
 };
 
+// Definição das Patentes (Níveis)
 const BADGES = [
     { id: 1, titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", icon: <Fish className="opacity-50" size={64}/> },
     { id: 2, titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: <Fish size={64}/> },
@@ -34,62 +37,94 @@ const BADGES = [
 export default function ConquistasPage() {
   const { user } = useAuth();
   const [filtro, setFiltro] = useState<AchievementCategory | "Todas">("Todas");
+  
+  // 🦈 ESTADO DINÂMICO PARA CONQUISTAS (VEM DO FIREBASE)
+  const [catalog, setCatalog] = useState<any[]>(ACHIEVEMENTS_CATALOG);
 
-  // 🦈 CORREÇÃO: Acesso direto e seguro graças à interface atualizada
+  // 1. OUVIR ATUALIZAÇÕES DO ADMIN EM TEMPO REAL
+  useEffect(() => {
+      const unsubscribe = onSnapshot(collection(db, "achievements_config"), (snap) => {
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // Se tiver dados no banco, usa eles. Se não, mantém o estático.
+          if (data.length > 0) {
+              setCatalog(data);
+          }
+      });
+      return () => unsubscribe();
+  }, []);
+
   const userStats = user?.stats || {}; 
   
-  // Calcula desbloqueios
+  // Calcula desbloqueios usando o CATÁLOGO DINÂMICO
   const calculatedAchievements = useMemo(() => {
-      let totalXp = 0;
       let unlockedCount = 0;
 
-      const processed = ACHIEVEMENTS_CATALOG.map(ach => {
-          // Acesso dinâmico seguro (definido no index signature da interface)
+      const processed = catalog.map(ach => {
+          // Acesso dinâmico seguro
           const userValue = userStats[ach.statKey] || 0;
           const isUnlocked = userValue >= ach.target;
           
           if (isUnlocked) {
-              totalXp += ach.xp;
               unlockedCount++;
           }
 
           return { ...ach, progress: userValue, isUnlocked };
       });
 
-      return { list: processed, totalXp, unlockedCount };
-  }, [userStats]);
+      // Ordenar: Desbloqueadas primeiro
+      processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
-  const displayXp = Math.max(calculatedAchievements.totalXp, user?.xp || 0);
+      return { list: processed, unlockedCount };
+  }, [userStats, catalog]);
 
-  // Lógica de Patente
+  // 🦈 CORREÇÃO CRÍTICA: O XP exibido deve ser SEMPRE o que vem do banco (user.xp)
+  // Isso garante que se o admin der XP extra, o usuário veja.
+  const displayXp = user?.xp || 0;
+
+  // Lógica de Patente Automática (Baseada no XP Real)
+  // Encontra a maior patente que o usuário atingiu
   const currentBadgeIndex = BADGES.slice().reverse().findIndex(b => displayXp >= b.minXp);
   const realCurrentIndex = currentBadgeIndex === -1 ? 0 : BADGES.length - 1 - currentBadgeIndex;
   
+  // Estado para controlar qual patente está sendo visualizada no carrossel
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
 
+  // Sincroniza a visualização se o usuário subir de nível enquanto está na página
+  useEffect(() => { setViewIndex(realCurrentIndex); }, [realCurrentIndex]);
+
   const displayedBadge = BADGES[viewIndex];
+  
+  // Estados relativos à patente visualizada
   const isCurrent = viewIndex === realCurrentIndex;
   const isLocked = viewIndex > realCurrentIndex;
   const isPast = viewIndex < realCurrentIndex;
 
-  // Barra de Progresso
+  // Barra de Progresso Inteligente
   let progressPercent = 0;
   let xpNeeded = 0;
 
   if (isPast) {
-      progressPercent = 100;
+      progressPercent = 100; // Já passou, barra cheia
   } else if (isCurrent) {
+      // Estamos na patente atual, calcula progresso para a próxima
       const nextBadge = BADGES[viewIndex + 1];
       if (nextBadge) {
           const totalRange = nextBadge.minXp - displayedBadge.minXp;
           const currentProgress = displayXp - displayedBadge.minXp;
-          progressPercent = Math.min((currentProgress / totalRange) * 100, 100);
+          
+          // Evita divisão por zero e garante range 0-100%
+          if (totalRange > 0) {
+              progressPercent = Math.min(Math.max((currentProgress / totalRange) * 100, 0), 100);
+          } else {
+              progressPercent = 100;
+          }
+          
           xpNeeded = nextBadge.minXp - displayXp;
       } else {
-          progressPercent = 100;
+          progressPercent = 100; // Nível Máximo (Megalodon)
       }
   } else if (isLocked) {
-      progressPercent = 0;
+      progressPercent = 0; // Ainda não chegou, barra vazia
       xpNeeded = displayedBadge.minXp - displayXp;
   }
 
@@ -110,7 +145,7 @@ export default function ConquistasPage() {
         <div className="flex-1">
             <h1 className="font-black text-lg italic uppercase tracking-tighter">Sala de Troféus</h1>
             <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">
-                {calculatedAchievements.unlockedCount} / {ACHIEVEMENTS_CATALOG.length} Desbloqueadas
+                {calculatedAchievements.unlockedCount} / {catalog.length} Desbloqueadas
             </p>
         </div>
       </header>
@@ -144,7 +179,7 @@ export default function ConquistasPage() {
                                 <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${progressPercent}%` }}></div>
                             </div>
                             <p className="text-[10px] text-zinc-400 mt-2 font-mono">
-                                {displayXp} / {BADGES[viewIndex + 1]?.minXp || "MAX"} XP
+                                {displayXp.toLocaleString()} / {BADGES[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP
                             </p>
                         </div>
                     )}
@@ -158,8 +193,8 @@ export default function ConquistasPage() {
                     {isLocked && (
                         <div className="animate-in zoom-in duration-300">
                             <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Bloqueado</p>
-                            <p className="text-sm font-mono text-white">Necessário <span className="text-red-400 font-black">{displayedBadge.minXp} XP</span></p>
-                            <p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded} XP</p>
+                            <p className="text-sm font-mono text-white">Necessário <span className="text-red-400 font-black">{displayedBadge.minXp.toLocaleString()} XP</span></p>
+                            <p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded.toLocaleString()} XP</p>
                         </div>
                     )}
                 </div>
