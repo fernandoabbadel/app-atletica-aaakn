@@ -1,18 +1,19 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { 
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
-  X, PawPrint, Users, Lock, Heart, UserCheck, UserPlus,
+  UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
   Zap, Gem, Trophy, ShoppingBag, Medal 
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
-  doc, getDoc, collection, query, getDocs, updateDoc, orderBy, onSnapshot 
+  doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
+  addDoc, serverTimestamp, orderBy, onSnapshot 
 } from "firebase/firestore";
 import Link from "next/link";
 
@@ -39,7 +40,7 @@ interface UserProfile {
   plano_icon?: string;
   
   patente?: string;
-  tier?: 'bicho' | 'atleta' | 'lenda'; 
+  tier?: 'bicho' | 'atleta' | 'lenda';
   
   level?: number;
   xp?: number;
@@ -54,14 +55,13 @@ interface UserProfile {
   [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
-interface FollowData {
+interface FollowerUser {
     uid: string;
     nome: string;
     foto: string;
     turma: string;
 }
 
-// --- EMOJIS ---
 const getSportInfo = (sport: string) => {
     const map: Record<string, { emoji: string, label: string, color: string }> = {
         "futebol": { emoji: "⚽", label: "Futebol", color: "bg-green-500/20 text-green-400" },
@@ -114,7 +114,7 @@ const LevelBadge = ({ xp }: { xp: number }) => {
         <div className={`relative group cursor-help p-3 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
             <IconComp size={20} className={colorClass} />
             
-            {/* TOOLTIP: Nome da Patente e XP */}
+            {/* TOOLTIP */}
             <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl flex flex-col items-center min-w-[80px]">
                 <span className={`uppercase tracking-wider ${colorClass} mb-0.5`}>{currentBadge.titulo}</span>
                 <span className="text-zinc-500 font-mono text-[9px]">{xp} XP</span>
@@ -152,7 +152,7 @@ const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconN
         <div className={`relative group cursor-help p-3 rounded-full border shadow-lg transition-transform hover:scale-110 ${styleClass}`}>
             <IconComponent size={20} className="animate-pulse-slow" />
             
-            {/* TOOLTIP: Nome do Plano */}
+            {/* TOOLTIP */}
             <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl">
                 <span className="uppercase tracking-wider">Plano {title}</span>
                 <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45"></div>
@@ -161,88 +161,115 @@ const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconN
     );
 };
 
-export default function MeuPerfilPage() {
+export default function PerfilPublicoPage() {
+  const params = useParams();
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { addToast } = useToast();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   
+  const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [followersList, setFollowersList] = useState<FollowerUser[]>([]);
+  const [followingList, setFollowingList] = useState<FollowerUser[]>([]);
   
-  const [followersList, setFollowersList] = useState<FollowData[]>([]);
-  const [followingList, setFollowingList] = useState<FollowData[]>([]);
-  const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [activeListType, setActiveListType] = useState<'followers' | 'following'>('followers');
 
-  // FETCH DATA
+  const isOwnProfile = user?.uid === params.id;
+
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) { router.push("/login"); return; }
+    if (!params.id) return;
+    const uid = params.id as string;
 
     const fetchProfile = async () => {
         try {
-            const docRef = doc(db, "users", user.uid);
-            const unsubProfile = onSnapshot(docRef, async (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
-                    setProfile(data);
+            const docRef = doc(db, "users", uid);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
+                
+                const followersSnap = await getDocs(collection(db, "users", uid, "followers"));
+                setFollowersCount(followersSnap.size);
 
-                    if (data.tier && !data.plano) {
-                        const updates: Partial<UserProfile> = {};
-                        if (data.tier === 'atleta') {
-                            updates.plano = 'Atleta'; updates.plano_cor = 'emerald'; updates.plano_icon = 'zap';
-                        } else if (data.tier === 'lenda') {
-                            updates.plano = 'Lenda'; updates.plano_cor = 'yellow'; updates.plano_icon = 'crown';
-                        }
-                        if (Object.keys(updates).length > 0) {
-                            await updateDoc(docRef, updates);
-                        }
-                    }
+                const followingSnap = await getDocs(collection(db, "users", uid, "following"));
+                setFollowingCount(followingSnap.size);
 
-                    const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
-                    setFollowersCount(followersSnap.size);
-                    const followingSnap = await getDocs(collection(db, "users", user.uid, "following"));
-                    setFollowingCount(followingSnap.size);
-                } else {
-                    addToast("Perfil não encontrado.", "error");
+                if (user) {
+                    const amIFollowing = followersSnap.docs.some(d => d.id === user.uid);
+                    setIsFollowing(amIFollowing);
                 }
-                setLoading(false);
-            });
-            return () => unsubProfile();
-        } catch (error) { 
-            console.error(error); 
-            setLoading(false);
-        }
+            } else {
+                addToast("Tubarão não encontrado.", "error");
+                router.push("/dashboard");
+            }
+        } catch (error) { console.error(error); } 
+        finally { setLoading(false); }
     };
     fetchProfile();
-  }, [user, authLoading, router]);
+  }, [params.id, user]);
+
+  const handleFollow = async () => {
+      if (!user || !profile) return;
+      
+      const targetFollowerRef = doc(db, "users", profile.uid, "followers", user.uid);
+      const myFollowingRef = doc(db, "users", user.uid, "following", profile.uid);
+      
+      try {
+          if (isFollowing) {
+              await deleteDoc(targetFollowerRef);
+              await deleteDoc(myFollowingRef);
+              setIsFollowing(false);
+              setFollowersCount(p => p - 1);
+              addToast("Deixou de seguir.", "info");
+          } else {
+              const myData = { uid: user.uid, nome: user.nome, foto: user.foto || "", turma: user.turma || "" };
+              const targetData = { uid: profile.uid, nome: profile.nome, foto: profile.foto || "", turma: profile.turma || "" };
+
+              await setDoc(targetFollowerRef, { ...myData, followedAt: serverTimestamp() });
+              await setDoc(myFollowingRef, { ...targetData, followedAt: serverTimestamp() });
+
+              await addDoc(collection(db, "notifications"), {
+                  userId: profile.uid, title: "Novo Seguidor! 🦈",
+                  message: `${user.nome} começou a te seguir.`,
+                  link: `/perfil/${user.uid}`, read: false, type: "social",
+                  createdAt: serverTimestamp()
+              });
+              setIsFollowing(true);
+              setFollowersCount(p => p + 1);
+              addToast("Seguindo!", "success");
+          }
+      } catch { addToast("Erro ao seguir.", "error"); }
+  };
 
   const handleOpenList = async (type: 'followers' | 'following') => {
-      if (!profile || !user) return;
-      setActiveModal(type);
+      if (!profile) return;
+      setActiveListType(type);
+      setShowFollowersModal(true);
+      
       const colName = type === 'followers' ? 'followers' : 'following';
-      const q = query(collection(db, "users", user.uid, colName));
+      const q = query(collection(db, "users", profile.uid, colName));
       const snap = await getDocs(q);
-      const list = snap.docs.map(d => d.data() as FollowData);
-      if(type === 'followers') setFollowersList(list);
-      else setFollowingList(list);
+      
+      if (type === 'followers') setFollowersList(snap.docs.map(d => d.data() as FollowerUser));
+      else setFollowingList(snap.docs.map(d => d.data() as FollowerUser));
   };
-  
-  // Função Placeholder para handleFollow (necessária se for perfil de outro, mas aqui é MeuPerfil)
-  const handleFollow = async () => { /* Lógica de seguir se fosse perfil público */ };
 
+  // 🦈 Helper para definir badge
   const getBadgeProps = () => {
       if (!profile) return { nome: 'Carregando...', cor: 'zinc', iconName: 'ghost' };
-      if (profile.plano) return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
+      if (profile.plano) {
+          return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
+      }
       if (profile.tier === 'atleta') return { nome: 'Atleta', cor: 'emerald', iconName: 'zap' };
       if (profile.tier === 'lenda') return { nome: 'Lenda', cor: 'yellow', iconName: 'crown' };
       return { nome: 'Bicho Solto', cor: 'zinc', iconName: 'ghost' };
   };
 
-  if (loading || authLoading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
+  if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
   if (!profile) return null;
 
   const getIdade = () => {
@@ -257,12 +284,12 @@ export default function MeuPerfilPage() {
       return null;
   };
 
-  const isWhatsappPrivate = profile.whatsappPublico === false;
-  const isAgePrivate = profile.idadePublica === false;
-  const isRelationPrivate = profile.relacionamentoPublico === false;
+  const showAge = isOwnProfile || profile.idadePublica;
+  const showWhatsapp = isOwnProfile || profile.whatsappPublico;
+  const showRelacionamento = isOwnProfile || profile.relacionamentoPublico;
   const badgeProps = getBadgeProps();
   
-  // 🦈 IMAGEM DA TURMA PARA O AVATAR PEQUENO (FALLBACK)
+  // 🦈 IMAGEM DA TURMA (FALLBACK)
   const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
 
   return (
@@ -273,7 +300,7 @@ export default function MeuPerfilPage() {
         <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
             <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
-            <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
+            <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
         </div>
 
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
@@ -281,7 +308,7 @@ export default function MeuPerfilPage() {
                 <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
                     <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
                 </div>
-                {/* 🦈 CORREÇÃO: FOTO DA TURMA NO CÍRCULO PEQUENO */}
+                {/* 🦈 FOTO DA TURMA NO CÍRCULO PEQUENO */}
                 <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
                     <img src={turmaImage} className="w-full h-full object-cover"/>
                 </div>
@@ -295,11 +322,11 @@ export default function MeuPerfilPage() {
                 <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
                 <div className="flex items-center justify-center gap-2 mt-2">
                     <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
-                    {getIdade() !== null && (
+                    {showAge && getIdade() !== null && (
                         <div className="relative group/age">
                             <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">
                                 {getIdade()} Anos
-                                {isAgePrivate && <Lock size={8} className="text-zinc-500" />}
+                                {profile.idadePublica === false && isOwnProfile && <Lock size={8} className="text-zinc-500"/>}
                             </span>
                         </div>
                     )}
@@ -315,9 +342,11 @@ export default function MeuPerfilPage() {
                     iconName={badgeProps.iconName}
                 />
                 
-                <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2">
-                    <Edit3 size={14}/> Editar Perfil
-                </Link>
+                {isOwnProfile ? (
+                    <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar Perfil</Link>
+                ) : (
+                    <button onClick={handleFollow} className={`px-8 py-2 rounded-full text-xs font-bold uppercase border transition shadow-lg flex items-center gap-2 ${isFollowing ? 'bg-zinc-900 border-zinc-700 text-zinc-400' : 'bg-emerald-600 border-emerald-500 text-white hover:scale-105'}`}>{isFollowing ? <UserCheck size={14}/> : <UserPlus size={14}/>} {isFollowing ? "Seguindo" : "Seguir"}</button>
+                )}
                 
                 {/* 🦈 Badge de Nível (Somente Ícone) */}
                 <LevelBadge xp={profile.xp || 0} />
@@ -337,23 +366,25 @@ export default function MeuPerfilPage() {
                     <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span>
                 </div>
             </div>
-
+            
             {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
 
-            <div className="flex gap-3 mb-8 justify-center w-full">
+             <div className="flex gap-3 mb-8 justify-center w-full">
                 {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
                 
                 {profile.telefone && (
                     <div className="relative">
-                        {/* Botão de WhatsApp */}
-                        <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
-                        {isWhatsappPrivate && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700" title="Privado"><Lock size={10} className="text-zinc-400"/></div>}
+                        {showWhatsapp ? (
+                            <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
+                        ) : (
+                            <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed" title="Privado"><Lock size={20}/></div>
+                        )}
+                        {profile.whatsappPublico === false && isOwnProfile && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700"><Lock size={10} className="text-zinc-400"/></div>}
                     </div>
                 )}
-                
                 <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
             </div>
-
+            
             <div className="w-full max-w-sm space-y-4">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha Técnica</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -367,8 +398,11 @@ export default function MeuPerfilPage() {
                         <div>
                             <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
                             <div className="flex items-center gap-1">
-                                <p className="text-xs font-bold text-white uppercase">{profile.statusRelacionamento || "N/A"}</p>
-                                {isRelationPrivate && <span title="Privado"><Lock size={10} className="text-zinc-500"/></span>}
+                                <p className="text-xs font-bold text-white uppercase truncate max-w-[80px]">
+                                    {showRelacionamento ? (profile.statusRelacionamento || "N/A") : "Privado"}
+                                </p>
+                                {profile.relacionamentoPublico === false && isOwnProfile && <Lock size={10} className="text-zinc-500"/>}
+                                {!isOwnProfile && !showRelacionamento && <Lock size={10} className="text-zinc-600"/>}
                             </div>
                         </div>
                     </div>
@@ -385,7 +419,7 @@ export default function MeuPerfilPage() {
                     <div className="pt-4">
                         <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
                         <div className="flex flex-wrap gap-2">
-                            {profile.esportes.map((sport, i) => {
+                            {profile.esportes.map((sport: any, i: number) => {
                                 const info = getSportInfo(sport);
                                 return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>;
                             })}
@@ -395,23 +429,23 @@ export default function MeuPerfilPage() {
             </div>
         </div>
       </div>
-
-      {activeModal && (
+      
+      {showFollowersModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
                   <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
                       <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
-                          {activeModal === 'followers' ? <Users size={16} className="text-emerald-500"/> : <UserCheck size={16} className="text-blue-500"/>}
-                          {activeModal === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
+                          <Users size={16} className="text-emerald-500"/> 
+                          {activeListType === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
                       </h3>
-                      <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
+                      <button onClick={() => setShowFollowersModal(false)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? (
+                      {(activeListType === 'followers' ? followersList : followingList).length === 0 ? (
                           <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div>
                       ) : (
-                          (activeModal === 'followers' ? followersList : followingList).map(f => (
-                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
+                          (activeListType === 'followers' ? followersList : followingList).map((f: any) => (
+                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
                                   <div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
                                   <div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div>
                               </Link>

@@ -5,7 +5,9 @@ import {
   ArrowLeft, Search, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
   Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
   Beer, Ticket, BookOpen, DollarSign, HeartHandshake, Heart, Megaphone, 
-  ShieldAlert, Crown, Activity, Dumbbell, Flame, Zap, Wallet, Timer, MessageCircle, Gamepad2
+  ShieldAlert, Crown, Activity, Dumbbell, Flame, Zap, Wallet, Timer, MessageCircle, Gamepad2,
+  // 🦈 NOVOS ÍCONES IMPORTADOS:
+  ThumbsUp, LayoutGrid, UserPlus, Target, Star, Ghost, Medal
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
@@ -13,7 +15,7 @@ import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievement
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
-// Mapeamento de Ícones
+// 🦈 ICONMAP ATUALIZADO (Com ThumbsUp, Heart, Zap, etc)
 const IconMap: any = {
     Fish: <Fish />, Rocket: <Rocket />, Swords: <Swords />, Skull: <Skull />, 
     ShoppingBag: <ShoppingBag />, Gem: <Gem />, PartyPopper: <PartyPopper />, 
@@ -21,7 +23,16 @@ const IconMap: any = {
     HeartHandshake: <HeartHandshake />, Heart: <Heart />, Megaphone: <Megaphone />, 
     ShieldAlert: <ShieldAlert />, Activity: <Activity />, Dumbbell: <Dumbbell />, 
     Flame: <Flame />, Crown: <Crown />, Zap: <Zap />, Wallet: <Wallet />, 
-    Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />
+    Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />,
+    // --- NOVOS ADICIONADOS ---
+    ThumbsUp: <ThumbsUp />, 
+    LayoutGrid: <LayoutGrid />, 
+    CheckCircle2: <CheckCircle2 />,
+    UserPlus: <UserPlus />,
+    Target: <Target />,
+    Star: <Star />,
+    Ghost: <Ghost />,
+    Medal: <Medal />
 };
 
 // Definição das Patentes (Níveis)
@@ -45,7 +56,6 @@ export default function ConquistasPage() {
   useEffect(() => {
       const unsubscribe = onSnapshot(collection(db, "achievements_config"), (snap) => {
           const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // Se tiver dados no banco, usa eles. Se não, mantém o estático.
           if (data.length > 0) {
               setCatalog(data);
           }
@@ -58,6 +68,7 @@ export default function ConquistasPage() {
   // Calcula desbloqueios usando o CATÁLOGO DINÂMICO
   const calculatedAchievements = useMemo(() => {
       let unlockedCount = 0;
+      let totalXp = 0;
 
       const processed = catalog.map(ach => {
           // Acesso dinâmico seguro
@@ -66,6 +77,7 @@ export default function ConquistasPage() {
           
           if (isUnlocked) {
               unlockedCount++;
+              totalXp += ach.xp;
           }
 
           return { ...ach, progress: userValue, isUnlocked };
@@ -74,27 +86,22 @@ export default function ConquistasPage() {
       // Ordenar: Desbloqueadas primeiro
       processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
-      return { list: processed, unlockedCount };
+      return { list: processed, unlockedCount, totalXp };
   }, [userStats, catalog]);
 
-  // 🦈 CORREÇÃO CRÍTICA: O XP exibido deve ser SEMPRE o que vem do banco (user.xp)
-  // Isso garante que se o admin der XP extra, o usuário veja.
-  const displayXp = user?.xp || 0;
+  // 🦈 XP exibido deve ser o calculado ou o do banco, o que for maior (segurança)
+  const displayXp = Math.max(user?.xp || 0, calculatedAchievements.totalXp);
 
-  // Lógica de Patente Automática (Baseada no XP Real)
-  // Encontra a maior patente que o usuário atingiu
+  // Lógica de Patente Automática
   const currentBadgeIndex = BADGES.slice().reverse().findIndex(b => displayXp >= b.minXp);
   const realCurrentIndex = currentBadgeIndex === -1 ? 0 : BADGES.length - 1 - currentBadgeIndex;
   
-  // Estado para controlar qual patente está sendo visualizada no carrossel
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
 
-  // Sincroniza a visualização se o usuário subir de nível enquanto está na página
   useEffect(() => { setViewIndex(realCurrentIndex); }, [realCurrentIndex]);
 
   const displayedBadge = BADGES[viewIndex];
   
-  // Estados relativos à patente visualizada
   const isCurrent = viewIndex === realCurrentIndex;
   const isLocked = viewIndex > realCurrentIndex;
   const isPast = viewIndex < realCurrentIndex;
@@ -104,15 +111,13 @@ export default function ConquistasPage() {
   let xpNeeded = 0;
 
   if (isPast) {
-      progressPercent = 100; // Já passou, barra cheia
+      progressPercent = 100; 
   } else if (isCurrent) {
-      // Estamos na patente atual, calcula progresso para a próxima
       const nextBadge = BADGES[viewIndex + 1];
       if (nextBadge) {
           const totalRange = nextBadge.minXp - displayedBadge.minXp;
           const currentProgress = displayXp - displayedBadge.minXp;
           
-          // Evita divisão por zero e garante range 0-100%
           if (totalRange > 0) {
               progressPercent = Math.min(Math.max((currentProgress / totalRange) * 100, 0), 100);
           } else {
@@ -124,7 +129,7 @@ export default function ConquistasPage() {
           progressPercent = 100; // Nível Máximo (Megalodon)
       }
   } else if (isLocked) {
-      progressPercent = 0; // Ainda não chegou, barra vazia
+      progressPercent = 0; 
       xpNeeded = displayedBadge.minXp - displayXp;
   }
 
@@ -218,16 +223,20 @@ export default function ConquistasPage() {
                 {filteredList.map((item) => {
                     const percent = Math.min((item.progress / item.target) * 100, 100);
 
+                    // 🦈 SEGURANÇA: Fallback se o ícone não existir no mapa
+                    const IconComponent = IconMap[item.iconName] || <Lock size={20}/>;
+
                     return (
                         <div key={item.id} className={`relative overflow-hidden rounded-2xl border p-4 transition-all duration-300 group ${item.isUnlocked ? "bg-zinc-900 border-emerald-500/30 shadow-md" : "bg-black border-zinc-800/60 opacity-60 grayscale"}`}>
                             <div className="absolute bottom-0 left-0 h-1 bg-emerald-500/20 transition-all duration-1000" style={{ width: `${percent}%` }}></div>
 
                             <div className="flex items-center gap-4 relative z-10">
                                 <div className={`h-14 w-14 shrink-0 rounded-2xl flex items-center justify-center border transition-colors ${item.isUnlocked ? "bg-emerald-500 text-black border-emerald-400" : "bg-zinc-800 text-zinc-600 border-zinc-700"}`}>
-                                    <span className="text-2xl">{item.isUnlocked ? IconMap[item.iconName] : <Lock size={20}/>}</span>
+                                    <span className="text-2xl">{item.isUnlocked ? IconComponent : <Lock size={20}/>}</span>
                                 </div>
 
-                                <div className="flex-1 min-w-0">
+                                {/* 🦈 CORREÇÃO CSS: pr-16 para não sobrepor o XP */}
+                                <div className="flex-1 min-w-0 pr-16">
                                     <div className="flex justify-between items-start">
                                         <h4 className={`text-sm font-bold truncate ${item.isUnlocked ? "text-white" : "text-zinc-400"}`}>{item.titulo}</h4>
                                         {item.isUnlocked && <CheckCircle2 size={16} className="text-emerald-500 shrink-0"/>}

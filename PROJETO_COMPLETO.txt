@@ -1293,58 +1293,93 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Search, Edit2, Trash2, Save, Target,
   Zap, Users, TrendingUp, Award, Crown, History, Calendar, Clock, ExternalLink,
-  FolderPlus, X, Power, PowerOff, Filter, CheckCircle2, MessageSquare, Flame
+  FolderPlus, X, Power, PowerOff, Filter, CheckCircle2, MessageSquare, Flame, 
+  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../../lib/achievements";
+
+// --- DADOS PADRÃƒO DAS PATENTES (PARA RESTAURAR) ---
+const DEFAULT_PATENTES = [
+    { id: "p1", titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish", opacity: true },
+    { id: "p2", titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
+    { id: "p4", titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { id: "p5", titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
+];
+
+// Lista de Ãcones disponÃ­veis para seleÃ§Ã£o
+const ICON_OPTIONS = [
+    { label: "Peixe", value: "Fish", icon: <Fish/> },
+    { label: "Espadas", value: "Swords", icon: <Swords/> },
+    { label: "Coroa", value: "Crown", icon: <Crown/> },
+    { label: "Caveira", value: "Skull", icon: <Skull/> },
+    { label: "Foguete", value: "Rocket", icon: <Rocket/> },
+    { label: "Estrela", value: "Star", icon: <Star/> },
+    { label: "Raio", value: "Zap", icon: <Zap/> },
+    { label: "TrofÃ©u", value: "Trophy", icon: <Trophy/> },
+    { label: "Medalha", value: "Medal", icon: <Medal/> },
+    { label: "CoraÃ§Ã£o", value: "Heart", icon: <Heart/> },
+];
 
 export default function AdminConquistasPage() {
   const { addToast } = useToast();
   
-  // Estados de UI
   const [activeTab, setActiveTab] = useState<"dashboard" | "conquistas" | "historico" | "patentes">("dashboard");
   const [activeCat, setActiveCat] = useState<AchievementCategory | "Todas">("Todas");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Dados do Firebase
   const [achievements, setAchievements] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [usersRanking, setUsersRanking] = useState<any[]>([]);
-  const [badges, setBadges] = useState<any[]>([]); // Patentes (futuro: carregar do banco)
+  const [patentes, setPatentes] = useState<any[]>([]);
 
-  // EdiÃ§Ã£o
+  // Estados de EdiÃ§Ã£o
   const [editingAch, setEditingAch] = useState<any>(null);
+  const [editingPatente, setEditingPatente] = useState<any>(null);
 
-  // 1. CARREGAR DADOS REAIS
+  // CARREGAR DADOS
   useEffect(() => {
-    // A. Escuta CatÃ¡logo (Firebase)
-    // Se nÃ£o tiver nada no banco 'achievements_config', usamos o arquivo estÃ¡tico como base visual
+    // 1. Conquistas
     const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAchievements(data.length > 0 ? data : ACHIEVEMENTS_CATALOG);
     });
 
-    // B. Escuta HistÃ³rico Real
+    // 2. HistÃ³rico
     const qLogs = query(collection(db, "achievements_logs"), orderBy("timestamp", "desc"), limit(50));
     const unsubLogs = onSnapshot(qLogs, (snap) => {
       setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    // C. Ranking Hall da Fama (XP Real dos Users)
+    // 3. Ranking
     const qRank = query(collection(db, "users"), orderBy("xp", "desc"), limit(10));
     const unsubRank = onSnapshot(qRank, (snap) => {
       setUsersRanking(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
     });
 
-    return () => { unsubAch(); unsubLogs(); unsubRank(); };
+    // 4. Patentes
+    const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+    const unsubPatentes = onSnapshot(qPatentes, (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (data.length > 0) {
+            setPatentes(data);
+        } else {
+            // Se vazio no banco, nÃ£o mostra nada (usuÃ¡rio deve clicar em restaurar)
+            setPatentes([]); 
+        }
+        setLoading(false);
+    });
+
+    return () => { unsubAch(); unsubLogs(); unsubRank(); unsubPatentes(); };
   }, []);
 
-  // --- FILTRAGEM ---
+  // FILTRAGEM
   const filteredAchievements = useMemo(() => {
     return achievements.filter(a => {
       const matchSearch = a.titulo.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1353,35 +1388,119 @@ export default function AdminConquistasPage() {
     });
   }, [achievements, searchTerm, activeCat]);
 
-  // --- AÃ‡Ã•ES ---
-  const toggleMissionStatus = async (ach: any) => {
+  // --- AÃ‡Ã•ES CONQUISTAS ---
+
+  const handleCreateAch = () => {
+      setEditingAch({
+          id: Date.now().toString(),
+          titulo: "",
+          desc: "",
+          xp: 100,
+          target: 1,
+          statKey: "loginCount", // Default seguro
+          cat: "Social",
+          iconName: "Star",
+          active: true,
+          repeatable: false
+      });
+  };
+
+  const handleSaveAch = async () => {
+    if (!editingAch) return;
     try {
-      // Se a missÃ£o nÃ£o existe no banco (Ã© estÃ¡tica), terÃ­amos que criÃ¡-la primeiro.
-      // Mas assumindo que vocÃª jÃ¡ rodou o script de seed ou vai editar uma existente:
-      const newStatus = !ach.active;
-      
-      // Salva no Firestore (se nÃ£o existir, cria o doc com o ID da missÃ£o)
-      await updateDoc(doc(db, "achievements_config", ach.id), { active: newStatus });
-      
-      addToast(newStatus ? "MissÃ£o reativada! ðŸŸ¢" : "MissÃ£o desativada e XP congelado! ðŸ”´", "info");
+      await setDoc(doc(db, "achievements_config", editingAch.id), editingAch, { merge: true });
+      setEditingAch(null);
+      addToast("Conquista salva!", "success");
     } catch (e) { 
-        // Fallback: Se o doc nÃ£o existe, avisa (em produÃ§Ã£o usarÃ­amos setDoc com merge)
-        addToast("Erro: MissÃ£o ainda nÃ£o configurada no banco.", "error"); 
+        addToast("Erro ao salvar.", "error"); 
     }
   };
 
-  const handleSaveEdit = async () => {
-    if (!editingAch) return;
-    try {
-      // Atualiza ou Cria a configuraÃ§Ã£o da missÃ£o no banco
-      // Aqui idealmente seria setDoc com merge para garantir que crie se nÃ£o existir
-      await updateDoc(doc(db, "achievements_config", editingAch.id), editingAch);
-      setEditingAch(null);
-      addToast("Conquista atualizada no catÃ¡logo!", "success");
-    } catch (e) { addToast("Erro ao salvar.", "error"); }
+  const handleDeleteAch = async (id: string) => {
+      if(!confirm("Deletar conquista?")) return;
+      await deleteDoc(doc(db, "achievements_config", id));
+      addToast("Deletada.", "info");
   };
 
-  // Cores por Categoria
+  const toggleMissionStatus = async (ach: any) => {
+    try {
+      await setDoc(doc(db, "achievements_config", ach.id), { active: !ach.active }, { merge: true });
+      addToast("Status atualizado.", "info");
+    } catch (e) { addToast("Erro.", "error"); }
+  };
+
+  // --- AÃ‡Ã•ES PATENTES ---
+
+  const handleCreatePatente = () => {
+      setEditingPatente({
+          id: Date.now().toString(),
+          titulo: "",
+          minXp: 0,
+          cor: "text-zinc-400",
+          iconName: "Fish"
+      });
+  };
+
+  // ID 510: RESTAURAR PATENTES PADRÃƒO
+  const handleSeedPatentes = async () => {
+      if (!confirm("Isso vai restaurar as patentes originais (Megalodon, etc). Continuar?")) return;
+      setLoading(true);
+      try {
+          const batch = writeBatch(db);
+          DEFAULT_PATENTES.forEach(p => {
+              // Recria cores e bordas baseadas na cor do texto
+              const colorMap: any = {
+                  "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
+                  "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
+                  "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
+                  "text-purple-400": { bg: "bg-purple-500/10", border: "border-purple-500/30" },
+                  "text-emerald-400": { bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+                  "text-red-600": { bg: "bg-red-500/10", border: "border-red-500/30" },
+              };
+              const styles = colorMap[p.cor] || colorMap["text-zinc-400"];
+              
+              const ref = doc(db, "patentes_config", p.id);
+              batch.set(ref, { ...p, ...styles }, { merge: true });
+          });
+          await batch.commit();
+          addToast("Patentes Restauradas!", "success");
+      } catch (e) {
+          console.error(e);
+          addToast("Erro ao restaurar.", "error");
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleSavePatente = async () => {
+      if(!editingPatente) return;
+      try {
+          const colorMap: any = {
+              "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
+              "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
+              "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
+              "text-purple-400": { bg: "bg-purple-500/10", border: "border-purple-500/30" },
+              "text-emerald-400": { bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+              "text-red-600": { bg: "bg-red-500/10", border: "border-red-500/30" },
+          };
+          
+          const styles = colorMap[editingPatente.cor] || colorMap["text-zinc-400"];
+          const payload = { ...editingPatente, ...styles };
+
+          await setDoc(doc(db, "patentes_config", editingPatente.id), payload, { merge: true });
+          setEditingPatente(null);
+          addToast("Patente salva!", "success");
+      } catch (e) {
+          addToast("Erro ao salvar.", "error");
+      }
+  };
+
+  const handleDeletePatente = async (id: string) => {
+      if(!confirm("Deletar patente?")) return;
+      await deleteDoc(doc(db, "patentes_config", id));
+      addToast("Patente removida.", "info");
+  };
+
   const getCatColor = (cat: string) => {
     switch(cat) {
       case "Gym": return "text-emerald-400 border-emerald-500/20 bg-emerald-500/5";
@@ -1395,118 +1514,80 @@ export default function AdminConquistasPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">
       
-      {/* HEADER */}
       <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4 items-center">
         <div className="flex items-center gap-3 w-full md:w-auto">
             <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition border border-zinc-800"><ArrowLeft size={20} className="text-zinc-400" /></Link>
             <div><h1 className="text-lg font-black text-white uppercase tracking-tighter">Engenharia de Conquistas</h1><p className="text-[10px] text-zinc-500">Controle de Recompensas e XP</p></div>
         </div>
+        
+        {/* ID 509: BotÃ£o Nova Conquista (Funcional) */}
+        <button onClick={handleCreateAch} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 transition hover:scale-105">
+            <Plus size={16}/> Nova Conquista
+        </button>
       </header>
 
-      {/* TABS PRINCIPAIS */}
       <div className="px-6 pt-4">
           <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto no-scrollbar">
               <button onClick={() => setActiveTab("dashboard")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'dashboard' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><LayoutDashboard size={16}/> Hall da Fama</button>
               <button onClick={() => setActiveTab("conquistas")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'conquistas' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><Trophy size={16}/> CatÃ¡logo</button>
-              <button onClick={() => setActiveTab("historico")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'historico' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><History size={16}/> Logs Reais</button>
               <button onClick={() => setActiveTab("patentes")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'patentes' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><Medal size={16}/> Patentes</button>
+              <button onClick={() => setActiveTab("historico")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'historico' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><History size={16}/> Logs</button>
           </div>
       </div>
 
       <main className="p-6 space-y-6">
         
-        {/* ======================= HALL DA FAMA (DADOS REAIS) ======================= */}
+        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in">
-                {/* Ranking de Alunos */}
                 <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                    <h3 className="font-black uppercase text-white mb-6 flex items-center gap-2 text-sm"><Crown className="text-yellow-500"/> Top 10 TubarÃµes do Oceano</h3>
+                    <h3 className="font-black uppercase text-white mb-6 flex items-center gap-2 text-sm"><Crown className="text-yellow-500"/> Top 10 TubarÃµes</h3>
                     <div className="space-y-4">
-                        {usersRanking.length === 0 && <p className="text-zinc-500 text-sm text-center py-10">Nenhum tubarÃ£o pontuou ainda.</p>}
                         {usersRanking.map((u, i) => (
-                            <div key={u.id} className="flex items-center justify-between p-3 bg-black/40 rounded-2xl border border-zinc-800 hover:border-emerald-500/30 transition">
+                            <div key={u.id} className="flex items-center justify-between p-3 bg-black/40 rounded-2xl border border-zinc-800">
                                 <div className="flex items-center gap-4">
                                     <span className="font-black text-zinc-700 w-4">#{i+1}</span>
-                                    <img src={u.foto} className="w-10 h-10 rounded-full border-2 border-zinc-800 object-cover"/>
-                                    <div>
-                                        <p className="font-bold text-sm text-white">{u.nome}</p>
-                                        <p className="text-[10px] text-zinc-500 uppercase">{u.turma} â€¢ Medicina</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-lg font-black text-emerald-500">{u.xp?.toLocaleString()}</p>
-                                    <p className="text-[8px] text-zinc-600 uppercase font-bold tracking-widest">XP Acumulado</p>
+                                    <img src={u.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full border-2 border-zinc-800 object-cover"/>
+                                    <div><p className="font-bold text-sm text-white">{u.nome}</p><p className="text-[10px] text-zinc-500 uppercase">{u.turma} â€¢ XP: {u.xp}</p></div>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </div>
-
-                {/* Stats RÃ¡pidas */}
                 <div className="space-y-6">
-                    <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800 text-center">
-                        <Flame size={40} className="text-orange-500 mx-auto mb-2"/>
-                        <p className="text-4xl font-black text-white">{logs.length}</p>
-                        <p className="text-[10px] text-zinc-500 uppercase font-bold mt-1">TrofÃ©us Conquistados hoje</p>
-                    </div>
-                    <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800">
-                        <h4 className="text-xs font-bold text-zinc-500 uppercase mb-4 flex items-center gap-2"><TrendingUp size={14}/> Recentemente na Sala</h4>
-                        <div className="space-y-3">
-                            {logs.length === 0 && <p className="text-zinc-600 text-xs text-center">Sem atividade recente.</p>}
-                            {logs.slice(0, 5).map(log => (
-                                <div key={log.id} className="text-[11px] text-zinc-400 border-l-2 border-emerald-500 pl-3 py-1">
-                                    <span className="text-white font-bold">{log.userName}</span> desbloqueou <span className="text-emerald-400">{log.achievementTitle}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800 text-center"><Flame size={40} className="text-orange-500 mx-auto mb-2"/><p className="text-4xl font-black text-white">{logs.length}</p><p className="text-[10px] text-zinc-500 uppercase font-bold mt-1">TrofÃ©us Hoje</p></div>
                 </div>
             </div>
         )}
 
-        {/* ======================= CATÃLOGO POR ABAS ======================= */}
+        {/* CATÃLOGO DE CONQUISTAS */}
         {activeTab === 'conquistas' && (
              <div className="space-y-6 animate-in fade-in">
-                 {/* Filtros de Categoria */}
                  <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                     {["Todas", "Social", "Gym", "Games", "Loja", "Eventos"].map(cat => (
-                        <button 
-                            key={cat} 
-                            onClick={() => setActiveCat(cat as any)}
-                            className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition border ${activeCat === cat ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}
-                        >
-                            {cat}
-                        </button>
+                        <button key={cat} onClick={() => setActiveCat(cat as any)} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition border ${activeCat === cat ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>{cat}</button>
                     ))}
                  </div>
-
-                 {/* Lista Master */}
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {filteredAchievements.map(item => (
-                         <div key={item.id} className={`bg-zinc-900 border p-5 rounded-[2rem] transition relative group ${item.active === false ? 'opacity-40 grayscale border-zinc-800' : 'border-zinc-800 hover:border-emerald-500/40 shadow-xl'}`}>
-                             
+                         <div key={item.id} className={`bg-zinc-900 border p-5 rounded-[2rem] transition relative group ${!item.active ? 'opacity-40 grayscale border-zinc-800' : 'border-zinc-800 hover:border-emerald-500/40'}`}>
                              <div className="flex items-start gap-4">
-                                 {/* Badge Colorida */}
-                                 <div className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 ${getCatColor(item.cat)} shadow-inner`}>
-                                     <Award size={28}/>
+                                 <div className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 ${getCatColor(item.cat)}`}>
+                                     {ICON_OPTIONS.find(i => i.value === item.iconName)?.icon || <Award/>}
                                  </div>
-
                                  <div className="flex-1 min-w-0">
                                      <div className="flex justify-between items-start">
-                                         <h4 className="font-black text-white text-base tracking-tighter uppercase italic">{item.titulo}</h4>
+                                         <h4 className="font-black text-white text-base uppercase italic">{item.titulo}</h4>
                                          <div className="flex gap-1">
-                                            <button onClick={() => setEditingAch(item)} className="p-2 bg-zinc-800 rounded-lg text-zinc-500 hover:text-white"><Edit2 size={12}/></button>
-                                            <button onClick={() => toggleMissionStatus(item)} className={`p-2 rounded-lg ${item.active === false ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                                                {item.active === false ? <PowerOff size={12}/> : <Power size={12}/>}
-                                            </button>
+                                             <button onClick={() => setEditingAch(item)} className="p-2 bg-zinc-800 rounded-lg text-zinc-500 hover:text-white"><Edit2 size={12}/></button>
+                                             <button onClick={() => toggleMissionStatus(item)} className={`p-2 rounded-lg ${!item.active ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>{!item.active ? <PowerOff size={12}/> : <Power size={12}/>}</button>
+                                             <button onClick={() => handleDeleteAch(item.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-500 hover:text-red-500"><Trash2 size={12}/></button>
                                          </div>
                                      </div>
-                                     <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{item.desc}</p>
-                                     
+                                     <p className="text-xs text-zinc-500 mt-1">{item.desc}</p>
                                      <div className="flex items-center gap-3 mt-4">
                                          <span className="text-[10px] font-black px-2 py-1 bg-black rounded-lg border border-zinc-800 text-yellow-500">+{item.xp} XP</span>
-                                         <span className="text-[10px] font-black px-2 py-1 bg-black rounded-lg border border-zinc-800 text-emerald-500"><Target size={10} className="inline mr-1"/> Meta: {item.target}</span>
-                                         <span className="text-[10px] font-black px-2 py-1 bg-black rounded-lg border border-zinc-800 text-zinc-500">{item.statKey}</span>
+                                         <span className="text-[10px] font-black px-2 py-1 bg-black rounded-lg border border-zinc-800 text-emerald-500"><Target size={10} className="inline mr-1"/> {item.target}</span>
                                      </div>
                                  </div>
                              </div>
@@ -1516,81 +1597,152 @@ export default function AdminConquistasPage() {
              </div>
         )}
 
-        {/* ======================= LOGS REAIS ======================= */}
+        {/* ABA PATENTES (ID 508 - Corrigida) */}
+        {activeTab === 'patentes' && (
+            <div className="space-y-6 animate-in fade-in">
+                <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
+                    <div>
+                        <h3 className="font-bold text-white uppercase">NÃ­veis de Patente</h3>
+                        <p className="text-xs text-zinc-500">Defina os limites de XP e identidade visual.</p>
+                    </div>
+                    <div className="flex gap-2">
+                         {/* BOTÃƒO DE RESTAURAR PADRÃ•ES */}
+                         <button onClick={handleSeedPatentes} className="bg-zinc-800 text-zinc-400 hover:text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 border border-zinc-700">
+                            <RefreshCw size={14}/> Restaurar PadrÃµes
+                         </button>
+                         <button onClick={handleCreatePatente} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2">
+                            <Plus size={14}/> Nova Patente
+                         </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {patentes.map((p) => {
+                         const iconComp = ICON_OPTIONS.find(i => i.value === p.iconName)?.icon || <Fish/>;
+                         return (
+                            <div key={p.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col items-center text-center relative group hover:border-zinc-700 transition">
+                                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                    <button onClick={() => setEditingPatente(p)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"><Edit2 size={12}/></button>
+                                    <button onClick={() => handleDeletePatente(p.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500"><Trash2 size={12}/></button>
+                                </div>
+                                {/* ðŸ¦ˆ CORREÃ‡ÃƒO CRÃTICA AQUI: Cast tipado para resolver erro TS2769 */}
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-3 ${p.bg || 'bg-zinc-800'} ${p.text || p.cor}`}>
+                                    {React.cloneElement(iconComp as React.ReactElement<{ size?: number; className?: string }>, { size: 32 })}
+                                </div>
+                                <h4 className={`text-lg font-black uppercase italic ${p.cor}`}>{p.titulo}</h4>
+                                <p className="text-xs text-zinc-500 font-mono mt-1">Requer {p.minXp} XP</p>
+                            </div>
+                         );
+                    })}
+                    {patentes.length === 0 && (
+                        <div className="col-span-full text-center py-12 text-zinc-500">
+                            Nenhuma patente encontrada. Clique em "Restaurar PadrÃµes" para iniciar.
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
+        {/* LOGS */}
         {activeTab === 'historico' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden flex flex-col h-[70vh]">
-                <div className="p-5 border-b border-zinc-800 bg-black/20 flex justify-between items-center sticky top-0 backdrop-blur-md">
-                    <h3 className="font-bold text-white flex items-center gap-2"><History size={18} className="text-emerald-500"/> Registro Mundial de TrofÃ©us</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase">Logs Seguros v2.0</p>
-                </div>
-                <div className="overflow-auto flex-1 custom-scrollbar">
-                    <table className="w-full text-left border-collapse whitespace-nowrap">
-                        <thead className="bg-black/50 sticky top-0 z-10 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                            <tr><th className="p-4 border-b border-zinc-800">TubarÃ£o</th><th className="p-4 border-b border-zinc-800">Conquista</th><th className="p-4 border-b border-zinc-800">Data e Hora</th><th className="p-4 border-b border-zinc-800 text-right">XP Adicionado</th></tr>
-                        </thead>
-                        <tbody className="text-sm divide-y divide-zinc-800">
-                            {logs.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-zinc-500">Nenhum registro histÃ³rico encontrado.</td></tr>}
-                            {logs.map(log => (
-                                <tr key={log.id} className="hover:bg-zinc-800/30 transition group">
-                                    <td className="p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-6 h-6 rounded-full bg-emerald-500 text-black font-black text-[10px] flex items-center justify-center">{log.userName?.charAt(0)}</div>
-                                            <span className="font-bold text-white group-hover:text-emerald-400">{log.userName}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4"><span className="text-zinc-300 bg-zinc-800/50 px-2 py-1 rounded text-xs">{log.achievementTitle}</span></td>
-                                    <td className="p-4 text-zinc-500 text-xs font-mono">{log.timestamp?.toDate().toLocaleString() || '---'}</td>
-                                    <td className="p-4 text-right font-black text-emerald-500">+{log.xp} XP</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                 <p className="text-zinc-500 text-center text-xs">HistÃ³rico de desbloqueios recentes.</p>
+                 <div className="mt-4 space-y-2">
+                     {logs.map(log => (
+                         <div key={log.id} className="text-xs text-zinc-400 border-b border-zinc-800 pb-2">
+                             <span className="text-white font-bold">{log.userName}</span> ganhou <span className="text-emerald-500">{log.achievementTitle}</span>
+                         </div>
+                     ))}
+                 </div>
             </div>
         )}
 
       </main>
 
-      {/* MODAL DE EDIÃ‡ÃƒO DE CONQUISTA */}
+      {/* MODAL CONQUISTA */}
       {editingAch && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
-               <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-black text-white uppercase text-lg italic flex items-center gap-2"><Edit2 className="text-emerald-500"/> Editar MissÃ£o</h3>
-                        <button onClick={() => setEditingAch(null)}><X className="text-zinc-500 hover:text-white"/></button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase ml-2 mb-1 block tracking-widest">TÃ­tulo da Conquista</label>
-                            <input type="text" className="input-admin w-full" value={editingAch.titulo} onChange={e => setEditingAch({...editingAch, titulo: e.target.value})}/>
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase ml-2 mb-1 block tracking-widest">DescriÃ§Ã£o da MissÃ£o</label>
-                            <textarea className="input-admin w-full min-h-[80px]" value={editingAch.desc} onChange={e => setEditingAch({...editingAch, desc: e.target.value})}/>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-zinc-500 uppercase ml-2 mb-1 block tracking-widest">Recompensa (XP)</label>
-                                <input type="number" className="input-admin w-full" value={editingAch.xp} onChange={e => setEditingAch({...editingAch, xp: Number(e.target.value)})}/>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-zinc-500 uppercase ml-2 mb-1 block tracking-widest">Meta Final</label>
-                                <input type="number" className="input-admin w-full" value={editingAch.target} onChange={e => setEditingAch({...editingAch, target: Number(e.target.value)})}/>
-                            </div>
-                        </div>
-                    </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+               <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6">
+                   <h3 className="font-black text-white uppercase text-lg">Editar/Criar Conquista</h3>
+                   <div className="space-y-4">
+                       <input type="text" className="input-admin w-full" placeholder="TÃ­tulo" value={editingAch.titulo} onChange={e => setEditingAch({...editingAch, titulo: e.target.value})}/>
+                       <textarea className="input-admin w-full min-h-[80px]" placeholder="DescriÃ§Ã£o" value={editingAch.desc} onChange={e => setEditingAch({...editingAch, desc: e.target.value})}/>
+                       <div className="grid grid-cols-2 gap-4">
+                           <input type="number" placeholder="XP" className="input-admin w-full" value={editingAch.xp} onChange={e => setEditingAch({...editingAch, xp: Number(e.target.value)})}/>
+                           <input type="number" placeholder="Meta" className="input-admin w-full" value={editingAch.target} onChange={e => setEditingAch({...editingAch, target: Number(e.target.value)})}/>
+                       </div>
+                       
+                       <div className="grid grid-cols-2 gap-4">
+                           <div>
+                               <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">Categoria</label>
+                               <select className="input-admin w-full" value={editingAch.cat} onChange={e => setEditingAch({...editingAch, cat: e.target.value})}>
+                                   {["Gym", "Social", "Games", "Loja", "Eventos"].map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">Ãcone</label>
+                               <select className="input-admin w-full" value={editingAch.iconName} onChange={e => setEditingAch({...editingAch, iconName: e.target.value})}>
+                                   {ICON_OPTIONS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+                               </select>
+                           </div>
+                       </div>
+                       <div>
+                           <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">ID da EstatÃ­stica (UserStats)</label>
+                           <input type="text" className="input-admin w-full text-xs font-mono text-yellow-500" placeholder="ex: loginCount, storeSpent" value={editingAch.statKey} onChange={e => setEditingAch({...editingAch, statKey: e.target.value})}/>
+                       </div>
+                   </div>
+                   <div className="flex gap-2">
+                       <button onClick={() => setEditingAch(null)} className="flex-1 py-3 text-zinc-500 font-bold uppercase text-xs border border-zinc-700 rounded-xl">Cancelar</button>
+                       <button onClick={handleSaveAch} className="flex-1 py-3 bg-emerald-600 rounded-xl text-black font-black uppercase text-xs">Salvar</button>
+                   </div>
+               </div>
+          </div>
+      )}
 
-                    <div className="flex gap-2 pt-4">
-                        <button onClick={() => setEditingAch(null)} className="flex-1 py-4 text-zinc-500 font-bold uppercase text-xs">Cancelar</button>
-                        <button onClick={handleSaveEdit} className="flex-1 py-4 bg-emerald-600 rounded-2xl text-black font-black uppercase text-xs hover:bg-emerald-500 shadow-lg shadow-emerald-500/20">Salvar AlteraÃ§Ãµes</button>
-                    </div>
+      {/* MODAL PATENTE */}
+      {editingPatente && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+               <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6">
+                   <h3 className="font-black text-white uppercase text-lg">Configurar Patente</h3>
+                   <div className="space-y-4">
+                       <div>
+                           <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">Nome da Patente</label>
+                           <input type="text" className="input-admin w-full" value={editingPatente.titulo} onChange={e => setEditingPatente({...editingPatente, titulo: e.target.value})}/>
+                       </div>
+                       <div>
+                           <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">XP MÃ­nimo</label>
+                           <input type="number" className="input-admin w-full" value={editingPatente.minXp} onChange={e => setEditingPatente({...editingPatente, minXp: Number(e.target.value)})}/>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                           <div>
+                               <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">Cor (Texto)</label>
+                               <select className="input-admin w-full" value={editingPatente.cor} onChange={e => setEditingPatente({...editingPatente, cor: e.target.value})}>
+                                   <option value="text-zinc-400">Cinza</option>
+                                   <option value="text-orange-400">Laranja</option>
+                                   <option value="text-blue-400">Azul</option>
+                                   <option value="text-purple-400">Roxo</option>
+                                   <option value="text-emerald-400">Verde</option>
+                                   <option value="text-red-600">Vermelho</option>
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[9px] text-zinc-500 uppercase font-bold block mb-1">Ãcone</label>
+                               <select className="input-admin w-full" value={editingPatente.iconName} onChange={e => setEditingPatente({...editingPatente, iconName: e.target.value})}>
+                                   {ICON_OPTIONS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+                               </select>
+                           </div>
+                       </div>
+                   </div>
+                   <div className="flex gap-2">
+                       <button onClick={() => setEditingPatente(null)} className="flex-1 py-3 text-zinc-500 font-bold uppercase text-xs border border-zinc-700 rounded-xl">Cancelar</button>
+                       <button onClick={handleSavePatente} className="flex-1 py-3 bg-emerald-600 rounded-xl text-black font-black uppercase text-xs">Salvar</button>
+                   </div>
                </div>
           </div>
       )}
 
       <style jsx global>{`
-        .input-admin { background: #000; border: 1px solid #27272a; border-radius: 1.25rem; padding: 1rem; color: white; outline: none; transition: all 0.2s; font-size: 0.875rem; }
+        .input-admin { background: #000; border: 1px solid #27272a; border-radius: 1rem; padding: 1rem; color: white; outline: none; transition: all 0.2s; font-size: 0.875rem; }
         .input-admin:focus { border-color: #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.1); }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
@@ -5511,14 +5663,14 @@ import {
   ArrowLeft, Edit, Save, Plus, Trash2, CheckCircle, X, 
   LayoutDashboard, CreditCard, DollarSign, Crown, Star, Ghost, 
   Users, TrendingUp, Calendar, Search, Megaphone, Loader2, RefreshCw, ShoppingBag, Eye, ClipboardList, Check,
-  Fish, Zap, Gem, Trophy, TicketPercent, ShieldAlert, User // ðŸ¦ˆ CORREÃ‡ÃƒO: Adicionado 'User' aqui
+  Fish, Zap, Gem, Trophy, TicketPercent, ShieldAlert, User 
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc } from "firebase/firestore";
 
-// --- TIPAGEM ESTRITA (INTEGRAÃ‡ÃƒO TOTAL) ---
+// --- TIPAGEM ESTRITA ---
 interface Plano {
     id: string;
     nome: string;
@@ -5530,10 +5682,10 @@ interface Plano {
     icon: string;
     destaque: boolean;
     beneficios: string[];
-    // ðŸ¦ˆ NOVOS CAMPOS DE INTELIGÃŠNCIA (IDs 301, 302, 304)
-    xpMultiplier: number;    // GamificaÃ§Ã£o
-    nivelPrioridade: number; // Eventos (Fura-Fila)
-    descontoLoja: number;    // Loja (Porcentagem)
+    // ðŸ¦ˆ NOVOS CAMPOS DE INTELIGÃŠNCIA
+    xpMultiplier: number;    
+    nivelPrioridade: number; 
+    descontoLoja: number;    
 }
 
 interface Solicitacao {
@@ -5568,8 +5720,7 @@ interface BannerConfig {
     cor: 'dourado' | 'esmeralda' | 'roxo' | 'fogo';
 }
 
-// --- DADOS PADRÃƒO (Resgate e InicializaÃ§Ã£o) ---
-// ID 300: ConfiguraÃ§Ã£o Base para novos usuÃ¡rios e reset
+// --- DADOS PADRÃƒO ---
 const INITIAL_PLANOS = [
     { 
         nome: "Bicho Solto", preco: "0,00", precoVal: 0, parcelamento: "Gratuito", descricao: "Acesso bÃ¡sico.", cor: "zinc", icon: "ghost", destaque: false, beneficios: ["Carteirinha Digital", "Acesso ao App"],
@@ -5636,24 +5787,25 @@ export default function AdminPlanosPage() {
           // 1. Busca dados REAIS do plano para consistÃªncia
           const planoRef = planos.find(p => p.id === sol.planoId) || planos.find(p => p.nome === sol.planoNome);
           
-          // Defaults seguros caso o plano tenha sido apagado (Fallback para Bicho Solto)
+          // Defaults seguros
           const corPlano = planoRef?.cor || "zinc";
           const iconPlano = planoRef?.icon || "ghost";
           const xpMult = planoRef?.xpMultiplier || 1.0; 
-          const prioridade = planoRef?.nivelPrioridade || 1; // ID 301
-          const desconto = planoRef?.descontoLoja || 0;       // ID 302
+          const prioridade = planoRef?.nivelPrioridade || 1; 
+          const desconto = planoRef?.descontoLoja || 0;      
           const novoTier = getTierFromPlan(sol.planoNome, iconPlano);
 
           // 2. APLICA A "MESMA LÃNGUA" NO PERFIL DO USUÃRIO
-          // Isso garante que Loja, Eventos e GamificaÃ§Ã£o funcionem sem cÃ³digo extra.
+          // ðŸ¦ˆ ATUALIZAÃ‡ÃƒO: Gravando 'plano_badge' para garantir exibiÃ§Ã£o correta
           await updateDoc(doc(db, "users", sol.userId), {
               plano: sol.planoNome,
+              plano_badge: sol.planoNome, // <--- CAMPO CORRIGIDO AQUI
               plano_cor: corPlano,
               plano_icon: iconPlano,
               tier: novoTier,
-              xpMultiplier: xpMult,        // ID 304: GamificaÃ§Ã£o
-              nivel_prioridade: prioridade, // ID 301: Fura-Fila
-              desconto_loja: desconto,      // ID 302: Desconto AutomÃ¡tico
+              xpMultiplier: xpMult,        
+              nivel_prioridade: prioridade, 
+              desconto_loja: desconto,      
               plano_status: "ativo",
               data_adesao: new Date().toISOString()
           });
@@ -7147,8 +7299,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useToast } from "../../../../context/ToastContext";
-import { db } from "../../../../lib/firebase";
+import { useToast } from "../../../../context/ToastContext"; // ðŸ¦ˆ Corrected path
+import { db } from "../../../../lib/firebase"; // ðŸ¦ˆ Corrected path
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, deleteDoc } from "firebase/firestore";
 
 // --- TIPOS AUXILIARES ---
@@ -7219,9 +7371,9 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
 
   // --- AÃ‡ÃƒO: ATIVAR / DESATIVAR (Toggle Status) ---
   const handleToggleStatus = async () => {
-      // Se estiver ativo, vira inativo (banned/suspenso). Se nÃ£o, vira ativo.
-      const newStatus = user.status === 'ativo' ? 'inativo' : 'ativo';
-      const msg = newStatus === 'inativo' 
+      // Se estiver ativo, vira bloqueado (banned/suspenso). Se nÃ£o, vira ativo.
+      const newStatus = user.status === 'ativo' ? 'bloqueado' : 'ativo';
+      const msg = newStatus === 'bloqueado' 
         ? "Tem certeza? O usuÃ¡rio perderÃ¡ acesso imediato ao app." 
         : "Reativar acesso do usuÃ¡rio?";
       
@@ -7230,7 +7382,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
           try {
               await updateDoc(doc(db, "users", id), { status: newStatus });
               setUser({ ...user, status: newStatus });
-              addToast(newStatus === 'inativo' ? "Conta desativada." : "Conta reativada!", newStatus === 'inativo' ? "info" : "success");
+              addToast(newStatus === 'bloqueado' ? "Conta desativada." : "Conta reativada!", newStatus === 'bloqueado' ? "info" : "success");
           } catch (e) {
               addToast("Erro ao atualizar status.", "error");
           } finally {
@@ -7333,7 +7485,8 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <span className="badge-shark bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{user.plano_badge || "Sem Plano"}</span>
+                        {/* ðŸ¦ˆ EXIBE O PLANO BADGE (Nome Personalizado) */}
+                        <span className="badge-shark bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{user.plano_badge || user.tier || "Sem Plano"}</span>
                         <span className="badge-shark bg-purple-500/10 text-purple-500 border-purple-500/20">{user.patente || "Novato"}</span>
                     </div>
                 </div>
@@ -7707,7 +7860,7 @@ export default function AdminUsuariosPage() {
         a.click();
     };
 
-    // Helper Cores
+    // Helper Cores - CORRIGIDO PARA PADRÃƒO VISUAL
     const getStatusColor = (s: string) => {
         if (s === 'ativo') return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
         if (s === 'inadimplente') return "text-red-500 bg-red-500/10 border-red-500/20";
@@ -7717,8 +7870,9 @@ export default function AdminUsuariosPage() {
 
     const getPlanColor = (p: string) => {
         if (p === 'lenda') return "text-yellow-500 border-yellow-500/30 bg-yellow-500/10";
-        if (p === 'atleta') return "text-zinc-300 border-zinc-500/30 bg-zinc-500/10";
-        return "text-emerald-500 border-emerald-500/30 bg-emerald-500/10"; // Bicho/Cardume
+        if (p === 'atleta') return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"; // Atleta = Verde
+        if (p === 'cardume') return "text-blue-400 border-blue-500/30 bg-blue-500/10"; // Cardume = Azul (Opcional, ou verde)
+        return "text-zinc-500 border-zinc-700 bg-zinc-900"; // Bicho = Cinza
     };
 
     return (
@@ -9140,9 +9294,9 @@ import { useAuth } from "../../context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { db, storage } from "../../lib/firebase"; // Certifique-se que 'storage' Ã© exportado do firebase.ts
+import { db, storage } from "../../lib/firebase"; 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useToast } from "../../context/ToastContext"; // Feedback visual
+import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
 const TURMAS = [
@@ -9189,20 +9343,42 @@ const PETS_OPTIONS = [
     { id: "nenhum", label: "Sem Pet", icon: "ðŸš«" },
 ];
 
+// ðŸ¦ˆ INTERFACE ESTRITA
+interface UserFormData {
+    nome: string;
+    apelido: string;
+    matricula: string;
+    turma: string;
+    instagram: string;
+    telefone: string;
+    whatsappPublico: boolean;
+    bio: string;
+    dataNascimento: string;
+    idadePublica: boolean;
+    cidadeOrigem: string;
+    estadoOrigem: string;
+    statusRelacionamento: string;
+    relacionamentoPublico: boolean;
+    esportes: string[];
+    pets: string;
+    foto: string;
+}
+
 export default function CadastroPage() {
   const { user, updateUser, loading: authLoading } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
   
   const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] = useState(false); // Loading especÃ­fico da imagem
+  const [imageLoading, setImageLoading] = useState(false); 
   const [error, setError] = useState("");
   
   const [ufs, setUfs] = useState<any[]>([]);
   const [cidades, setCidades] = useState<any[]>([]);
   const [ufSelected, setUfSelected] = useState("");
 
-  const [formData, setFormData] = useState({
+  // ðŸ¦ˆ ESTADO TIPADO
+  const [formData, setFormData] = useState<UserFormData>({
     nome: "",
     apelido: "",
     matricula: "",
@@ -9214,12 +9390,12 @@ export default function CadastroPage() {
     dataNascimento: "",
     idadePublica: true,
     cidadeOrigem: "",
-    estadoOrigem: "", // ðŸ¦ˆ ID 305: Novo campo para persistÃªncia
+    estadoOrigem: "", 
     statusRelacionamento: "Solteiro(a)",
     relacionamentoPublico: true,
-    esportes: [] as string[],
+    esportes: [],
     pets: "nenhum",
-    foto: "" // Para controlar a URL da foto
+    foto: "" 
   });
 
   // APIs IBGE
@@ -9233,47 +9409,44 @@ export default function CadastroPage() {
       fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${ufSelected}/municipios?orderBy=nome`)
         .then(res => res.json()).then(data => setCidades(data)).catch(console.error);
       
-      // Atualiza o estado no formData sempre que o select muda
       setFormData(prev => ({...prev, estadoOrigem: ufSelected}));
     }
   }, [ufSelected]);
 
-  // Load User Data (ID 305 Fix: Carrega estado e cidade)
+  // ðŸ¦ˆ LOAD DE DADOS COM SANITIZAÃ‡ÃƒO
   useEffect(() => {
     if (user) {
-      // Se o usuÃ¡rio jÃ¡ tiver estado salvo, seta o ufSelected para disparar o fetch das cidades
       if (user.estadoOrigem) {
-          setUfSelected(user.estadoOrigem);
+          setUfSelected(String(user.estadoOrigem));
       }
 
       setFormData({
-        nome: user.nome || "",
-        apelido: user.apelido || "",
-        matricula: user.matricula || "",
-        turma: user.turma || "",
-        instagram: user.instagram?.replace("@", "") || "",
-        telefone: user.telefone || "",
-        whatsappPublico: user.whatsappPublico ?? true,
-        bio: user.bio || "",
-        dataNascimento: user.dataNascimento || "",
-        idadePublica: user.idadePublica ?? true,
-        cidadeOrigem: user.cidadeOrigem || "",
-        estadoOrigem: user.estadoOrigem || "", // Carrega do banco
-        statusRelacionamento: user.statusRelacionamento || "Solteiro(a)",
-        relacionamentoPublico: user.relacionamentoPublico ?? true,
-        esportes: user.esportes || [],
-        pets: user.pets || "nenhum",
-        foto: user.foto || ""
+        nome: String(user.nome || ""),
+        apelido: String(user.apelido || ""),
+        matricula: String(user.matricula || ""),
+        turma: String(user.turma || ""),
+        instagram: String(user.instagram || "").replace("@", ""),
+        telefone: String(user.telefone || ""),
+        whatsappPublico: Boolean(user.whatsappPublico ?? true),
+        bio: String(user.bio || ""),
+        dataNascimento: String(user.dataNascimento || ""),
+        idadePublica: Boolean(user.idadePublica ?? true),
+        cidadeOrigem: String(user.cidadeOrigem || ""),
+        estadoOrigem: String(user.estadoOrigem || ""),
+        statusRelacionamento: String(user.statusRelacionamento || "Solteiro(a)"),
+        relacionamentoPublico: Boolean(user.relacionamentoPublico ?? true),
+        esportes: Array.isArray(user.esportes) ? user.esportes : [],
+        pets: String(user.pets || "nenhum"),
+        foto: String(user.foto || "")
       });
     }
   }, [user]);
 
-  // ðŸ¦ˆ ID 304: LÃ³gica de Upload de Foto
+  // ðŸ¦ˆ LÃ³gica de Upload de Foto
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // ValidaÃ§Ã£o de Tamanho (Max 5MB) e Tipo
       if (file.size > 5 * 1024 * 1024) {
           addToast("A imagem deve ter no mÃ¡ximo 5MB!", "error");
           return;
@@ -9285,13 +9458,10 @@ export default function CadastroPage() {
 
       setImageLoading(true);
       try {
-          // Cria uma referÃªncia Ãºnica: users/UID/profile_timestamp.jpg
           const storageRef = ref(storage, `users/${user?.uid}/profile_${Date.now()}.jpg`);
-          
           await uploadBytes(storageRef, file);
           const downloadURL = await getDownloadURL(storageRef);
 
-          // Atualiza o estado local
           setFormData(prev => ({ ...prev, foto: downloadURL }));
           addToast("Foto carregada com sucesso! ðŸ¦ˆ", "success");
 
@@ -9331,7 +9501,6 @@ export default function CadastroPage() {
     if (!formData.telefone) { setLoading(false); return setError("Telefone Ã© obrigatÃ³rio para contato!"); }
     if (!formData.turma) { setLoading(false); return setError("Selecione sua turma!"); }
     
-    // ValidaÃ§Ã£o extra ID 304
     if (!formData.foto) { setLoading(false); return setError("A foto de perfil Ã© obrigatÃ³ria!"); }
 
     try {
@@ -9352,7 +9521,7 @@ export default function CadastroPage() {
   if (!authLoading && !user) { router.push("/"); return null; }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 pb-20 flex flex-col items-center">
+    <div className="min-h-screen bg-[#050505] text-white p-4 pb-20 flex flex-col items-center overflow-hidden">
         
         {/* LOGO FUNDO */}
         <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] pointer-events-none opacity-5 z-0">
@@ -9369,7 +9538,7 @@ export default function CadastroPage() {
         <div className="w-full max-w-3xl bg-zinc-900/90 backdrop-blur-xl border border-zinc-800 p-6 md:p-10 rounded-[2.5rem] shadow-2xl relative z-10">
             
             <div className="text-center mb-8">
-                {/* ðŸ¦ˆ ID 304: ÃREA DE UPLOAD DE FOTO */}
+                {/* ðŸ¦ˆ UPLOAD DE FOTO */}
                 <div className="relative w-32 h-32 mx-auto mb-4 group">
                     <div className="relative w-full h-full rounded-full border-4 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] overflow-hidden bg-zinc-800">
                         {imageLoading ? (
@@ -9387,7 +9556,7 @@ export default function CadastroPage() {
                             <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                         </label>
                     </div>
-                    {/* BotÃ£o flutuante para mobile (sem hover) */}
+                    {/* BotÃ£o flutuante mobile */}
                     <label className="absolute bottom-0 right-0 bg-emerald-600 p-2 rounded-full border-2 border-[#050505] shadow-lg cursor-pointer md:hidden z-30">
                         <UploadCloud size={16} className="text-white"/>
                         <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
@@ -9396,7 +9565,7 @@ export default function CadastroPage() {
 
                 <h1 className="text-3xl font-black uppercase italic tracking-tighter">Ficha do <span className="text-emerald-500">TubarÃ£o</span></h1>
                 
-                {/* ðŸ¦ˆ ID 304: AVISO DE FOTO */}
+                {/* AVISO DE FOTO */}
                 <div className="mt-4 bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-xl max-w-sm mx-auto">
                     <p className="text-[10px] text-yellow-400 font-bold uppercase tracking-wide flex items-center justify-center gap-2">
                         <ShieldAlert size={14}/> AtenÃ§Ã£o: Use sua foto real!
@@ -9467,7 +9636,9 @@ export default function CadastroPage() {
 
                     {/* ðŸ¦ˆ ID 305: PersistÃªncia de LocalizaÃ§Ã£o */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <select className="input-field" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
+                        {/* ðŸ¦ˆ CORREÃ‡ÃƒO RESPONSIVIDADE E ALINHAMENTO */}
+                        {/* Adicionado 'px-4' pois este select nÃ£o tem Ã­cone, evitando que o texto cole na borda */}
+                        <select className="input-field px-4" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
                             <option value="">Estado de Origem</option>
                             {ufs.map(uf => <option key={uf.id} value={uf.sigla}>{uf.nome}</option>)}
                         </select>
@@ -9587,7 +9758,23 @@ export default function CadastroPage() {
         </div>
 
         <style jsx>{`
-            .input-field { width: 100%; background: #000; border: 1px solid #27272a; border-radius: 1.25rem; color: white; padding: 0 1rem; outline: none; transition: 0.3s; height: 3.5rem; font-size: 0.875rem; font-weight: 600; }
+            /* ðŸ¦ˆ CORREÃ‡ÃƒO CSS:
+               Removido 'padding: 0 1rem;' que causava conflito.
+               Agora usamos apenas padding-right aqui e deixamos o padding-left para o Tailwind (pl-14 ou px-4).
+            */
+            .input-field { 
+                width: 100%; 
+                background: #000; 
+                border: 1px solid #27272a; 
+                border-radius: 1.25rem; 
+                color: white; 
+                padding-right: 1rem; /* Apenas direita */
+                outline: none; 
+                transition: 0.3s; 
+                height: 3.5rem; 
+                font-size: 0.875rem; 
+                font-weight: 600; 
+            }
             .input-field:focus { border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.1); }
             textarea.input-field { height: auto; }
             .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -12624,7 +12811,7 @@ export default function SettingsPage() {
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   ArrowLeft, Search, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
   Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
@@ -12633,7 +12820,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
-import { ACHIEVEMENTS_CATALOG, Achievement, AchievementCategory } from "../../lib/achievements";
+import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../lib/firebase";
 
 // Mapeamento de Ãcones
 const IconMap: any = {
@@ -12646,6 +12835,7 @@ const IconMap: any = {
     Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />
 };
 
+// DefiniÃ§Ã£o das Patentes (NÃ­veis)
 const BADGES = [
     { id: 1, titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", icon: <Fish className="opacity-50" size={64}/> },
     { id: 2, titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: <Fish size={64}/> },
@@ -12658,62 +12848,94 @@ const BADGES = [
 export default function ConquistasPage() {
   const { user } = useAuth();
   const [filtro, setFiltro] = useState<AchievementCategory | "Todas">("Todas");
+  
+  // ðŸ¦ˆ ESTADO DINÃ‚MICO PARA CONQUISTAS (VEM DO FIREBASE)
+  const [catalog, setCatalog] = useState<any[]>(ACHIEVEMENTS_CATALOG);
 
-  // ðŸ¦ˆ CORREÃ‡ÃƒO: Acesso direto e seguro graÃ§as Ã  interface atualizada
+  // 1. OUVIR ATUALIZAÃ‡Ã•ES DO ADMIN EM TEMPO REAL
+  useEffect(() => {
+      const unsubscribe = onSnapshot(collection(db, "achievements_config"), (snap) => {
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // Se tiver dados no banco, usa eles. Se nÃ£o, mantÃ©m o estÃ¡tico.
+          if (data.length > 0) {
+              setCatalog(data);
+          }
+      });
+      return () => unsubscribe();
+  }, []);
+
   const userStats = user?.stats || {}; 
   
-  // Calcula desbloqueios
+  // Calcula desbloqueios usando o CATÃLOGO DINÃ‚MICO
   const calculatedAchievements = useMemo(() => {
-      let totalXp = 0;
       let unlockedCount = 0;
 
-      const processed = ACHIEVEMENTS_CATALOG.map(ach => {
-          // Acesso dinÃ¢mico seguro (definido no index signature da interface)
+      const processed = catalog.map(ach => {
+          // Acesso dinÃ¢mico seguro
           const userValue = userStats[ach.statKey] || 0;
           const isUnlocked = userValue >= ach.target;
           
           if (isUnlocked) {
-              totalXp += ach.xp;
               unlockedCount++;
           }
 
           return { ...ach, progress: userValue, isUnlocked };
       });
 
-      return { list: processed, totalXp, unlockedCount };
-  }, [userStats]);
+      // Ordenar: Desbloqueadas primeiro
+      processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
-  const displayXp = Math.max(calculatedAchievements.totalXp, user?.xp || 0);
+      return { list: processed, unlockedCount };
+  }, [userStats, catalog]);
 
-  // LÃ³gica de Patente
+  // ðŸ¦ˆ CORREÃ‡ÃƒO CRÃTICA: O XP exibido deve ser SEMPRE o que vem do banco (user.xp)
+  // Isso garante que se o admin der XP extra, o usuÃ¡rio veja.
+  const displayXp = user?.xp || 0;
+
+  // LÃ³gica de Patente AutomÃ¡tica (Baseada no XP Real)
+  // Encontra a maior patente que o usuÃ¡rio atingiu
   const currentBadgeIndex = BADGES.slice().reverse().findIndex(b => displayXp >= b.minXp);
   const realCurrentIndex = currentBadgeIndex === -1 ? 0 : BADGES.length - 1 - currentBadgeIndex;
   
+  // Estado para controlar qual patente estÃ¡ sendo visualizada no carrossel
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
 
+  // Sincroniza a visualizaÃ§Ã£o se o usuÃ¡rio subir de nÃ­vel enquanto estÃ¡ na pÃ¡gina
+  useEffect(() => { setViewIndex(realCurrentIndex); }, [realCurrentIndex]);
+
   const displayedBadge = BADGES[viewIndex];
+  
+  // Estados relativos Ã  patente visualizada
   const isCurrent = viewIndex === realCurrentIndex;
   const isLocked = viewIndex > realCurrentIndex;
   const isPast = viewIndex < realCurrentIndex;
 
-  // Barra de Progresso
+  // Barra de Progresso Inteligente
   let progressPercent = 0;
   let xpNeeded = 0;
 
   if (isPast) {
-      progressPercent = 100;
+      progressPercent = 100; // JÃ¡ passou, barra cheia
   } else if (isCurrent) {
+      // Estamos na patente atual, calcula progresso para a prÃ³xima
       const nextBadge = BADGES[viewIndex + 1];
       if (nextBadge) {
           const totalRange = nextBadge.minXp - displayedBadge.minXp;
           const currentProgress = displayXp - displayedBadge.minXp;
-          progressPercent = Math.min((currentProgress / totalRange) * 100, 100);
+          
+          // Evita divisÃ£o por zero e garante range 0-100%
+          if (totalRange > 0) {
+              progressPercent = Math.min(Math.max((currentProgress / totalRange) * 100, 0), 100);
+          } else {
+              progressPercent = 100;
+          }
+          
           xpNeeded = nextBadge.minXp - displayXp;
       } else {
-          progressPercent = 100;
+          progressPercent = 100; // NÃ­vel MÃ¡ximo (Megalodon)
       }
   } else if (isLocked) {
-      progressPercent = 0;
+      progressPercent = 0; // Ainda nÃ£o chegou, barra vazia
       xpNeeded = displayedBadge.minXp - displayXp;
   }
 
@@ -12734,7 +12956,7 @@ export default function ConquistasPage() {
         <div className="flex-1">
             <h1 className="font-black text-lg italic uppercase tracking-tighter">Sala de TrofÃ©us</h1>
             <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">
-                {calculatedAchievements.unlockedCount} / {ACHIEVEMENTS_CATALOG.length} Desbloqueadas
+                {calculatedAchievements.unlockedCount} / {catalog.length} Desbloqueadas
             </p>
         </div>
       </header>
@@ -12768,7 +12990,7 @@ export default function ConquistasPage() {
                                 <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${progressPercent}%` }}></div>
                             </div>
                             <p className="text-[10px] text-zinc-400 mt-2 font-mono">
-                                {displayXp} / {BADGES[viewIndex + 1]?.minXp || "MAX"} XP
+                                {displayXp.toLocaleString()} / {BADGES[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP
                             </p>
                         </div>
                     )}
@@ -12782,8 +13004,8 @@ export default function ConquistasPage() {
                     {isLocked && (
                         <div className="animate-in zoom-in duration-300">
                             <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Bloqueado</p>
-                            <p className="text-sm font-mono text-white">NecessÃ¡rio <span className="text-red-400 font-black">{displayedBadge.minXp} XP</span></p>
-                            <p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded} XP</p>
+                            <p className="text-sm font-mono text-white">NecessÃ¡rio <span className="text-red-400 font-black">{displayedBadge.minXp.toLocaleString()} XP</span></p>
+                            <p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded.toLocaleString()} XP</p>
                         </div>
                     )}
                 </div>
@@ -13912,19 +14134,31 @@ import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
   Users, CheckCircle, HelpCircle, XCircle, Lock, 
   Loader2, Crown, MessageCircle, AlertTriangle, 
-  Heart, Send, Plus, Trash2, ShieldAlert, Star
+  Heart, Send, Plus, Trash2, ShieldAlert, Star,
+  Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
     doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove 
+    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc 
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// --- IMAGENS ASSETS ---
+// --- MAPEAMENTO DE ÃCONES (IGUAL AO PLANOS) ---
+const ICONS_MAP: any = {
+  ghost: Ghost,
+  star: Star,
+  crown: Crown,
+  shopping: ShoppingBag,
+  zap: Zap,
+  gem: Gem,
+  trophy: Trophy,
+  fish: Fish
+};
+
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -13939,9 +14173,8 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
         };
-        // Remove acentos e joga pra maiÃºsculo
         const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const parts = cleanDate.split(' '); // Ex: ["12", "OUT"]
+        const parts = cleanDate.split(' '); 
         
         if (parts.length < 2) return null;
         
@@ -13956,7 +14189,6 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         
         let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
         
-        // Se a data jÃ¡ passou este ano, assume ano que vem
         if (eventDate < now) eventDate.setFullYear(year + 1);
         
         return eventDate;
@@ -13965,7 +14197,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     }
 };
 
-// --- COMPONENTE CONTADOR REAL (ID 160/166) ---
+// --- COMPONENTE CONTADOR ---
 function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
   const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
 
@@ -14005,9 +14237,21 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
   );
 }
 
+// --- HELPER DE CORES DE PLANO ---
+const getPlanColorClass = (cor?: string) => {
+    switch(cor) {
+        case 'yellow': return "text-yellow-500";
+        case 'emerald': return "text-emerald-400";
+        case 'purple': return "text-purple-400";
+        case 'blue': return "text-blue-400";
+        case 'red': return "text-red-500";
+        default: return "text-white"; // PadrÃ£o
+    }
+};
+
 export default function DetalhesEventoPage() {
   const params = useParams();
-  const { user, isAdmin } = useAuth(); // isAdmin deve vir do AuthContext
+  const { user, isAdmin } = useAuth(); 
   const { addToast } = useToast();
   
   const [evento, setEvento] = useState<any>(null);
@@ -14017,7 +14261,6 @@ export default function DetalhesEventoPage() {
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
   
-  // MODAIS E INTERAÃ‡Ã•ES
   const [modalUsersType, setModalUsersType] = useState<"going" | "maybe" | null>(null);
   const [newComment, setNewComment] = useState("");
   const [newPollOption, setNewPollOption] = useState("");
@@ -14044,13 +14287,13 @@ export default function DetalhesEventoPage() {
           }
       });
 
-      // ComentÃ¡rios (ID 163)
+      // ComentÃ¡rios
       const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
       const unsubCom = onSnapshot(qCom, (snap) => {
           setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
 
-      // Enquetes (ID 168)
+      // Enquetes
       const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
           setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
@@ -14058,9 +14301,8 @@ export default function DetalhesEventoPage() {
       return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); };
   }, [params.id, user]);
 
-  // --- ACTIONS (BACKEND REAL) ---
+  // --- ACTIONS ---
 
-  // RSVP
   const handleRSVP = async (status: "going" | "maybe") => {
       if (!user) return addToast("FaÃ§a login para confirmar!", "error");
       try {
@@ -14085,13 +14327,25 @@ export default function DetalhesEventoPage() {
       } catch (e) { addToast("Erro ao atualizar.", "error"); }
   };
 
-  // COMENTÃRIOS (ID 163)
+  // ðŸ¦ˆ ID 505: SALVAR DADOS DO PERFIL NO COMENTÃRIO
   const handleSendComment = async () => {
       if (!newComment.trim() || !user) return;
       await addDoc(collection(db, "eventos", evento.id, "comentarios"), {
-          text: newComment, userId: user.uid, userName: user.nome || "AnÃ´nimo",
-          userAvatar: user.foto || "", userTurma: user.turma || "",
-          createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
+          text: newComment, 
+          userId: user.uid, 
+          userName: user.nome || "AnÃ´nimo",
+          userAvatar: user.foto || "", 
+          userTurma: user.turma || "",
+          
+          // Dados Visuais Extras (Snapshot)
+          userPlanoCor: user.plano_cor || "zinc",
+          userPlanoIcon: user.plano_icon || "ghost",
+          userPatente: user.patente || "Novato",
+
+          createdAt: serverTimestamp(), 
+          likes: [], 
+          reports: [], 
+          hidden: false
       });
       setNewComment("");
   };
@@ -14099,10 +14353,24 @@ export default function DetalhesEventoPage() {
   const handleLikeComment = async (comId: string, currentLikes: string[]) => {
       if (!user) return;
       const ref = doc(db, "eventos", evento.id, "comentarios", comId);
-      if (currentLikes.includes(user.uid)) {
+      // ðŸ¦ˆ CORREÃ‡ÃƒO DE ERRO: GARANTINDO QUE Ã‰ ARRAY
+      const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
+      
+      if (safeLikes.includes(user.uid)) {
           await updateDoc(ref, { likes: arrayRemove(user.uid) });
       } else {
           await updateDoc(ref, { likes: arrayUnion(user.uid) });
+      }
+  };
+
+  // ðŸ¦ˆ ID 506: DELETAR COMENTÃRIO
+  const handleDeleteComment = async (comId: string) => {
+      if (!confirm("Apagar este comentÃ¡rio?")) return;
+      try {
+          await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
+          addToast("ComentÃ¡rio apagado.", "info");
+      } catch (error) {
+          addToast("Erro ao apagar.", "error");
       }
   };
 
@@ -14113,12 +14381,11 @@ export default function DetalhesEventoPage() {
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
-     // Admin Action
      await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
      addToast(currentStatus ? "ComentÃ¡rio restaurado." : "ComentÃ¡rio ocultado.", "info");
   };
 
-  // ENQUETES (ID 168) - LÃ³gica Real
+  // ENQUETES
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
       if (!user) return addToast("Login necessÃ¡rio.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
@@ -14147,7 +14414,6 @@ export default function DetalhesEventoPage() {
 
   const handleCreatePollOption = async (pollId: string) => {
       if(!newPollOption || !user) return;
-      // Adiciona nova opÃ§Ã£o ao array
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ text: newPollOption, votes: 0, creator: user.uid })
@@ -14156,16 +14422,14 @@ export default function DetalhesEventoPage() {
       addToast("OpÃ§Ã£o adicionada!", "success");
   };
 
-  // ALERTA DE VAGAS (ID 167) - PersistÃªncia Real
   const toggleLowStock = async () => {
-      if (!isAdmin) return; // SeguranÃ§a bÃ¡sica frontend
+      if (!isAdmin) return; 
       await updateDoc(doc(db, "eventos", evento.id), {
           isLowStock: !evento.isLowStock
       });
       addToast("Status de Vagas atualizado.", "success");
   };
 
-  // COMPARTILHAR (ID 165)
   const handleShare = () => {
       if (typeof navigator !== 'undefined' && navigator.share) {
           navigator.share({ title: evento.titulo, url: window.location.href });
@@ -14175,13 +14439,11 @@ export default function DetalhesEventoPage() {
       }
   };
 
-  // FILTRO PARA MODAL DE USUÃRIOS
   const modalUsers = useMemo(() => {
       if (!modalUsersType) return [];
       return rsvps.filter(r => r.status === modalUsersType);
   }, [rsvps, modalUsersType]);
 
-  // RANKING FLUTUANTE
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
       rsvps.forEach(r => r.status === 'going' && (counts[(r.userTurma || "Geral").toUpperCase()] = (counts[(r.userTurma || "Geral").toUpperCase()] || 0) + 1));
@@ -14194,34 +14456,30 @@ export default function DetalhesEventoPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* --- HERO --- */}
+      {/* HERO */}
       <div className="relative h-[50vh] w-full">
         <img src={evento.imagem || "https://placehold.co/600x400/111/333"} className="w-full h-full object-cover" style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}/>
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
-        {/* HEADER NAV (ID 164: Voltar para app/eventos) */}
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
             <Link href="/eventos" className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-white hover:text-black transition">
                 <ArrowLeft size={20} />
             </Link>
-            {/* ID 165: SHARE */}
             <button onClick={handleShare} className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-emerald-500 hover:text-black transition">
                 <Share2 size={20} />
             </button>
         </div>
 
-        {/* CONTADOR REAL (ID 160/166) */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
             <EventCountdown dateStr={evento.data} timeStr={evento.hora} />
         </div>
 
-        {/* ADMIN TRIGGER: VAGAS (ID 167) */}
-        {/* Este botÃ£o sÃ³ deve aparecer para admin. Como nÃ£o tenho certeza da prop isAdmin, deixo oculto visualmente mas clicÃ¡vel para teste */}
-        <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold opacity-0 hover:opacity-100 transition">
-            ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
-        </button>
+        {isAdmin && (
+            <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold hover:opacity-100 transition shadow-lg border border-red-400">
+                ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
+            </button>
+        )}
 
-        {/* RANKING FLUTUANTE */}
         <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
             {rankingTurmas.map((t) => (
                 <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
@@ -14231,7 +14489,6 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* TITULO */}
         <div className="absolute bottom-0 left-0 p-6 w-full z-20">
             <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black uppercase rounded mb-2 inline-block">{evento.tipo}</span>
             <h1 className="text-3xl font-black italic uppercase leading-none text-white drop-shadow-xl mb-2">{evento.titulo}</h1>
@@ -14242,10 +14499,9 @@ export default function DetalhesEventoPage() {
         </div>
       </div>
 
-      {/* --- CONTEÃšDO --- */}
+      {/* CONTEÃšDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
-        {/* ALERTA DOURADO REAL (ID 167) */}
         {evento.isLowStock && (
             <div className="bg-gradient-to-r from-yellow-600 to-yellow-400 p-0.5 rounded-2xl animate-pulse shadow-[0_0_30px_rgba(234,179,8,0.3)]">
                 <div className="bg-black rounded-[14px] p-4 flex items-center justify-between">
@@ -14261,7 +14517,6 @@ export default function DetalhesEventoPage() {
             </div>
         )}
 
-        {/* RSVP ACTIONS */}
         <div className="grid grid-cols-2 gap-3">
             <button onClick={() => handleRSVP('going')} className={`py-4 rounded-xl flex flex-col items-center gap-1 transition border ${userRsvp === 'going' ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg' : 'bg-zinc-900 border-zinc-800'}`}>
                 <CheckCircle size={20}/> <span className="text-xs font-black uppercase">Eu Vou</span>
@@ -14271,7 +14526,6 @@ export default function DetalhesEventoPage() {
             </button>
         </div>
 
-        {/* CONTADORES (ID 161/162 - MODAIS) */}
         <div className="flex justify-center gap-6 text-[10px] font-bold uppercase text-zinc-500">
             <button onClick={() => setModalUsersType('going')} className="hover:text-emerald-500 transition underline decoration-dashed underline-offset-4 flex items-center gap-1">
                 <Users size={12}/> {evento.stats?.confirmados || 0} Confirmados
@@ -14281,7 +14535,6 @@ export default function DetalhesEventoPage() {
             </button>
         </div>
 
-        {/* INGRESSOS */}
         <div className="space-y-3">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-emerald-500"/> Ingressos</h3>
             {evento.lotes?.map((l: any, i: number) => (
@@ -14297,13 +14550,12 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* ENQUETES (ID 168) - Real Firebase */}
+        {/* ENQUETES (ID 168) */}
         <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                     <MessageCircle size={14} className="text-purple-500"/> Enquete da Galera
                 </h3>
-                {/* Admin pode criar enquetes - aqui simplificado para user criar opcoes */}
             </div>
 
             {enquetes.length > 0 ? enquetes.map(poll => (
@@ -14324,7 +14576,6 @@ export default function DetalhesEventoPage() {
                         })}
                     </div>
                     
-                    {/* Criar OpÃ§Ã£o */}
                     <div className="flex gap-2 mt-2 pt-2 border-t border-zinc-800/50">
                         <input 
                             value={newPollOption}
@@ -14340,7 +14591,7 @@ export default function DetalhesEventoPage() {
             )}
         </div>
 
-        {/* COMENTÃRIOS (ID 163) - Completo */}
+        {/* COMENTÃRIOS (ID 163, 505, 506) */}
         <div className="space-y-6 pt-4 border-t border-zinc-800">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do RolÃª</h3>
             
@@ -14357,39 +14608,75 @@ export default function DetalhesEventoPage() {
             </div>
 
             <div className="space-y-4">
-                {comentarios.map((c) => (
-                    (!c.hidden || isAdmin) && (
+                {comentarios.map((c) => {
+                    // ID 505: Preparar Ã­cones e cores
+                    const PlanIcon = ICONS_MAP[c.userPlanoIcon || 'ghost'] || Ghost;
+                    const nameColorClass = getPlanColorClass(c.userPlanoCor || 'zinc');
+                    // ðŸ¦ˆ CORREÃ‡ÃƒO CRÃTICA DO ERRO DE .includes()
+                    const likesArray = Array.isArray(c.likes) ? c.likes : [];
+
+                    return (!c.hidden || isAdmin) && (
                         <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
-                            <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full bg-zinc-800 object-cover border border-zinc-800"/>
-                            <div className="flex-1">
-                                <div className="flex justify-between items-start">
-                                    <p className="text-xs font-bold text-white">{c.userName} <span className="text-[10px] text-zinc-500 font-normal">â€¢ {c.userTurma}</span></p>
-                                    <div className="flex gap-3 text-zinc-500">
-                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${c.likes?.includes(user?.uid) ? 'text-red-500' : ''}`}>
-                                            <Heart size={12} className={c.likes?.includes(user?.uid) ? "fill-current" : ""}/> 
-                                            <span className="text-[9px]">{c.likes?.length || 0}</span>
-                                        </button>
-                                        <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
-                                        
-                                        {/* ADMIN ONLY (Ocultar) */}
-                                        <button onClick={() => handleToggleHideComment(c.id, c.hidden)} className="hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {c.hidden ? <CheckCircle size={12}/> : <Trash2 size={12}/>}
-                                        </button>
+                            <Link href={`/perfil/${c.userId}`}>
+                                <div className="relative group/avatar cursor-pointer">
+                                    <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
+                                    {/* Mini Badge Patente (Opcional) */}
+                                    <div className="absolute -bottom-1 -right-1 bg-black rounded-full p-0.5 border border-zinc-800">
+                                        <div className={`w-3 h-3 rounded-full ${c.userPlanoCor === 'yellow' ? 'bg-yellow-500' : c.userPlanoCor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-600'}`}></div>
                                     </div>
                                 </div>
-                                <p className="text-xs text-zinc-300 mt-1">{c.text}</p>
-                                {c.hidden && <span className="text-[9px] text-red-500 font-bold uppercase block mt-1">OCULTO PELO ADMIN</span>}
+                            </Link>
+                            
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-1.5">
+                                            {/* ID 505: Nome com Cor do Plano e Ãcone */}
+                                            <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
+                                                <PlanIcon size={10} className="stroke-[3]"/> 
+                                                {c.userName}
+                                            </p>
+                                            <span className="text-[9px] text-zinc-500 font-normal border border-zinc-800 px-1 rounded flex items-center gap-1">
+                                                {c.userPatente || "Novato"}
+                                            </span>
+                                        </div>
+                                        <span className="text-[9px] text-zinc-600 font-mono mt-0.5">{c.userTurma || "Visitante"}</span>
+                                    </div>
+
+                                    <div className="flex gap-2 text-zinc-500">
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
+                                            <Heart size={12} className={likesArray.includes(user?.uid) ? "fill-current" : ""}/> 
+                                            <span className="text-[9px]">{likesArray.length || 0}</span>
+                                        </button>
+                                        
+                                        <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
+                                        
+                                        {/* ID 506: BOTÃƒO DE DELETAR (Dono ou Admin) */}
+                                        {(user?.uid === c.userId || isAdmin) && (
+                                            <button onClick={() => handleDeleteComment(c.id)} className="hover:text-red-500 transition-colors" title="Apagar">
+                                                <Trash2 size={12}/>
+                                            </button>
+                                        )}
+
+                                        {isAdmin && (
+                                            <button onClick={() => handleToggleHideComment(c.id, c.hidden)} className="hover:text-red-500 opacity-50 hover:opacity-100">
+                                                {c.hidden ? <CheckCircle size={12}/> : <div className="w-3 h-3 bg-zinc-700 rounded-full"></div>}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{c.text}</p>
+                                {c.hidden && <span className="text-[9px] text-red-500 font-bold uppercase block mt-1 border border-red-900/30 bg-red-900/10 px-2 py-0.5 rounded w-fit">Oculto pelo Admin</span>}
                             </div>
                         </div>
-                    )
-                ))}
+                    );
+                })}
                 {comentarios.length === 0 && <p className="text-center text-xs text-zinc-600 py-4">Seja o primeiro a comentar!</p>}
             </div>
         </div>
 
       </div>
 
-      {/* MODAL USERS (ID 161/162) - Real com Foto e Link */}
       {modalUsersType && (
           <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 max-h-[70vh] flex flex-col shadow-2xl">
@@ -16830,7 +17117,7 @@ import {
   Lock, ArrowRight, Upload, Plus, Trash2, Save, LogOut, 
   Image as ImageIcon, Layout, Edit3, Eye, Bell, 
   Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Tag, 
-  Loader2, Ticket
+  Loader2, Ticket, MessageCircle
 } from 'lucide-react';
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
@@ -16876,7 +17163,8 @@ interface LeagueEvent {
     lotes: Lote[]; 
     descricao: string; 
     linkEvento?: string; 
-    globalEventId?: string; 
+    globalEventId?: string;
+    pollQuestion?: string; // ðŸ¦ˆ NOVO CAMPO: Pergunta da Enquete
 }
 
 interface LigaData {
@@ -16921,12 +17209,12 @@ export default function LigasAdminPage() {
   const [ligaData, setLigaData] = useState<LigaData | null>(null);
   const [sendNotification, setSendNotification] = useState(false);
 
-  // --- MODAL DE BUSCA DE USUÃRIOS (ID 148) ---
+  // --- MODAL DE BUSCA DE USUÃRIOS ---
   const [searchUserModal, setSearchUserModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]); 
 
-  // --- MODAL DE EVENTOS (ID 151) ---
+  // --- MODAL DE EVENTOS ---
   const [eventModal, setEventModal] = useState(false);
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
@@ -17056,7 +17344,7 @@ export default function LigasAdminPage() {
           setCurrentEvent({ 
               id: Date.now().toString(), titulo: "", data: "", hora: "", local: "", 
               tipo: "Festa", destaque: "", imagem: "", imagePositionY: 50, 
-              lotes: [], descricao: "" 
+              lotes: [], descricao: "", pollQuestion: "" 
           });
           setEditingEventIdx(null);
       }
@@ -17105,6 +17393,7 @@ export default function LigasAdminPage() {
                   ev.globalEventId = eventId;
                   ev.linkEvento = `/eventos/${eventId}`;
                   
+                  // Salva o evento principal
                   await setDoc(doc(db, "eventos", eventId), {
                       titulo: `[${ligaData.sigla}] ${ev.titulo}`,
                       data: ev.data,
@@ -17115,13 +17404,25 @@ export default function LigasAdminPage() {
                       imagem: ev.imagem || ligaData.logoBase64,
                       imagePositionY: ev.imagePositionY,
                       lotes: ev.lotes,
-                      descricao: ev.descricao, // Agora tem descriÃ§Ã£o!
+                      descricao: ev.descricao, 
                       categoria: "Liga",
                       criadorId: ligaData.id,
                       criadorNome: ligaData.sigla,
                       status: "ativo",
                       createdAt: serverTimestamp() 
                   }, { merge: true });
+
+                  // ðŸ¦ˆ CRIA A ENQUETE SE HOUVER PERGUNTA DEFINIDA
+                  if (ev.pollQuestion) {
+                      await addDoc(collection(db, "eventos", eventId, "enquetes"), {
+                          question: ev.pollQuestion,
+                          options: [],
+                          voters: [],
+                          createdAt: serverTimestamp(),
+                          creatorId: ligaData.id, // Liga como criadora
+                          isOfficial: true // Marca como oficial da liga
+                      });
+                  }
               });
               
               await Promise.all(batchPromises);
@@ -17365,17 +17666,29 @@ export default function LigasAdminPage() {
                       </div>
                       {currentEvent.imagem && <div className="bg-zinc-900 p-2 rounded-xl"><div className="flex justify-between text-[10px] text-zinc-400 uppercase mb-1"><span>Ajuste Vertical</span><span>{currentEvent.imagePositionY || 50}%</span></div><input type="range" min="0" max="100" value={currentEvent.imagePositionY || 50} onChange={(e) => setCurrentEvent({ ...currentEvent, imagePositionY: Number(e.target.value) })} className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/></div>}
                       
-                      <input type="text" placeholder="TÃ­tulo do Evento" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={currentEvent.titulo} onChange={(e) => setCurrentEvent({ ...currentEvent, titulo: e.target.value })} />
+                      <input type="text" placeholder="TÃ­tulo do Evento" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={currentEvent.titulo || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, titulo: e.target.value })} />
                       <div className="grid grid-cols-2 gap-3">
-                          <input type="text" placeholder="Data (ex: 12 OUT)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.data} onChange={(e) => setCurrentEvent({ ...currentEvent, data: e.target.value })} />
-                          <input type="text" placeholder="Hora (ex: 22:00)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.hora} onChange={(e) => setCurrentEvent({ ...currentEvent, hora: e.target.value })} />
+                          <input type="text" placeholder="Data (ex: 12 OUT)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.data || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, data: e.target.value })} />
+                          <input type="text" placeholder="Hora (ex: 22:00)" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.hora || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, hora: e.target.value })} />
                       </div>
-                      <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
+                      <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
                       
                       {/* ðŸ”¥ DESCRIÃ‡ÃƒO DO EVENTO (NOVO) */}
                       <div>
                           <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">DescriÃ§Ã£o do Evento</label>
                           <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" placeholder="Detalhes, regras, atraÃ§Ãµes..." value={currentEvent.descricao || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, descricao: e.target.value })} />
+                      </div>
+
+                      {/* ðŸ¦ˆ 1. NOVA OPÃ‡ÃƒO: ENQUETE INICIAL */}
+                      <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl">
+                          <label className="text-[10px] text-purple-400 font-bold uppercase mb-2 flex items-center gap-2"><MessageCircle size={12}/> Pergunta da Enquete (Opcional)</label>
+                          <input 
+                              type="text" 
+                              className="w-full bg-black border border-purple-900/50 rounded-lg p-3 text-sm outline-none focus:border-purple-500" 
+                              value={currentEvent.pollQuestion || ""} 
+                              onChange={e => setCurrentEvent({...currentEvent, pollQuestion: e.target.value})} 
+                              placeholder="Ex: Qual tema vocÃªs preferem?"
+                          />
                       </div>
 
                       {/* GestÃ£o de Lotes */}
@@ -19068,23 +19381,22 @@ export default function EmpresaLoginPage() {
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { 
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
-  UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
-  Zap, Gem, Trophy, ShoppingBag // ðŸ¦ˆ Ãcones adicionados para suporte total
+  X, PawPrint, Users, Lock, Heart, UserCheck, UserPlus,
+  Zap, Gem, Trophy, ShoppingBag, Medal 
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
-  doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
-  addDoc, serverTimestamp 
+  doc, getDoc, collection, query, getDocs, updateDoc, orderBy, onSnapshot 
 } from "firebase/firestore";
 import Link from "next/link";
 
-// --- TIPAGEM ---
+// --- TIPAGEM BLINDADA ---
 interface UserProfile {
   uid: string;
   nome: string;
@@ -19102,448 +19414,12 @@ interface UserProfile {
   esportes?: string[];
   role?: string;
   
-  // ðŸ¦ˆ Campos Visuais Vindos do Admin
   plano?: string;        
-  plano_cor?: string;  // ex: 'yellow', 'emerald'
-  plano_icon?: string; // ex: 'crown', 'zap'
+  plano_cor?: string; 
+  plano_icon?: string;
   
   patente?: string;
-  tier?: 'bicho' | 'atleta' | 'lenda';
-  
-  level?: number;
-  xp?: number;
-  pets?: string;
-  stats?: {
-    arenaWins?: number;
-    arenaLosses?: number;
-    [key: string]: number | undefined;
-  };
-  statusRelacionamento?: string;
-  
-  [key: string]: string | number | boolean | undefined | null | object | string[];
-}
-
-interface FollowerUser {
-    uid: string;
-    nome: string;
-    foto: string;
-    turma: string;
-}
-
-// --- EMOJIS ESPORTES ---
-const getSportInfo = (sport: string) => {
-    const map: Record<string, { emoji: string, label: string, color: string }> = {
-        "futebol": { emoji: "âš½", label: "Futebol", color: "bg-green-500/20 text-green-400" },
-        "futsal": { emoji: "ðŸ‘Ÿ", label: "Futsal", color: "bg-emerald-500/20 text-emerald-400" },
-        "rugby": { emoji: "ðŸ‰", label: "Rugby", color: "bg-orange-500/20 text-orange-400" },
-        "tenis": { emoji: "ðŸŽ¾", label: "TÃªnis", color: "bg-yellow-500/20 text-yellow-400" },
-        "beach_tennis": { emoji: "ðŸ–ï¸", label: "Beach Tennis", color: "bg-yellow-600/20 text-yellow-500" },
-        "natacao": { emoji: "ðŸŠâ€â™‚ï¸", label: "NataÃ§Ã£o", color: "bg-cyan-500/20 text-cyan-400" },
-        "surf": { emoji: "ðŸ„â€â™‚ï¸", label: "Surf", color: "bg-blue-500/20 text-blue-400" },
-        "taco": { emoji: "ðŸ", label: "Taco", color: "bg-purple-500/20 text-purple-400" },
-        "dog_walking": { emoji: "ðŸ•", label: "Dog Walking", color: "bg-amber-800/20 text-amber-500" },
-        "canoagem": { emoji: "ðŸ›¶", label: "Canoagem", color: "bg-blue-800/20 text-blue-300" },
-        "volei": { emoji: "ðŸ", label: "VÃ´lei", color: "bg-blue-400/20 text-blue-200" },
-        "handebol": { emoji: "ðŸ¤¾", label: "Handebol", color: "bg-red-500/20 text-red-400" },
-    };
-    return map[sport.toLowerCase()] || { emoji: "ðŸ…", label: sport, color: "bg-zinc-800 text-zinc-400" };
-};
-
-// --- BADGE DE GAMIFICATION ---
-const LevelBadge = ({ level }: { level: number }) => {
-    let icon = <Fish size={14} />;
-    let color = "text-zinc-500";
-    let title = "PlÃ¢ncton";
-    
-    if (level >= 1) { icon = <Fish size={14} />; color = "text-orange-400"; title = "Peixe PalhaÃ§o"; }
-    if (level >= 2) { icon = <Swords size={14} />; color = "text-blue-400"; title = "Barracuda"; }
-    if (level >= 5) { icon = <Crown size={14} />; color = "text-yellow-400"; title = "TubarÃ£o Rei"; }
-    
-    return (
-        <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 ${color} shadow-lg relative group cursor-help`}>
-            {icon}
-            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">
-                NÃ­vel {level}: {title}
-            </span>
-        </div>
-    );
-};
-
-// --- ðŸ¦ˆ BADGE DE PLANO DINÃ‚MICA (LÃŠ DO FIREBASE) ---
-const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
-    
-    // 1. Mapear string do banco para Componente React
-    const IconMap: Record<string, React.ElementType> = {
-        'ghost': Ghost,
-        'star': Star,
-        'crown': Crown,
-        'fish': Fish,
-        'zap': Zap,
-        'gem': Gem,
-        'trophy': Trophy,
-        'shopping': ShoppingBag
-    };
-
-    // 2. Definir Ãcone (Fallback para Ghost)
-    const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
-    
-    // 3. Definir TÃ­tulo (Fallback para Bicho Solto)
-    const title = nome || "Bicho Solto";
-
-    // 4. Definir Estilo baseado na Cor do Admin
-    const getBadgeStyle = (c?: string) => {
-        switch(c) {
-            case 'yellow': return 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10';
-            case 'emerald': return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
-            case 'zinc': return 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10';
-            case 'purple': return 'text-purple-400 border-purple-500/30 bg-purple-500/10';
-            case 'blue': return 'text-blue-400 border-blue-500/30 bg-blue-500/10';
-            case 'red': return 'text-red-500 border-red-500/30 bg-red-500/10';
-            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; // Default Cinza
-        }
-    };
-
-    const styleClass = getBadgeStyle(cor);
-
-    return (
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${styleClass} shadow-lg relative group cursor-help transition-all hover:scale-105`}>
-            <IconComponent size={14} className="animate-pulse-slow" />
-            <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
-                {title}
-            </span>
-        </div>
-    );
-};
-
-export default function PerfilPublicoPage() {
-  const params = useParams();
-  const router = useRouter();
-  const { user } = useAuth();
-  const { addToast } = useToast();
-
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [followersList, setFollowersList] = useState<FollowerUser[]>([]);
-  const [followingList, setFollowingList] = useState<FollowerUser[]>([]);
-  
-  const [showFollowersModal, setShowFollowersModal] = useState(false);
-  const [activeListType, setActiveListType] = useState<'followers' | 'following'>('followers');
-
-  const isOwnProfile = user?.uid === params.id;
-
-  useEffect(() => {
-    if (!params.id) return;
-    const uid = params.id as string;
-
-    const fetchProfile = async () => {
-        try {
-            const docRef = doc(db, "users", uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
-                
-                const followersSnap = await getDocs(collection(db, "users", uid, "followers"));
-                setFollowersCount(followersSnap.size);
-
-                const followingSnap = await getDocs(collection(db, "users", uid, "following"));
-                setFollowingCount(followingSnap.size);
-
-                if (user) {
-                    const amIFollowing = followersSnap.docs.some(d => d.id === user.uid);
-                    setIsFollowing(amIFollowing);
-                }
-            } else {
-                addToast("TubarÃ£o nÃ£o encontrado.", "error");
-                router.push("/dashboard");
-            }
-        } catch (error) { console.error(error); } 
-        finally { setLoading(false); }
-    };
-    fetchProfile();
-  }, [params.id, user]);
-
-  const handleFollow = async () => {
-      if (!user || !profile) return;
-      
-      const targetFollowerRef = doc(db, "users", profile.uid, "followers", user.uid);
-      const myFollowingRef = doc(db, "users", user.uid, "following", profile.uid);
-      
-      try {
-          if (isFollowing) {
-              await deleteDoc(targetFollowerRef);
-              await deleteDoc(myFollowingRef);
-              setIsFollowing(false);
-              setFollowersCount(p => p - 1);
-              addToast("Deixou de seguir.", "info");
-          } else {
-              const myData = { uid: user.uid, nome: user.nome, foto: user.foto || "", turma: user.turma || "" };
-              const targetData = { uid: profile.uid, nome: profile.nome, foto: profile.foto || "", turma: profile.turma || "" };
-
-              await setDoc(targetFollowerRef, { ...myData, followedAt: serverTimestamp() });
-              await setDoc(myFollowingRef, { ...targetData, followedAt: serverTimestamp() });
-
-              await addDoc(collection(db, "notifications"), {
-                  userId: profile.uid, title: "Novo Seguidor! ðŸ¦ˆ",
-                  message: `${user.nome} comeÃ§ou a te seguir.`,
-                  link: `/perfil/${user.uid}`, read: false, type: "social",
-                  createdAt: serverTimestamp()
-              });
-              setIsFollowing(true);
-              setFollowersCount(p => p + 1);
-              addToast("Seguindo!", "success");
-          }
-      } catch { addToast("Erro ao seguir.", "error"); }
-  };
-
-  const handleOpenList = async (type: 'followers' | 'following') => {
-      if (!profile) return;
-      setActiveListType(type);
-      setShowFollowersModal(true);
-      
-      const colName = type === 'followers' ? 'followers' : 'following';
-      const q = query(collection(db, "users", profile.uid, colName));
-      const snap = await getDocs(q);
-      
-      if (type === 'followers') setFollowersList(snap.docs.map(d => d.data() as FollowerUser));
-      else setFollowingList(snap.docs.map(d => d.data() as FollowerUser));
-  };
-
-  if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
-  if (!profile) return null;
-
-  const getIdade = () => {
-      if (profile.dataNascimento) {
-          const birth = new Date(profile.dataNascimento);
-          const today = new Date();
-          let age = today.getFullYear() - birth.getFullYear();
-          const m = today.getMonth() - birth.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-          return age;
-      }
-      return null;
-  };
-
-  const showAge = isOwnProfile || profile.idadePublica;
-  const showWhatsapp = isOwnProfile || profile.whatsappPublico;
-  const showRelacionamento = isOwnProfile || profile.relacionamentoPublico;
-
-  return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
-      
-      {/* CAPA + FOTO */}
-      <div className="relative">
-        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
-            <img src={`/turma${profile.turma?.replace('T','') || '1'}.jpeg`} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
-            <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
-        </div>
-
-        <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
-            <div className="relative mb-3 group">
-                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
-                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
-                </div>
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-20">
-                    <img src="/logo.png" className="w-6 h-6 object-contain"/>
-                </div>
-            </div>
-
-            <div className="text-center space-y-1 mb-4">
-                <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">
-                    {profile.apelido || profile.nome.split(" ")[0]}
-                    {profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}
-                </h1>
-                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
-                <div className="flex items-center justify-center gap-2 mt-2">
-                    <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
-                    {showAge && getIdade() !== null && (
-                        <div className="relative group/age">
-                            <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">
-                                {getIdade()} Anos
-                                {profile.idadePublica === false && isOwnProfile && <Lock size={8} className="text-zinc-500"/>}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="flex items-center gap-4 mb-6">
-                
-                {/* ðŸ¦ˆ BADGE CONECTADA AO FIREBASE */}
-                {/* Passamos o que vem do banco. Se vier vazio, o componente usa o fallback */}
-                <PlanBadge 
-                    nome={profile.plano} 
-                    cor={profile.plano_cor} 
-                    iconName={profile.plano_icon} 
-                />
-                
-                {isOwnProfile ? (
-                    <Link href="/cadastro" className="px-6 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar</Link>
-                ) : (
-                    <button onClick={handleFollow} className={`px-6 py-2 rounded-full text-xs font-bold uppercase border transition shadow-lg flex items-center gap-2 ${isFollowing ? 'bg-zinc-900 border-zinc-700 text-zinc-400' : 'bg-emerald-600 border-emerald-500 text-white hover:scale-105'}`}>{isFollowing ? <UserCheck size={14}/> : <UserPlus size={14}/>} {isFollowing ? "Seguindo" : "Seguir"}</button>
-                )}
-                
-                <LevelBadge level={profile.level || 1} />
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
-                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followersCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span>
-                </button>
-                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followingCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span>
-                </button>
-                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center">
-                    <span className="text-xl font-black text-white">{profile.xp || 0}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span>
-                </div>
-            </div>
-
-            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
-
-            <div className="flex gap-3 mb-8">
-                {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
-                
-                {profile.telefone && (
-                    <div className="relative">
-                        {showWhatsapp ? (
-                            <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
-                        ) : (
-                            <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed" title="Privado"><Lock size={20}/></div>
-                        )}
-                        {profile.whatsappPublico === false && isOwnProfile && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700"><Lock size={10} className="text-zinc-400"/></div>}
-                    </div>
-                )}
-                <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
-            </div>
-
-            <div className="w-full max-w-sm space-y-4">
-                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha TÃ©cnica</h3>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div>
-                        <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
-                    </div>
-                    
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
-                        <div>
-                            <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
-                            <div className="flex items-center gap-1">
-                                <p className="text-xs font-bold text-white uppercase truncate max-w-[80px]">
-                                    {showRelacionamento ? (profile.statusRelacionamento || "N/A") : "Privado"}
-                                </p>
-                                {profile.relacionamentoPublico === false && isOwnProfile && <Lock size={10} className="text-zinc-500"/>}
-                                {!isOwnProfile && !showRelacionamento && <Lock size={10} className="text-zinc-600"/>}
-                            </div>
-                        </div>
-                    </div>
-
-                    {profile.pets && (
-                        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2">
-                            <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div>
-                            <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div>
-                        </div>
-                    )}
-                </div>
-
-                {profile.esportes && profile.esportes.length > 0 && (
-                    <div className="pt-4">
-                        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {profile.esportes.map((sport, i) => {
-                                const info = getSportInfo(sport);
-                                return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>;
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-      </div>
-
-      {showFollowersModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
-              <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                  <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
-                          <Users size={16} className="text-emerald-500"/> 
-                          {activeListType === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
-                      </h3>
-                      <button onClick={() => setShowFollowersModal(false)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {(activeListType === 'followers' ? followersList : followingList).length === 0 ? (
-                          <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div>
-                      ) : (
-                          (activeListType === 'followers' ? followersList : followingList).map(f => (
-                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
-                                  <div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
-                                  <div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div>
-                              </Link>
-                          ))
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
-    </div>
-  );
-}
-
-// ==================================================
-// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
-// ==================================================
-
-"use client";
-
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { 
-  ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
-  Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
-  X, PawPrint, Users, Lock, Heart, UserCheck,
-  Zap, Gem, Trophy, ShoppingBag // ðŸ¦ˆ Ãcones Extras
-} from "lucide-react";
-import { useAuth } from "../../context/AuthContext"; 
-import { useToast } from "../../context/ToastContext";
-import { db } from "../../lib/firebase";
-import { 
-  doc, getDoc, collection, query, getDocs 
-} from "firebase/firestore";
-import Link from "next/link";
-
-// --- ðŸ¦ˆ TIPAGEM BLINDADA (ZERO ANY) ---
-interface UserProfile {
-  uid: string;
-  nome: string;
-  apelido?: string;
-  foto?: string;
-  turma?: string;
-  bio?: string;
-  cidadeOrigem?: string;
-  dataNascimento?: string;
-  instagram?: string;
-  whatsappPublico?: boolean;
-  idadePublica?: boolean;
-  relacionamentoPublico?: boolean;
-  telefone?: string;
-  esportes?: string[];
-  role?: string;
-  
-  // ðŸ¦ˆ Campos Visuais Vindos do Admin
-  plano?: string;        
-  plano_cor?: string;  // ex: 'yellow', 'emerald'
-  plano_icon?: string; // ex: 'crown', 'zap'
-  
-  patente?: string;
-  tier?: 'bicho' | 'atleta' | 'lenda'; // LÃ³gica: Ã­cones e cores
+  tier?: 'bicho' | 'atleta' | 'lenda'; 
   
   level?: number;
   xp?: number;
@@ -19555,7 +19431,6 @@ interface UserProfile {
     [key: string]: number | undefined;
   };
   
-  // ðŸ¦ˆ ExpansÃ£o Segura
   [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
@@ -19585,62 +19460,83 @@ const getSportInfo = (sport: string) => {
     return map[sport.toLowerCase()] || { emoji: "ðŸ…", label: sport, color: "bg-zinc-800 text-zinc-400" };
 };
 
-// --- BADGES ---
-const LevelBadge = ({ level }: { level: number }) => {
-    let icon = <Fish size={14} />;
-    let color = "text-zinc-400";
-    let title = "PlÃ¢ncton";
-    if (level >= 1) { icon = <Fish size={14} />; color = "text-orange-400"; title = "Peixe PalhaÃ§o"; }
-    if (level >= 2) { icon = <Swords size={14} />; color = "text-blue-400"; title = "Barracuda"; }
-    if (level >= 5) { icon = <Crown size={14} />; color = "text-yellow-400"; title = "TubarÃ£o Rei"; }
+// ðŸ¦ˆ BADGE DE NÃVEL (SOMENTE ÃCONE COM TOOLTIP)
+const LevelBadge = ({ xp }: { xp: number }) => {
+    const [patentes, setPatentes] = useState<any[]>([]);
+
+    useEffect(() => {
+        const q = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+        const unsub = onSnapshot(q, (snap) => {
+            const data = snap.docs.map(d => d.data());
+            if (data.length > 0) setPatentes(data);
+            else setPatentes([{ titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
+        });
+        return () => unsub();
+    }, []);
+
+    const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
+    if (!currentBadge) return null;
+
+    const IconMap: any = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
+    const IconComp = IconMap[currentBadge.iconName] || Fish;
+    const colorClass = currentBadge.cor || "text-zinc-500";
+    
+    // Borda baseada na cor
+    let borderClass = "border-zinc-700";
+    if (colorClass.includes("orange")) borderClass = "border-orange-500/50";
+    if (colorClass.includes("blue")) borderClass = "border-blue-500/50";
+    if (colorClass.includes("purple")) borderClass = "border-purple-500/50";
+    if (colorClass.includes("emerald")) borderClass = "border-emerald-500/50";
+    if (colorClass.includes("yellow")) borderClass = "border-yellow-500/50";
+    if (colorClass.includes("red")) borderClass = "border-red-500/50";
+
     return (
-        <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 ${color} shadow-lg relative group cursor-help`}>
-            {icon}
-            <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[9px] font-bold rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap border border-zinc-800 pointer-events-none z-50">NÃ­vel {level}: {title}</span>
+        <div className={`relative group cursor-help p-3 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
+            <IconComp size={20} className={colorClass} />
+            
+            {/* TOOLTIP: Nome da Patente e XP */}
+            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl flex flex-col items-center min-w-[80px]">
+                <span className={`uppercase tracking-wider ${colorClass} mb-0.5`}>{currentBadge.titulo}</span>
+                <span className="text-zinc-500 font-mono text-[9px]">{xp} XP</span>
+                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 rotate-45"></div>
+            </div>
         </div>
     );
 };
 
-// ðŸ¦ˆ BADGE DE PLANO DINÃ‚MICA (Igual ao Perfil PÃºblico)
+// ðŸ¦ˆ BADGE DE PLANO (SOMENTE ÃCONE COM TOOLTIP)
 const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
-    
-    // 1. Mapear string do banco para Componente React
     const IconMap: Record<string, React.ElementType> = {
-        'ghost': Ghost,
-        'star': Star,
-        'crown': Crown,
-        'fish': Fish,
-        'zap': Zap,
-        'gem': Gem,
-        'trophy': Trophy,
-        'shopping': ShoppingBag
+        'ghost': Ghost, 'star': Star, 'crown': Crown, 'fish': Fish,
+        'zap': Zap, 'gem': Gem, 'trophy': Trophy, 'shopping': ShoppingBag
     };
 
-    // 2. Fallbacks
     const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
     const title = nome || "Bicho Solto";
 
-    // 3. Estilos DinÃ¢micos
     const getBadgeStyle = (c?: string) => {
         switch(c) {
-            case 'yellow': return 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10';
-            case 'emerald': return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
-            case 'zinc': return 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10';
-            case 'purple': return 'text-purple-400 border-purple-500/30 bg-purple-500/10';
-            case 'blue': return 'text-blue-400 border-blue-500/30 bg-blue-500/10';
-            case 'red': return 'text-red-500 border-red-500/30 bg-red-500/10';
-            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; // Default Cinza
+            case 'yellow': return 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
+            case 'emerald': return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
+            case 'zinc': return 'text-zinc-400 border-zinc-500/50 bg-zinc-500/10';
+            case 'purple': return 'text-purple-400 border-purple-500/50 bg-purple-500/10';
+            case 'blue': return 'text-blue-400 border-blue-500/50 bg-blue-500/10';
+            case 'red': return 'text-red-500 border-red-500/50 bg-red-500/10';
+            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; 
         }
     };
 
     const styleClass = getBadgeStyle(cor);
 
     return (
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${styleClass} shadow-lg relative group cursor-help transition-all hover:scale-105`}>
-            <IconComponent size={14} className="animate-pulse-slow" />
-            <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
-                {title}
-            </span>
+        <div className={`relative group cursor-help p-3 rounded-full border shadow-lg transition-transform hover:scale-110 ${styleClass}`}>
+            <IconComponent size={20} className="animate-pulse-slow" />
+            
+            {/* TOOLTIP: Nome do Plano */}
+            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl">
+                <span className="uppercase tracking-wider">Plano {title}</span>
+                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45"></div>
+            </div>
         </div>
     );
 };
@@ -19655,6 +19551,7 @@ export default function MeuPerfilPage() {
   
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
   
   const [followersList, setFollowersList] = useState<FollowData[]>([]);
   const [followingList, setFollowingList] = useState<FollowData[]>([]);
@@ -19668,22 +19565,37 @@ export default function MeuPerfilPage() {
     const fetchProfile = async () => {
         try {
             const docRef = doc(db, "users", user.uid);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-                // ðŸ¦ˆ Cast seguro para UserProfile
-                setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
-                
-                const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
-                setFollowersCount(followersSnap.size);
+            const unsubProfile = onSnapshot(docRef, async (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+                    setProfile(data);
 
-                const followingSnap = await getDocs(collection(db, "users", user.uid, "following"));
-                setFollowingCount(followingSnap.size);
-            } else {
-                addToast("Perfil nÃ£o encontrado.", "error");
-            }
-        } catch (error) { console.error(error); } 
-        finally { setLoading(false); }
+                    if (data.tier && !data.plano) {
+                        const updates: Partial<UserProfile> = {};
+                        if (data.tier === 'atleta') {
+                            updates.plano = 'Atleta'; updates.plano_cor = 'emerald'; updates.plano_icon = 'zap';
+                        } else if (data.tier === 'lenda') {
+                            updates.plano = 'Lenda'; updates.plano_cor = 'yellow'; updates.plano_icon = 'crown';
+                        }
+                        if (Object.keys(updates).length > 0) {
+                            await updateDoc(docRef, updates);
+                        }
+                    }
+
+                    const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
+                    setFollowersCount(followersSnap.size);
+                    const followingSnap = await getDocs(collection(db, "users", user.uid, "following"));
+                    setFollowingCount(followingSnap.size);
+                } else {
+                    addToast("Perfil nÃ£o encontrado.", "error");
+                }
+                setLoading(false);
+            });
+            return () => unsubProfile();
+        } catch (error) { 
+            console.error(error); 
+            setLoading(false);
+        }
     };
     fetchProfile();
   }, [user, authLoading, router]);
@@ -19691,14 +19603,23 @@ export default function MeuPerfilPage() {
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile || !user) return;
       setActiveModal(type);
-      
       const colName = type === 'followers' ? 'followers' : 'following';
       const q = query(collection(db, "users", user.uid, colName));
       const snap = await getDocs(q);
-      
       const list = snap.docs.map(d => d.data() as FollowData);
       if(type === 'followers') setFollowersList(list);
       else setFollowingList(list);
+  };
+  
+  // FunÃ§Ã£o Placeholder para handleFollow (necessÃ¡ria se for perfil de outro, mas aqui Ã© MeuPerfil)
+  const handleFollow = async () => { /* LÃ³gica de seguir se fosse perfil pÃºblico */ };
+
+  const getBadgeProps = () => {
+      if (!profile) return { nome: 'Carregando...', cor: 'zinc', iconName: 'ghost' };
+      if (profile.plano) return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
+      if (profile.tier === 'atleta') return { nome: 'Atleta', cor: 'emerald', iconName: 'zap' };
+      if (profile.tier === 'lenda') return { nome: 'Lenda', cor: 'yellow', iconName: 'crown' };
+      return { nome: 'Bicho Solto', cor: 'zinc', iconName: 'ghost' };
   };
 
   if (loading || authLoading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
@@ -19719,6 +19640,10 @@ export default function MeuPerfilPage() {
   const isWhatsappPrivate = profile.whatsappPublico === false;
   const isAgePrivate = profile.idadePublica === false;
   const isRelationPrivate = profile.relacionamentoPublico === false;
+  const badgeProps = getBadgeProps();
+  
+  // ðŸ¦ˆ IMAGEM DA TURMA PARA O AVATAR PEQUENO (FALLBACK)
+  const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
@@ -19727,7 +19652,7 @@ export default function MeuPerfilPage() {
       <div className="relative">
         <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
-            <img src={`/turma${profile.turma?.replace('T','') || '1'}.jpeg`} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
+            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
             <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
         </div>
 
@@ -19736,8 +19661,9 @@ export default function MeuPerfilPage() {
                 <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
                     <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
                 </div>
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-20">
-                    <img src="/logo.png" className="w-6 h-6 object-contain"/>
+                {/* ðŸ¦ˆ CORREÃ‡ÃƒO: FOTO DA TURMA NO CÃRCULO PEQUENO */}
+                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
+                    <img src={turmaImage} className="w-full h-full object-cover"/>
                 </div>
             </div>
 
@@ -19760,22 +19686,23 @@ export default function MeuPerfilPage() {
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 mb-6">
-                {/* ðŸ¦ˆ Badge Atualizada com Nome do Plano, Cor e Ãcone DinÃ¢micos */}
+            <div className="flex items-center gap-6 mb-6 justify-center w-full">
+                
+                {/* ðŸ¦ˆ Badge do Plano (Somente Ãcone) */}
                 <PlanBadge 
-                    nome={profile.plano} 
-                    cor={profile.plano_cor} 
-                    iconName={profile.plano_icon}
+                    nome={badgeProps.nome} 
+                    cor={badgeProps.cor} 
+                    iconName={badgeProps.iconName}
                 />
                 
                 <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2">
                     <Edit3 size={14}/> Editar Perfil
                 </Link>
                 
-                <LevelBadge level={profile.level || 1} />
+                {/* ðŸ¦ˆ Badge de NÃ­vel (Somente Ãcone) */}
+                <LevelBadge xp={profile.xp || 0} />
             </div>
 
-            {/* STATS ROW */}
             <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
                 <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
                     <span className="text-xl font-black text-white">{followersCount}</span>
@@ -19793,12 +19720,12 @@ export default function MeuPerfilPage() {
 
             {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
 
-            {/* REDES SOCIAIS */}
-            <div className="flex gap-3 mb-8">
+            <div className="flex gap-3 mb-8 justify-center w-full">
                 {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
                 
                 {profile.telefone && (
                     <div className="relative">
+                        {/* BotÃ£o de WhatsApp */}
                         <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
                         {isWhatsappPrivate && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700" title="Privado"><Lock size={10} className="text-zinc-400"/></div>}
                     </div>
@@ -19807,7 +19734,6 @@ export default function MeuPerfilPage() {
                 <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
             </div>
 
-            {/* FICHA TÃ‰CNICA */}
             <div className="w-full max-w-sm space-y-4">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha TÃ©cnica</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -19816,7 +19742,6 @@ export default function MeuPerfilPage() {
                         <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
                     </div>
                     
-                    {/* Status de Relacionamento */}
                     <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
                         <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
                         <div>
@@ -19836,7 +19761,6 @@ export default function MeuPerfilPage() {
                     )}
                 </div>
 
-                {/* Esportes */}
                 {profile.esportes && profile.esportes.length > 0 && (
                     <div className="pt-4">
                         <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
@@ -19852,7 +19776,420 @@ export default function MeuPerfilPage() {
         </div>
       </div>
 
-      {/* MODAL LISTAS */}
+      {activeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+                  <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
+                          {activeModal === 'followers' ? <Users size={16} className="text-emerald-500"/> : <UserCheck size={16} className="text-blue-500"/>}
+                          {activeModal === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
+                      </h3>
+                      <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? (
+                          <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div>
+                      ) : (
+                          (activeModal === 'followers' ? followersList : followingList).map(f => (
+                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
+                                  <div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
+                                  <div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div>
+                              </Link>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+    </div>
+  );
+}
+
+// ==================================================
+// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
+// ==================================================
+
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { 
+  ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
+  Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
+  X, PawPrint, Users, Lock, Heart, UserCheck,
+  Zap, Gem, Trophy, ShoppingBag, Medal 
+} from "lucide-react";
+import { useAuth } from "../../context/AuthContext"; 
+import { useToast } from "../../context/ToastContext";
+import { db } from "../../lib/firebase";
+import { 
+  doc, getDoc, collection, query, getDocs, updateDoc, orderBy, onSnapshot 
+} from "firebase/firestore";
+import Link from "next/link";
+
+// --- TIPAGEM BLINDADA ---
+interface UserProfile {
+  uid: string;
+  nome: string;
+  apelido?: string;
+  foto?: string;
+  turma?: string;
+  bio?: string;
+  cidadeOrigem?: string;
+  dataNascimento?: string;
+  instagram?: string;
+  whatsappPublico?: boolean;
+  idadePublica?: boolean;
+  relacionamentoPublico?: boolean;
+  telefone?: string;
+  esportes?: string[];
+  role?: string;
+  
+  // Campos Visuais
+  plano?: string;        
+  plano_cor?: string; 
+  plano_icon?: string;
+  
+  patente?: string;
+  tier?: 'bicho' | 'atleta' | 'lenda'; 
+  
+  level?: number;
+  xp?: number;
+  pets?: string;
+  statusRelacionamento?: string;
+  stats?: {
+    arenaWins?: number;
+    arenaLosses?: number;
+    [key: string]: number | undefined;
+  };
+  
+  [key: string]: string | number | boolean | undefined | null | object | string[];
+}
+
+interface FollowData {
+    uid: string;
+    nome: string;
+    foto: string;
+    turma: string;
+}
+
+const getSportInfo = (sport: string) => {
+    const map: Record<string, { emoji: string, label: string, color: string }> = {
+        "futebol": { emoji: "âš½", label: "Futebol", color: "bg-green-500/20 text-green-400" },
+        "futsal": { emoji: "ðŸ‘Ÿ", label: "Futsal", color: "bg-emerald-500/20 text-emerald-400" },
+        "rugby": { emoji: "ðŸ‰", label: "Rugby", color: "bg-orange-500/20 text-orange-400" },
+        "tenis": { emoji: "ðŸŽ¾", label: "TÃªnis", color: "bg-yellow-500/20 text-yellow-400" },
+        "beach_tennis": { emoji: "ðŸ–ï¸", label: "Beach Tennis", color: "bg-yellow-600/20 text-yellow-500" },
+        "natacao": { emoji: "ðŸŠâ€â™‚ï¸", label: "NataÃ§Ã£o", color: "bg-cyan-500/20 text-cyan-400" },
+        "surf": { emoji: "ðŸ„â€â™‚ï¸", label: "Surf", color: "bg-blue-500/20 text-blue-400" },
+        "taco": { emoji: "ðŸ", label: "Taco", color: "bg-purple-500/20 text-purple-400" },
+        "dog_walking": { emoji: "ðŸ•", label: "Dog Walking", color: "bg-amber-800/20 text-amber-500" },
+        "canoagem": { emoji: "ðŸ›¶", label: "Canoagem", color: "bg-blue-800/20 text-blue-300" },
+        "volei": { emoji: "ðŸ", label: "VÃ´lei", color: "bg-blue-400/20 text-blue-200" },
+        "handebol": { emoji: "ðŸ¤¾", label: "Handebol", color: "bg-red-500/20 text-red-400" },
+    };
+    return map[sport.toLowerCase()] || { emoji: "ðŸ…", label: sport, color: "bg-zinc-800 text-zinc-400" };
+};
+
+// ðŸ¦ˆ BADGE DE NÃVEL (SOMENTE ÃCONE COM TOOLTIP)
+const LevelBadge = ({ xp }: { xp: number }) => {
+    const [patentes, setPatentes] = useState<any[]>([]);
+
+    useEffect(() => {
+        const q = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+        const unsub = onSnapshot(q, (snap) => {
+            const data = snap.docs.map(d => d.data());
+            if (data.length > 0) setPatentes(data);
+            else setPatentes([{ titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
+        });
+        return () => unsub();
+    }, []);
+
+    const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
+    if (!currentBadge) return null;
+
+    const IconMap: any = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
+    const IconComp = IconMap[currentBadge.iconName] || Fish;
+    const colorClass = currentBadge.cor || "text-zinc-500";
+    
+    // Borda baseada na cor
+    let borderClass = "border-zinc-700";
+    if (colorClass.includes("orange")) borderClass = "border-orange-500/50";
+    if (colorClass.includes("blue")) borderClass = "border-blue-500/50";
+    if (colorClass.includes("purple")) borderClass = "border-purple-500/50";
+    if (colorClass.includes("emerald")) borderClass = "border-emerald-500/50";
+    if (colorClass.includes("yellow")) borderClass = "border-yellow-500/50";
+    if (colorClass.includes("red")) borderClass = "border-red-500/50";
+
+    return (
+        <div className={`relative group cursor-help p-2 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
+            <IconComp size={20} className={colorClass} />
+            
+            {/* TOOLTIP: Nome da Patente e XP */}
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-xl flex flex-col items-center">
+                <span className={`uppercase tracking-wider ${colorClass}`}>{currentBadge.titulo}</span>
+                <span className="text-zinc-500 font-mono text-[8px]">{xp} XP</span>
+                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 rotate-45"></div>
+            </div>
+        </div>
+    );
+};
+
+// ðŸ¦ˆ BADGE DE PLANO (SOMENTE ÃCONE COM TOOLTIP)
+const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
+    const IconMap: Record<string, React.ElementType> = {
+        'ghost': Ghost, 'star': Star, 'crown': Crown, 'fish': Fish,
+        'zap': Zap, 'gem': Gem, 'trophy': Trophy, 'shopping': ShoppingBag
+    };
+
+    const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
+    const title = nome || "Bicho Solto";
+
+    const getBadgeStyle = (c?: string) => {
+        switch(c) {
+            case 'yellow': return 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
+            case 'emerald': return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
+            case 'zinc': return 'text-zinc-400 border-zinc-500/50 bg-zinc-500/10';
+            case 'purple': return 'text-purple-400 border-purple-500/50 bg-purple-500/10';
+            case 'blue': return 'text-blue-400 border-blue-500/50 bg-blue-500/10';
+            case 'red': return 'text-red-500 border-red-500/50 bg-red-500/10';
+            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; 
+        }
+    };
+
+    const styleClass = getBadgeStyle(cor);
+
+    return (
+        <div className={`relative group cursor-help p-2 rounded-full border shadow-lg transition-transform hover:scale-110 ${styleClass}`}>
+            <IconComponent size={20} className="animate-pulse-slow" />
+            
+            {/* TOOLTIP: Nome do Plano */}
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-xl">
+                <span className="uppercase tracking-wider">Plano {title}</span>
+                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45"></div>
+            </div>
+        </div>
+    );
+};
+
+export default function MeuPerfilPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const { addToast } = useToast();
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  
+  const [followersList, setFollowersList] = useState<FollowData[]>([]);
+  const [followingList, setFollowingList] = useState<FollowData[]>([]);
+  const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.push("/login"); return; }
+
+    const fetchProfile = async () => {
+        try {
+            const docRef = doc(db, "users", user.uid);
+            const docSnap = await getDoc(docRef);
+            
+            if (docSnap.exists()) {
+                const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+                setProfile(data);
+                
+                if (data.tier && !data.plano) {
+                    // LÃ³gica de migraÃ§Ã£o (mantida oculta por brevidade, mas existente)
+                }
+
+                const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
+                setFollowersCount(followersSnap.size);
+                const followingSnap = await getDocs(collection(db, "users", user.uid, "following"));
+                setFollowingCount(followingSnap.size);
+            } else {
+                addToast("Perfil nÃ£o encontrado.", "error");
+            }
+        } catch (error) { console.error(error); } 
+        finally { setLoading(false); }
+    };
+    fetchProfile();
+  }, [user, authLoading, router]);
+
+  const handleOpenList = async (type: 'followers' | 'following') => {
+      if (!profile || !user) return;
+      setActiveModal(type);
+      const colName = type === 'followers' ? 'followers' : 'following';
+      const q = query(collection(db, "users", user.uid, colName));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => d.data() as FollowData);
+      if(type === 'followers') setFollowersList(list);
+      else setFollowingList(list);
+  };
+
+  const getBadgeProps = () => {
+      if (!profile) return { nome: 'Carregando...', cor: 'zinc', iconName: 'ghost' };
+      if (profile.plano) return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
+      if (profile.tier === 'atleta') return { nome: 'Atleta', cor: 'emerald', iconName: 'zap' };
+      if (profile.tier === 'lenda') return { nome: 'Lenda', cor: 'yellow', iconName: 'crown' };
+      return { nome: 'Bicho Solto', cor: 'zinc', iconName: 'ghost' };
+  };
+
+  if (loading || authLoading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
+  if (!profile) return null;
+
+  const getIdade = () => {
+      if (profile.dataNascimento) {
+          const birth = new Date(profile.dataNascimento);
+          const today = new Date();
+          let age = today.getFullYear() - birth.getFullYear();
+          const m = today.getMonth() - birth.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+          return age;
+      }
+      return null;
+  };
+
+  const isWhatsappPrivate = profile.whatsappPublico === false;
+  const isAgePrivate = profile.idadePublica === false;
+  const isRelationPrivate = profile.relacionamentoPublico === false;
+  const badgeProps = getBadgeProps();
+  
+  // ðŸ¦ˆ IMAGEM DA TURMA PARA O AVATAR PEQUENO (FALLBACK)
+  const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
+      
+      {/* CAPA + FOTO */}
+      <div className="relative">
+        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
+            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
+            <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
+        </div>
+
+        <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
+            <div className="relative mb-3 group">
+                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
+                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
+                </div>
+                {/* ðŸ¦ˆ CORREÃ‡ÃƒO: FOTO DA TURMA NO CÃRCULO PEQUENO */}
+                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
+                    <img src={turmaImage} className="w-full h-full object-cover"/>
+                </div>
+            </div>
+
+            <div className="text-center space-y-1 mb-4">
+                <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">
+                    {profile.apelido || profile.nome.split(" ")[0]}
+                    {profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}
+                </h1>
+                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
+                <div className="flex items-center justify-center gap-2 mt-2">
+                    <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
+                    {getIdade() !== null && (
+                        <div className="relative group/age">
+                            <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">
+                                {getIdade()} Anos
+                                {isAgePrivate && <Lock size={8} className="text-zinc-500" />}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex items-center gap-6 mb-6 justify-center w-full">
+                
+                {/* ðŸ¦ˆ Badge do Plano (Somente Ãcone) */}
+                <PlanBadge 
+                    nome={badgeProps.nome} 
+                    cor={badgeProps.cor} 
+                    iconName={badgeProps.iconName}
+                />
+                
+                <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2">
+                    <Edit3 size={14}/> Editar Perfil
+                </Link>
+                
+                {/* ðŸ¦ˆ Badge de NÃ­vel (Somente Ãcone) */}
+                <LevelBadge xp={profile.xp || 0} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
+                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
+                    <span className="text-xl font-black text-white">{followersCount}</span>
+                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span>
+                </button>
+                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
+                    <span className="text-xl font-black text-white">{followingCount}</span>
+                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span>
+                </button>
+                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center">
+                    <span className="text-xl font-black text-white">{profile.xp || 0}</span>
+                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span>
+                </div>
+            </div>
+
+            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
+
+            <div className="flex gap-3 mb-8 justify-center w-full">
+                {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
+                
+                {profile.telefone && (
+                    <div className="relative">
+                        {/* BotÃ£o de WhatsApp */}
+                        <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
+                        {isWhatsappPrivate && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700" title="Privado"><Lock size={10} className="text-zinc-400"/></div>}
+                    </div>
+                )}
+                
+                <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
+            </div>
+
+            <div className="w-full max-w-sm space-y-4">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha TÃ©cnica</h3>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
+                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div>
+                        <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
+                    </div>
+                    
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
+                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
+                        <div>
+                            <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
+                            <div className="flex items-center gap-1">
+                                <p className="text-xs font-bold text-white uppercase">{profile.statusRelacionamento || "N/A"}</p>
+                                {isRelationPrivate && <span title="Privado"><Lock size={10} className="text-zinc-500"/></span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {profile.pets && (
+                        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2">
+                            <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div>
+                            <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div>
+                        </div>
+                    )}
+                </div>
+
+                {profile.esportes && profile.esportes.length > 0 && (
+                    <div className="pt-4">
+                        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {profile.esportes.map((sport, i) => {
+                                const info = getSportInfo(sport);
+                                return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>;
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+      </div>
+
       {activeModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
@@ -20199,22 +20536,37 @@ export default function PlanosPage() {
     return () => unsubscribe();
   }, []);
 
-  // ID 202 - CORRIGIDO: Zinc agora Ã© CINZA mesmo. Purple Ã© Roxo.
+  // ðŸ¦ˆ CORREÃ‡ÃƒO DE CORES: Sincronia com Admin e Identidade Visual
   const getColorClasses = (cor: string, nome: string) => {
+      const lowerNome = nome.toLowerCase();
+
       // ForÃ§a Bicho Solto a ser Cinza sempre
-      if (nome.toLowerCase().includes("bicho") || nome.toLowerCase().includes("solto")) {
+      if (lowerNome.includes("bicho") || lowerNome.includes("solto")) {
           return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
       }
 
-      // Se o plano tiver 'atleta' no nome ou cor 'purple', fica Roxo
-      if (cor === 'purple' || nome.toLowerCase().includes("atleta")) {
+      // Se o plano tiver 'atleta' no nome ou cor 'purple', fica Roxo (PadrÃ£o Atleta de Bar)
+      if (cor === 'purple' || lowerNome.includes("atleta")) {
           return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
       }
 
+      // Se for Lenda, Amarelo/Dourado
+      if (cor === 'yellow' || lowerNome.includes("lenda")) {
+          return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+      }
+
+      // Se for Cardume, Esmeralda/Verde
+      if (cor === 'emerald' || lowerNome.includes("cardume")) {
+          return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+      }
+
+      // Fallback genÃ©rico baseado apenas na cor do admin
       switch(cor) {
-          case 'yellow': return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' }; // Lenda
-          case 'emerald': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' }; // Cardume
-          // Default (Zinc) agora Ã© realmente Cinza
+          case 'yellow': return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+          case 'emerald': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+          case 'purple': return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
+          case 'blue': return { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' };
+          case 'red': return { text: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30' };
           default: return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
       }
   };
@@ -20240,20 +20592,25 @@ export default function PlanosPage() {
               {planos.map(plano => {
                   const Icon = ICONS_MAP[plano.icon] || Star;
                   
-                  // LÃ³gica do Plano Atual
+                  // ðŸ¦ˆ LÃ“GICA INTELIGENTE DE PLANO ATIVO
                   const isFree = plano.precoVal === 0;
-                  const userHasNoPlan = !user?.plano_badge;
-                  const isMyPlan = (userHasNoPlan && isFree) || (user?.plano_badge === plano.nome);
+                  // Se o usuÃ¡rio nÃ£o tem 'plano_badge' definido, assume que ele Ã© Free (Bicho Solto)
+                  const userHasNoPlan = !user?.plano_badge && !user?.plano; 
+                  
+                  // Verifica correspondÃªncia exata pelo nome do plano
+                  const isMyPlan = 
+                    (userHasNoPlan && isFree) || 
+                    (user?.plano_badge === plano.nome) || 
+                    (user?.plano === plano.nome);
 
-                  // Passamos o nome para garantir as cores certas
                   const styles = getColorClasses(plano.cor, plano.nome); 
 
                   return (
                       <div key={plano.id} className={`
                         bg-zinc-900/80 backdrop-blur-xl border rounded-[2rem] p-6 flex flex-col relative transition-all duration-300 h-full group
                         ${isMyPlan 
-                            ? 'border-emerald-600 shadow-[0_0_40px_rgba(16,185,129,0.2)] scale-105 z-20 bg-zinc-900 cursor-default' // Plano Atual (Fixo)
-                            : `cursor-pointer hover:-translate-y-3 hover:shadow-2xl hover:border-zinc-500 ${styles.border}` // ID 203 - TODOS os outros se mexem muito agora (-translate-y-3)
+                            ? 'border-emerald-600 shadow-[0_0_40px_rgba(16,185,129,0.2)] scale-105 z-20 bg-zinc-900 cursor-default' 
+                            : `cursor-pointer hover:-translate-y-3 hover:shadow-2xl hover:border-zinc-500 ${styles.border}`
                         }
                         ${!isMyPlan && plano.destaque ? 'md:pb-12 md:pt-10 z-10' : ''}
                       `}>

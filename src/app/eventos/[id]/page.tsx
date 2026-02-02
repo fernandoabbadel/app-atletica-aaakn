@@ -6,7 +6,8 @@ import {
   Users, CheckCircle, HelpCircle, XCircle, Lock, 
   Loader2, Crown, MessageCircle, AlertTriangle, 
   Heart, Send, Plus, Trash2, ShieldAlert, Star,
-  Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords
+  Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords,
+  ChevronLeft, ChevronRight, Flag
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -18,7 +19,7 @@ import {
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// --- MAPEAMENTO DE ÍCONES (IGUAL AO PLANOS) ---
+// --- MAPEAMENTO DE ÍCONES ---
 const ICONS_MAP: any = {
   ghost: Ghost,
   star: Star,
@@ -30,6 +31,16 @@ const ICONS_MAP: any = {
   fish: Fish
 };
 
+// Cores dos Planos
+const PLAN_COLORS: any = {
+    yellow: "text-yellow-400",
+    emerald: "text-emerald-400",
+    purple: "text-purple-400",
+    blue: "text-blue-400",
+    red: "text-red-500",
+    zinc: "text-zinc-400"
+};
+
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -37,7 +48,7 @@ const TURMA_IMAGENS: Record<string, string> = {
     "Geral": "https://github.com/shadcn.png"
 };
 
-// --- HELPER: PARSER DE DATA (PT-BR -> JS) ---
+// --- HELPER: PARSER DE DATA ---
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
         const months: Record<string, number> = {
@@ -60,7 +71,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         
         let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
         
-        if (eventDate < now) eventDate.setFullYear(year + 1);
+        if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) eventDate.setFullYear(year + 1);
         
         return eventDate;
     } catch (e) {
@@ -68,56 +79,87 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     }
 };
 
-// --- COMPONENTE CONTADOR ---
+// --- CONTADOR VISUAL COOL ---
 function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
-  const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
+  const [timeLeft, setTimeLeft] = useState<{d: number, h: number, m: number, s: number} | null>(null);
+  const [status, setStatus] = useState("CALCULANDO...");
 
   useEffect(() => {
     const tick = () => {
         const target = parseEventDate(dateStr, timeStr);
         if (!target) {
-            setTimeLeft("DATA INDEFINIDA");
+            setStatus("DATA INDEFINIDA");
             return;
         }
         const now = new Date();
         const diff = target.getTime() - now.getTime();
 
         if (diff <= 0) {
-            setTimeLeft("É HOJE!");
+            setStatus("ESTÁ ROLANDO!");
+            setTimeLeft(null);
             return;
         }
 
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-        if (days > 0) setTimeLeft(`FALTAM ${days}D ${hours}H`);
-        else setTimeLeft(`FALTAM ${hours}H ${minutes}M`);
+        setTimeLeft({ d: days, h: hours, m: minutes, s: seconds });
+        setStatus("");
     };
     
     tick();
-    const interval = setInterval(tick, 60000);
+    const interval = setInterval(tick, 1000); 
     return () => clearInterval(interval);
   }, [dateStr, timeStr]);
 
+  if (status) {
+      return (
+        <div className="bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.4)] animate-pulse">
+            <span className="text-sm font-black text-emerald-400 tracking-[0.2em]">{status}</span>
+        </div>
+      );
+  }
+
   return (
-    <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse">
-        <Clock size={12} className="text-emerald-500"/>
-        <span className="text-[10px] font-black text-white tracking-widest">{timeLeft}</span>
+    <div className="flex gap-3 bg-black/40 backdrop-blur-sm p-2 rounded-2xl border border-white/10 shadow-2xl">
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
+            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.d || 0).padStart(2, '0')}</span>
+            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Dias</span>
+        </div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
+            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.h || 0).padStart(2, '0')}</span>
+            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Hrs</span>
+        </div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
+            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.m || 0).padStart(2, '0')}</span>
+            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Min</span>
+        </div>
+        <div className="flex flex-col items-center justify-center bg-emerald-900/20 w-12 h-14 rounded-xl border border-emerald-500/30">
+            <span className="text-xl font-black text-emerald-400 leading-none">{String(timeLeft?.s || 0).padStart(2, '0')}</span>
+            <span className="text-[7px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Seg</span>
+        </div>
     </div>
   );
 }
 
-// --- HELPER DE CORES DE PLANO ---
-const getPlanColorClass = (cor?: string) => {
-    switch(cor) {
-        case 'yellow': return "text-yellow-500";
-        case 'emerald': return "text-emerald-400";
-        case 'purple': return "text-purple-400";
-        case 'blue': return "text-blue-400";
-        case 'red': return "text-red-500";
-        default: return "text-white"; // Padrão
-    }
+// --- BADGES DO USUÁRIO ---
+const UserBadges = ({ data }: { data: any }) => {
+    const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
+    const PlanIcon = ICONS_MAP[data.userPlanoIcon || 'ghost'] || Ghost;
+    const colorClass = PLAN_COLORS[data.userPlanoCor || 'zinc'];
+
+    return (
+        <div className="flex items-center gap-1 ml-1">
+            {isAdminUser && (
+                <span title="Admin">
+                    <ShieldAlert size={12} className="text-red-500 fill-red-500/20" />
+                </span>
+            )}
+            <PlanIcon size={12} className={colorClass} />
+        </div>
+    );
 };
 
 export default function DetalhesEventoPage() {
@@ -135,20 +177,21 @@ export default function DetalhesEventoPage() {
   const [modalUsersType, setModalUsersType] = useState<"going" | "maybe" | null>(null);
   const [newComment, setNewComment] = useState("");
   const [newPollOption, setNewPollOption] = useState("");
+  
+  // 🦈 ESTADO PARA CARROSSEL DE ENQUETES
+  const [currentPollIndex, setCurrentPollIndex] = useState(0);
 
   // 1. CARREGAMENTO REAL DO FIREBASE
   useEffect(() => {
       if (!params.id) return;
       const eventId = params.id as string;
 
-      // Evento
       const unsubEvent = onSnapshot(doc(db, "eventos", eventId), (docSnap) => {
           if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() });
           else setEvento(null);
           setLoading(false);
       });
 
-      // RSVPs
       const unsubRsvp = onSnapshot(collection(db, "eventos", eventId, "rsvps"), (snap) => {
           const lista = snap.docs.map(d => d.data());
           setRsvps(lista);
@@ -158,13 +201,11 @@ export default function DetalhesEventoPage() {
           }
       });
 
-      // Comentários
       const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
       const unsubCom = onSnapshot(qCom, (snap) => {
           setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
 
-      // Enquetes
       const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
           setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
       });
@@ -198,51 +239,65 @@ export default function DetalhesEventoPage() {
       } catch (e) { addToast("Erro ao atualizar.", "error"); }
   };
 
-  // 🦈 ID 505: SALVAR DADOS DO PERFIL NO COMENTÁRIO
   const handleSendComment = async () => {
       if (!newComment.trim() || !user) return;
-      await addDoc(collection(db, "eventos", evento.id, "comentarios"), {
+      
+      const newCommentData = {
           text: newComment, 
           userId: user.uid, 
           userName: user.nome || "Anônimo",
           userAvatar: user.foto || "", 
           userTurma: user.turma || "",
           
-          // Dados Visuais Extras (Snapshot)
           userPlanoCor: user.plano_cor || "zinc",
           userPlanoIcon: user.plano_icon || "ghost",
           userPatente: user.patente || "Novato",
+          role: user.role || 'user',
 
           createdAt: serverTimestamp(), 
           likes: [], 
           reports: [], 
           hidden: false
-      });
-      setNewComment("");
-  };
+      };
 
-  const handleLikeComment = async (comId: string, currentLikes: string[]) => {
-      if (!user) return;
-      const ref = doc(db, "eventos", evento.id, "comentarios", comId);
-      // 🦈 CORREÇÃO DE ERRO: GARANTINDO QUE É ARRAY
-      const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
-      
-      if (safeLikes.includes(user.uid)) {
-          await updateDoc(ref, { likes: arrayRemove(user.uid) });
-      } else {
-          await updateDoc(ref, { likes: arrayUnion(user.uid) });
+      try {
+          await addDoc(collection(db, "eventos", evento.id, "comentarios"), newCommentData);
+          await updateDoc(doc(db, "users", user.uid), { "stats.commentsCount": increment(1) });
+          setNewComment("");
+          addToast("Comentário enviado!", "success");
+      } catch (e) {
+          console.error(e);
+          addToast("Erro ao comentar.", "error");
       }
   };
 
-  // 🦈 ID 506: DELETAR COMENTÁRIO
+  const handleLikeComment = async (comId: string, currentLikes: string[], authorId: string) => {
+      if (!user) return;
+      const ref = doc(db, "eventos", evento.id, "comentarios", comId);
+      const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
+      const hasLiked = safeLikes.includes(user.uid);
+      
+      try {
+          if (hasLiked) {
+              await updateDoc(ref, { likes: arrayRemove(user.uid) });
+          } else {
+              await updateDoc(ref, { likes: arrayUnion(user.uid) });
+          }
+
+          if (user.uid !== authorId) {
+              const incrementVal = hasLiked ? -1 : 1;
+              await updateDoc(doc(db, "users", authorId), { "stats.likesReceived": increment(incrementVal) });
+              await updateDoc(doc(db, "users", user.uid), { "stats.likesGiven": increment(incrementVal) });
+          }
+      } catch (e) { console.error(e); }
+  };
+
   const handleDeleteComment = async (comId: string) => {
       if (!confirm("Apagar este comentário?")) return;
       try {
           await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
           addToast("Comentário apagado.", "info");
-      } catch (error) {
-          addToast("Erro ao apagar.", "error");
-      }
+      } catch (error) { addToast("Erro ao apagar.", "error"); }
   };
 
   const handleReportComment = async (comId: string) => {
@@ -256,7 +311,7 @@ export default function DetalhesEventoPage() {
      addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
   };
 
-  // ENQUETES
+  // ENQUETES (Múltipla Escolha e Respostas Dinâmicas)
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
       if (!user) return addToast("Login necessário.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
@@ -267,10 +322,13 @@ export default function DetalhesEventoPage() {
             if (!pollDoc.exists()) throw "Enquete não existe";
             
             const data = pollDoc.data();
-            if (data.voters?.includes(user.uid)) throw "Você já votou!";
-
+            
             const newOptions = [...data.options];
             newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
+            
+            const userTurma = user.turma || "Geral";
+            if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
+            newOptions[optionIndex].votesByTurma[userTurma] = (newOptions[optionIndex].votesByTurma[userTurma] || 0) + 1;
 
             t.update(pollRef, {
                 options: newOptions,
@@ -283,23 +341,53 @@ export default function DetalhesEventoPage() {
       }
   };
 
+  // 🦈 ID 640: Adicionando info do criador na opção
   const handleCreatePollOption = async (pollId: string) => {
       if(!newPollOption || !user) return;
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
-          options: arrayUnion({ text: newPollOption, votes: 0, creator: user.uid })
+          options: arrayUnion({ 
+              text: newPollOption, 
+              votes: 0, 
+              creatorId: user.uid,
+              creatorName: user.nome?.split(" ")[0] || "Anônimo", // Primeiro nome
+              creatorAvatar: user.foto || "",
+              votesByTurma: {} 
+          })
       });
       setNewPollOption("");
       addToast("Opção adicionada!", "success");
   };
 
-  const toggleLowStock = async () => {
-      if (!isAdmin) return; 
-      await updateDoc(doc(db, "eventos", evento.id), {
-          isLowStock: !evento.isLowStock
-      });
-      addToast("Status de Vagas atualizado.", "success");
+  const handleReportPoll = async (pollId: string) => {
+      if(!user) return;
+      addToast("Enquete reportada à moderação.", "info");
   };
+
+  // 🦈 ID 640: Reportar Opção Específica
+  const handleReportOption = async (pollId: string, optionText: string) => {
+      if(!user) return;
+      addToast(`Opção "${optionText}" denunciada.`, "info");
+  };
+
+  // 🦈 CARROSSEL LÓGICA
+  const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
+  const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
+  const currentPoll = enquetes[currentPollIndex];
+
+  // 🦈 LÓGICA TOP 3 TURMAS
+  const topTurmasPoll = useMemo(() => {
+      if (!currentPoll) return [];
+      const counts: Record<string, number> = {};
+      currentPoll.options?.forEach((opt: any) => {
+          if (opt.votesByTurma) {
+              Object.entries(opt.votesByTurma).forEach(([turma, count]) => {
+                  counts[turma] = (counts[turma] || 0) + (count as number);
+              });
+          }
+      });
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => t);
+  }, [currentPoll]);
 
   const handleShare = () => {
       if (typeof navigator !== 'undefined' && navigator.share) {
@@ -345,12 +433,6 @@ export default function DetalhesEventoPage() {
             <EventCountdown dateStr={evento.data} timeStr={evento.hora} />
         </div>
 
-        {isAdmin && (
-            <button onClick={toggleLowStock} className="absolute top-20 right-6 bg-red-500/80 text-[10px] p-1.5 rounded text-white font-bold hover:opacity-100 transition shadow-lg border border-red-400">
-                ADMIN: {evento.isLowStock ? 'DESATIVAR' : 'ATIVAR'} VAGAS
-            </button>
-        )}
-
         <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
             {rankingTurmas.map((t) => (
                 <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
@@ -373,6 +455,13 @@ export default function DetalhesEventoPage() {
       {/* CONTEÚDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
+        {evento.descricao && (
+            <div className="space-y-2">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Sobre o Evento</h3>
+                <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-line">{evento.descricao}</p>
+            </div>
+        )}
+
         {evento.isLowStock && (
             <div className="bg-gradient-to-r from-yellow-600 to-yellow-400 p-0.5 rounded-2xl animate-pulse shadow-[0_0_30px_rgba(234,179,8,0.3)]">
                 <div className="bg-black rounded-[14px] p-4 flex items-center justify-between">
@@ -421,28 +510,74 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* ENQUETES (ID 168) */}
+        {/* 🦈 ENQUETES CARROSSEL */}
         <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                     <MessageCircle size={14} className="text-purple-500"/> Enquete da Galera
                 </h3>
+                {enquetes.length > 1 && (
+                    <div className="flex gap-2">
+                        <button onClick={prevPoll} className="p-1 bg-zinc-900 rounded hover:bg-zinc-800 text-zinc-400"><ChevronLeft size={16}/></button>
+                        <button onClick={nextPoll} className="p-1 bg-zinc-900 rounded hover:bg-zinc-800 text-zinc-400"><ChevronRight size={16}/></button>
+                    </div>
+                )}
             </div>
 
-            {enquetes.length > 0 ? enquetes.map(poll => (
-                <div key={poll.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 space-y-3 relative overflow-hidden">
+            {currentPoll ? (
+                <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 space-y-3 relative overflow-hidden transition-all duration-300">
                     <div className="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
-                    <h4 className="font-bold text-sm text-white">{poll.question || "Qual a boa?"}</h4>
+                    <div className="flex justify-between items-start">
+                        <h4 className="font-bold text-sm text-white max-w-[80%]">{currentPoll.question || "Qual a boa?"}</h4>
+                        <button onClick={() => handleReportPoll(currentPoll.id)} className="text-zinc-600 hover:text-yellow-500"><ShieldAlert size={14}/></button>
+                    </div>
+                    
+                    {/* 🦈 TOP 3 TURMAS GANHANDO */}
+                    {topTurmasPoll.length > 0 && (
+                        <div className="flex gap-2 mb-2 items-center bg-black/20 p-2 rounded-lg border border-white/5">
+                            {topTurmasPoll.map(turma => (
+                                <div key={turma} className="flex items-center gap-1">
+                                    <div className="w-5 h-5 rounded-full border border-zinc-700 overflow-hidden">
+                                        <img src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} className="w-full h-full object-cover"/>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-zinc-400">{turma}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="space-y-2">
-                        {poll.options?.map((opt: any, idx: number) => {
-                            const totalVotes = poll.options.reduce((acc:number, o:any) => acc + (o.votes || 0), 0);
+                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: any, idx: number) => {
+                            const totalVotes = currentPoll.options.reduce((acc:number, o:any) => acc + (o.votes || 0), 0);
                             const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
                             return (
-                                <button key={idx} onClick={() => handleVotePoll(poll.id, idx)} className="w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-8 text-xs hover:bg-zinc-800 transition group">
-                                    <div className="absolute left-0 top-0 h-full bg-purple-500/20 transition-all duration-500" style={{ width: `${percent}%` }}></div>
-                                    <span className="relative z-10 pl-3">{opt.text}</span>
-                                    <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400">{percent}%</span>
-                                </button>
+                                <div key={idx} className="relative group">
+                                    <button onClick={() => handleVotePoll(currentPoll.id, idx)} className="w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition" title={`${opt.votes} votos`}>
+                                        <div className="absolute left-0 top-0 h-full bg-purple-500/20 transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                        
+                                        <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
+                                            {/* 🦈 AVATAR DO CRIADOR */}
+                                            {opt.creatorAvatar && (
+                                                <img src={opt.creatorAvatar} className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
+                                            )}
+                                            <span className="truncate text-left">{opt.text}</span>
+                                        </div>
+                                        
+                                        {/* 🦈 ID 654: QTD VOTOS (NÃO %) */}
+                                        <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400 flex items-center gap-1">
+                                            {opt.votes} <span className="text-[8px] font-normal uppercase">Votos</span>
+                                        </span>
+                                    </button>
+                                    
+                                    {/* 🦈 ID 640: BOTÃO REPORTAR OPÇÃO */}
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleReportOption(currentPoll.id, opt.text); }}
+                                        className="absolute right-[-20px] top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                        title="Reportar Opção"
+                                    >
+                                        <Flag size={10}/>
+                                    </button>
+                                </div>
                             );
                         })}
                     </div>
@@ -451,18 +586,19 @@ export default function DetalhesEventoPage() {
                         <input 
                             value={newPollOption}
                             onChange={e => setNewPollOption(e.target.value)}
-                            placeholder="Sugerir opção..."
+                            placeholder="Adicionar resposta..."
                             className="bg-transparent text-xs text-white border-b border-zinc-700 outline-none flex-1 py-1"
+                            maxLength={20}
                         />
-                        <button onClick={() => handleCreatePollOption(poll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
+                        <button onClick={() => handleCreatePollOption(currentPoll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
                     </div>
                 </div>
-            )) : (
+            ) : (
                 <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
             )}
         </div>
 
-        {/* COMENTÁRIOS (ID 163, 505, 506) */}
+        {/* COMENTÁRIOS */}
         <div className="space-y-6 pt-4 border-t border-zinc-800">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do Rolê</h3>
             
@@ -480,10 +616,7 @@ export default function DetalhesEventoPage() {
 
             <div className="space-y-4">
                 {comentarios.map((c) => {
-                    // ID 505: Preparar ícones e cores
-                    const PlanIcon = ICONS_MAP[c.userPlanoIcon || 'ghost'] || Ghost;
-                    const nameColorClass = getPlanColorClass(c.userPlanoCor || 'zinc');
-                    // 🦈 CORREÇÃO CRÍTICA DO ERRO DE .includes()
+                    const nameColorClass = PLAN_COLORS[c.userPlanoCor || 'zinc'] || "text-zinc-300";
                     const likesArray = Array.isArray(c.likes) ? c.likes : [];
 
                     return (!c.hidden || isAdmin) && (
@@ -491,10 +624,6 @@ export default function DetalhesEventoPage() {
                             <Link href={`/perfil/${c.userId}`}>
                                 <div className="relative group/avatar cursor-pointer">
                                     <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
-                                    {/* Mini Badge Patente (Opcional) */}
-                                    <div className="absolute -bottom-1 -right-1 bg-black rounded-full p-0.5 border border-zinc-800">
-                                        <div className={`w-3 h-3 rounded-full ${c.userPlanoCor === 'yellow' ? 'bg-yellow-500' : c.userPlanoCor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-600'}`}></div>
-                                    </div>
                                 </div>
                             </Link>
                             
@@ -502,27 +631,22 @@ export default function DetalhesEventoPage() {
                                 <div className="flex justify-between items-start">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-1.5">
-                                            {/* ID 505: Nome com Cor do Plano e Ícone */}
                                             <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
-                                                <PlanIcon size={10} className="stroke-[3]"/> 
                                                 {c.userName}
                                             </p>
-                                            <span className="text-[9px] text-zinc-500 font-normal border border-zinc-800 px-1 rounded flex items-center gap-1">
-                                                {c.userPatente || "Novato"}
-                                            </span>
+                                            <UserBadges data={c} />
                                         </div>
                                         <span className="text-[9px] text-zinc-600 font-mono mt-0.5">{c.userTurma || "Visitante"}</span>
                                     </div>
 
                                     <div className="flex gap-2 text-zinc-500">
-                                        <button onClick={() => handleLikeComment(c.id, c.likes || [])} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [], c.userId)} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
                                             <Heart size={12} className={likesArray.includes(user?.uid) ? "fill-current" : ""}/> 
                                             <span className="text-[9px]">{likesArray.length || 0}</span>
                                         </button>
                                         
                                         <button onClick={() => handleReportComment(c.id)} className="hover:text-yellow-500"><ShieldAlert size={12}/></button>
                                         
-                                        {/* ID 506: BOTÃO DE DELETAR (Dono ou Admin) */}
                                         {(user?.uid === c.userId || isAdmin) && (
                                             <button onClick={() => handleDeleteComment(c.id)} className="hover:text-red-500 transition-colors" title="Apagar">
                                                 <Trash2 size={12}/>

@@ -6,7 +6,7 @@ import {
   signOut, 
   User as FirebaseUser 
 } from "firebase/auth";
-import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore"; 
+import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, orderBy, getDocs, where } from "firebase/firestore"; 
 import { auth, db, googleProvider } from "../lib/firebase"; 
 import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
@@ -86,7 +86,7 @@ export interface User {
 
   // Visual & Planos
   plano?: string;        
-  patente?: string; // Agora calculado dinamicamente
+  patente?: string; 
   tier?: 'bicho' | 'atleta' | 'lenda'; 
   plano_badge?: string;
   plano_cor?: string;
@@ -115,42 +115,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   
   const [isLocalGuest, setIsLocalGuest] = useState(false);
-  const [patentesCache, setPatentesCache] = useState<any[]>([]); // Cache para cálculo rápido
+  
+  // 🦈 CACHES DE DADOS GLOBAIS (Economia de Leitura)
+  const [patentesCache, setPatentesCache] = useState<any[]>([]); 
+  const [planosCache, setPlanosCache] = useState<any[]>([]);
   
   const router = useRouter();
   const pathname = usePathname(); 
 
-  // 1. PREVINE ERRO DE HIDRATAÇÃO E CARREGA PATENTES
+  // 1. CARREGAMENTO INICIAL UNIFICADO (Roda 1x ao abrir o app)
   useEffect(() => {
     setMounted(true);
-    // Carrega patentes uma vez para o contexto usar no cálculo
-    const fetchPatentes = async () => {
-        const q = query(collection(db, "patentes_config"), orderBy("minXp", "desc")); // Do maior para o menor
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-            setPatentesCache(snap.docs.map(d => d.data()));
-        } else {
-            // Fallback se não tiver nada no banco
-             setPatentesCache([
-                { titulo: "Megalodon", minXp: 50000 },
-                { titulo: "Tubarão Branco", minXp: 15000 },
-                { titulo: "Barracuda", minXp: 2000 },
-                { titulo: "Peixe Palhaço", minXp: 500 },
-                { titulo: "Plâncton", minXp: 0 }
-            ]);
-        }
+
+    const fetchData = async () => {
+        try {
+            // A. Buscar Patentes (Leitura única)
+            const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "desc"));
+            const snapPatentes = await getDocs(qPatentes);
+            if (!snapPatentes.empty) {
+                setPatentesCache(snapPatentes.docs.map(d => d.data()));
+            } else {
+                 setPatentesCache([
+                    { titulo: "Megalodon", minXp: 50000 },
+                    { titulo: "Tubarão Branco", minXp: 15000 },
+                    { titulo: "Barracuda", minXp: 2000 },
+                    { titulo: "Peixe Palhaço", minXp: 500 },
+                    { titulo: "Plâncton", minXp: 0 }
+                ]);
+            }
+
+            // B. Buscar Planos (Leitura única - ECONOMIA 💰)
+            const snapPlanos = await getDocs(collection(db, "planos"));
+            if (!snapPlanos.empty) {
+                setPlanosCache(snapPlanos.docs.map(d => d.data()));
+            }
+
+        } catch (e) { console.error("Erro ao carregar dados globais:", e); }
     };
-    fetchPatentes();
+    fetchData();
   }, []);
 
-  // 🦈 Helper: Calcula Patente baseada no XP
+  // Helper: Calcula Patente com base no cache
   const calculatePatente = (xp: number) => {
-      if (patentesCache.length === 0) return "Novato";
+      if (patentesCache.length === 0) return "Novato"; 
       const found = patentesCache.find(p => xp >= p.minXp);
       return found ? found.titulo : "Novato";
   };
 
-  // 2. MONITORAR AUTH & DADOS & LOGIN DIÁRIO
+  // 2. MONITORAR AUTH
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
       
@@ -167,46 +179,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
                 
-                // --- LÓGICA DE LOGIN DIÁRIO ---
+                // --- 1. LÓGICA DE LOGIN DIÁRIO ---
                 const hoje = new Date().toLocaleDateString('pt-BR'); 
                 const ultimoLogin = userData.ultimoLoginDiario || "";
 
                 if (hoje !== ultimoLogin) {
-                    console.log("🦈 Tubarão detectou: Primeiro login do dia! Contabilizando...");
-                    
                     const novosStats = {
                         ...userData.stats,
                         loginCount: (userData.stats?.loginCount || 0) + 1
                     };
-                    
                     await updateDoc(userRef, {
                         "stats.loginCount": novosStats.loginCount,
                         "ultimoLoginDiario": hoje,
                         "xp": (userData.xp || 0) + 10 
                     });
-                    
                     await logActivity(fbUser.uid, userData.nome, "LOGIN", "Sistema", "Check-in Diário Realizado (+10 XP)");
                 } 
-                // ------------------------------
 
-                // 🦈 CÁLCULO DINÂMICO DE PATENTE NO CONTEXTO
-                const currentPatente = calculatePatente(userData.xp || 0);
-                
-                // Se a patente mudou, atualiza no banco também para ficar registrado
-                if (userData.patente !== currentPatente && patentesCache.length > 0) {
-                     await updateDoc(userRef, { patente: currentPatente });
-                     userData.patente = currentPatente; // Atualiza localmente para renderizar já certo
+                // --- 2. CÁLCULO DE PATENTE (MEMÓRIA) ---
+                // Verifica se temos cache antes de tentar atualizar
+                if (patentesCache.length > 0) {
+                    const currentPatente = calculatePatente(userData.xp || 0);
+                    if (userData.patente !== currentPatente) {
+                         await updateDoc(userRef, { patente: currentPatente });
+                         userData.patente = currentPatente; // Atualiza localmente
+                    }
                 }
 
-                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false, patente: currentPatente });
+                // --- 3. AUTO-CORREÇÃO DE PLANO (MEMÓRIA) ---
+                if (userData.plano && userData.plano !== "Bicho Solto" && planosCache.length > 0) {
+                    const planoReal = planosCache.find(p => p.nome === userData.plano);
+
+                    if (planoReal) {
+                        // Se a cor ou ícone salvos no usuário forem diferentes da config real
+                        if (userData.plano_cor !== planoReal.cor || userData.plano_icon !== planoReal.icon) {
+                            console.log(`🦈 Sincronizando visual do plano (Cache) para ${userData.nome}...`);
+                            
+                            await updateDoc(userRef, {
+                                plano_cor: planoReal.cor,
+                                plano_icon: planoReal.icon,
+                                // Opcional: atualizar desconto
+                                desconto_loja: planoReal.descontoLoja,
+                                xpMultiplier: planoReal.xpMultiplier
+                            });
+                            
+                            userData.plano_cor = planoReal.cor;
+                            userData.plano_icon = planoReal.icon;
+                        }
+                    }
+                }
+
+                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
                 setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
 
+                // Garante status de criação de conta
                 if (!userData.stats?.accountCreated) {
                     await updateDoc(userRef, { "stats.accountCreated": 1 });
                 }
 
               } else {
-                // Cadastro Novo
+                // Novo Cadastro
                 const newUser: User = {
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
@@ -250,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [isLocalGuest, patentesCache]); // Recalcula se as patentes carregarem depois
+  }, [isLocalGuest, patentesCache, planosCache]); // Roda novamente se o cache atualizar
 
   // 3. SEGURANÇA E REDIRECIONAMENTOS
   useEffect(() => {

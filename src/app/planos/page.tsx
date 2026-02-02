@@ -1,18 +1,23 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight, Loader2, ShoppingBag, Check } from "lucide-react";
+import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight, Loader2, ShoppingBag, Check, Zap, Gem, Trophy, Fish } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 
+// Mapa expandido de ícones para garantir compatibilidade com o Admin
 const ICONS_MAP: any = {
   ghost: Ghost,
   star: Star,
   crown: Crown,
-  shopping: ShoppingBag 
+  shopping: ShoppingBag,
+  zap: Zap,
+  gem: Gem,
+  trophy: Trophy,
+  fish: Fish
 };
 
 export default function PlanosPage() {
@@ -31,37 +36,15 @@ export default function PlanosPage() {
     return () => unsubscribe();
   }, []);
 
-  // 🦈 CORREÇÃO DE CORES: Sincronia com Admin e Identidade Visual
-  const getColorClasses = (cor: string, nome: string) => {
-      const lowerNome = nome.toLowerCase();
-
-      // Força Bicho Solto a ser Cinza sempre
-      if (lowerNome.includes("bicho") || lowerNome.includes("solto")) {
-          return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
-      }
-
-      // Se o plano tiver 'atleta' no nome ou cor 'purple', fica Roxo (Padrão Atleta de Bar)
-      if (cor === 'purple' || lowerNome.includes("atleta")) {
-          return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
-      }
-
-      // Se for Lenda, Amarelo/Dourado
-      if (cor === 'yellow' || lowerNome.includes("lenda")) {
-          return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
-      }
-
-      // Se for Cardume, Esmeralda/Verde
-      if (cor === 'emerald' || lowerNome.includes("cardume")) {
-          return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
-      }
-
-      // Fallback genérico baseado apenas na cor do admin
+  // 🦈 CORREÇÃO: Respeita EXATAMENTE a cor que vem do banco
+  const getColorClasses = (cor: string) => {
       switch(cor) {
-          case 'yellow': return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+          case 'yellow': return { text: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
           case 'emerald': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
           case 'purple': return { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' };
           case 'blue': return { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' };
           case 'red': return { text: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30' };
+          // Default (Zinc)
           default: return { text: 'text-zinc-400', bg: 'bg-zinc-800', border: 'border-zinc-700' };
       }
   };
@@ -87,7 +70,7 @@ export default function PlanosPage() {
               {planos.map(plano => {
                   const Icon = ICONS_MAP[plano.icon] || Star;
                   
-                  // 🦈 LÓGICA INTELIGENTE DE PLANO ATIVO
+                  // Lógica do Plano Ativo
                   const isFree = plano.precoVal === 0;
                   // Se o usuário não tem 'plano_badge' definido, assume que ele é Free (Bicho Solto)
                   const userHasNoPlan = !user?.plano_badge && !user?.plano; 
@@ -98,7 +81,8 @@ export default function PlanosPage() {
                     (user?.plano_badge === plano.nome) || 
                     (user?.plano === plano.nome);
 
-                  const styles = getColorClasses(plano.cor, plano.nome); 
+                  // 🦈 CORREÇÃO: Passa apenas a cor do banco, sem o nome para evitar override
+                  const styles = getColorClasses(plano.cor); 
 
                   return (
                       <div key={plano.id} className={`

@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+// 🦈 Importação Namespace para pegar ícones dinamicamente pelo nome (string)
+import * as LucideIcons from "lucide-react";
 import {
-  ArrowLeft, CreditCard, Crown, ChevronRight, ShieldCheck,
-  QrCode, X, User, Star, ShoppingBag, Award
+  ArrowLeft, CreditCard, ChevronRight,
+  QrCode, X, Award
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -12,40 +14,44 @@ import { doc, getDoc } from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
 import SharkLoader from "@/app/components/SharkLoader";
 
-// 🦈 CONFIGURAÇÃO VISUAL DOS TIERS
-// Aqui definimos como cada Nível se parece. Fácil de manter.
-const TIER_STYLES = {
-    lenda: {
-        name: "Sócio Lenda",
+// 🦈 CONFIGURAÇÃO VISUAL POR COR (E NÃO MAIS POR TIER FIXO)
+// O Tailwind precisa das classes completas escritas para o purger não remover.
+const COLOR_STYLES: any = {
+    yellow: {
         color: "text-yellow-400",
         border: "border-yellow-500/50",
         bgBadge: "bg-yellow-500/20",
-        glow: "shadow-yellow-500/20",
-        icon: Crown
+        glow: "shadow-yellow-500/20"
     },
-    atleta: {
-        name: "Sócio Atleta",
-        color: "text-purple-400",
-        border: "border-purple-500/50",
-        bgBadge: "bg-purple-500/20",
-        glow: "shadow-purple-500/20",
-        icon: Star
-    },
-    cardume: {
-        name: "Sócio Cardume",
+    emerald: {
         color: "text-emerald-400",
         border: "border-emerald-500/50",
         bgBadge: "bg-emerald-500/20",
-        glow: "shadow-emerald-500/20",
-        icon: ShoppingBag
+        glow: "shadow-emerald-500/20"
     },
-    bicho: {
-        name: "Bicho Solto",
+    purple: {
+        color: "text-purple-400",
+        border: "border-purple-500/50",
+        bgBadge: "bg-purple-500/20",
+        glow: "shadow-purple-500/20"
+    },
+    blue: {
+        color: "text-blue-400",
+        border: "border-blue-500/50",
+        bgBadge: "bg-blue-500/20",
+        glow: "shadow-blue-500/20"
+    },
+    red: {
+        color: "text-red-400",
+        border: "border-red-500/50",
+        bgBadge: "bg-red-500/20",
+        glow: "shadow-red-500/20"
+    },
+    zinc: {
         color: "text-zinc-300",
         border: "border-zinc-600",
         bgBadge: "bg-zinc-800",
-        glow: "shadow-zinc-500/10",
-        icon: User
+        glow: "shadow-zinc-500/10"
     }
 };
 
@@ -82,17 +88,21 @@ export default function CarteirinhaPage() {
   const bgFinal = config?.backgrounds?.[user.turma || ""] || bgPadrao;
   const validadeTexto = config?.validade || "DEZ/2026";
 
-  // --- 🦈 LÓGICA VISUAL BASEADA NO TIER (SIMPLIFICADA) ---
-  // Se o usuário não tiver tier definido, assume 'bicho'.
-  // Se for 'cardume' (caso tenhamos adicionado essa lógica no admin), ele pega.
-  // Se for 'atleta' (padrão para cardume/atleta), pega roxo.
-  const userTier = (user.tier || "bicho").toLowerCase() as keyof typeof TIER_STYLES;
-  
-  // Fallback seguro se vier um tier desconhecido
-  const style = TIER_STYLES[userTier] || TIER_STYLES.bicho;
-  
-  const PlanIcon = style.icon;
-  const canUpgrade = userTier === 'bicho' || userTier === 'cardume';
+  // --- 🦈 LÓGICA VISUAL DINÂMICA (CORRIGIDA) ---
+  // 1. Recupera a cor e o ícone salvos no banco (fallback para padrão se não existir)
+  const userCor = user.plano_cor || "zinc"; 
+  const userIconName = user.plano_icon || "ghost";
+
+  // 2. Define o estilo baseado na COR, não no nome do plano
+  const style = COLOR_STYLES[userCor] || COLOR_STYLES.zinc;
+
+  // 3. Resolve o componente do ícone dinamicamente (Lucide)
+  // Converte "ghost" -> "Ghost", "crown" -> "Crown" para achar no pacote
+  const iconPascalCase = userIconName.charAt(0).toUpperCase() + userIconName.slice(1);
+  const PlanIcon = (LucideIcons as any)[iconPascalCase] || LucideIcons.Ghost;
+
+  // Verifica se pode fazer upgrade (lógica simples baseada no tier antigo ou se for cinza)
+  const canUpgrade = userCor === 'zinc' || userCor === 'emerald';
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans flex flex-col selection:bg-emerald-500/30 pb-24">
@@ -147,10 +157,10 @@ export default function CarteirinhaPage() {
                 </div>
               </div>
 
-              {/* Badge do Plano (Lê do objeto TIER_STYLES) */}
+              {/* Badge do Plano (Agora usa user.plano e cor dinâmica) */}
               <div className={`px-2.5 py-1 rounded-md border backdrop-blur-md flex items-center gap-1.5 shadow-lg ${style.color} ${style.border} ${style.bgBadge}`}>
                   <PlanIcon size={10} className="stroke-[3]" />
-                  <span className="text-[9px] font-black uppercase tracking-wider">{style.name}</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider">{user.plano || "Visitante"}</span>
               </div>
             </div>
 
@@ -223,7 +233,7 @@ export default function CarteirinhaPage() {
                       <Award size={20} />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Nível Atual: {style.name}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Nível Atual: {user.plano || "Bicho"}</p>
                       <p className="text-sm font-bold text-white">Fazer Upgrade</p>
                     </div>
                   </div>

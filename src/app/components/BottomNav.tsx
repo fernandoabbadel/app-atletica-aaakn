@@ -8,13 +8,13 @@ import {
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
   Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout, Camera,
-  Target, GraduationCap, Users, Lock, Bell, Fish, Swords
+  Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from "firebase/firestore";
 
-// --- TIPAGEM ---
+// --- TIPAGEM ATUALIZADA 🦈 ---
 interface UserData {
     uid: string;
     nome: string;
@@ -23,6 +23,10 @@ interface UserData {
     tier?: 'bicho' | 'atleta' | 'lenda' | 'standard'; 
     level?: number;
     role?: 'admin_geral' | 'admin_gestor' | 'master' | 'user';
+    // Novos campos dinâmicos
+    plano?: string;
+    plano_cor?: string;
+    plano_icon?: string;
 }
 
 interface Notification {
@@ -51,7 +55,19 @@ const TURMA_IMAGENS: Record<string, string> = {
     "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
 };
 
-// Ícones
+// 🦈 MAPA DE ÍCONES (Igual ao Admin/Carteirinha)
+const ICONS_MAP: any = {
+    ghost: Ghost,
+    star: Star,
+    crown: Crown,
+    shopping: ShoppingBag,
+    zap: Zap,
+    gem: Gem,
+    trophy: Trophy,
+    fish: Fish
+};
+
+// Ícone de Nível (Gamification)
 const LevelIcon = ({ level }: { level: number }) => {
     if (level === 1) return <Fish className="text-orange-400" size={14} />; 
     if (level === 2) return <Swords className="text-blue-400" size={14} />;
@@ -59,15 +75,25 @@ const LevelIcon = ({ level }: { level: number }) => {
     return <Fish className="text-zinc-500" size={14} />;
 };
 
-const PlanIcon = ({ tier }: { tier: string }) => {
-    switch(tier) {
-        case 'lenda': return <Crown size={16} className="text-yellow-500"/>;
-        case 'atleta': return <Star size={16} className="text-zinc-300"/>;
-        default: return <Ghost size={16} className="text-emerald-400"/>;
-    }
+// 🦈 ÍCONE DO PLANO (Lógica Dinâmica)
+const PlanBadge = ({ icon, color }: { icon?: string, color?: string }) => {
+    // 1. Resolve o Ícone
+    const IconComponent = ICONS_MAP[icon || 'ghost'] || Ghost;
+    
+    // 2. Resolve a Cor (Tailwind Classes)
+    const colorClass = {
+        yellow: "text-yellow-500",
+        emerald: "text-emerald-400",
+        purple: "text-purple-400",
+        blue: "text-blue-400",
+        red: "text-red-500",
+        zinc: "text-zinc-400"
+    }[color || 'zinc'] || "text-zinc-400";
+
+    return <IconComponent size={16} className={colorClass}/>;
 };
 
-// Banner Dourado
+// Banner Dourado (Mantém lógica visual, mas verifica tier para exibir)
 const SocioGrowthBanner = ({ tier, closeMenu, router }: any) => {
     if (tier === 'lenda') return null;
     return (
@@ -96,7 +122,6 @@ export default function BottomNavbar() {
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  // 🔴 NOVO: Contador de mensagens de banidos
   const [bannedMessagesCount, setBannedMessagesCount] = useState(0); 
   const lastScrollY = useRef(0);
 
@@ -134,7 +159,6 @@ export default function BottomNavbar() {
   // 🔥 3. NOTIFICAÇÕES (ADMIN - BANNED APPEALS) ---
   useEffect(() => {
       if (!isAdmin) return;
-      // Conta mensagens onde 'readByAdmin' é falso
       const q = query(collection(db, "banned_appeals"), where("readByAdmin", "==", false));
       const unsub = onSnapshot(q, (snap) => {
           setBannedMessagesCount(snap.size);
@@ -256,7 +280,7 @@ export default function BottomNavbar() {
         {!showNotifications && (
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1">
                 
-                {/* 🦈 BOX DE PERFIL */}
+                {/* 🦈 BOX DE PERFIL (COM BADGE DINÂMICA) */}
                 {currentUser && (
                     <div onClick={() => handleNavigation('/perfil')} className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-2xl border border-zinc-800 mb-4 cursor-pointer hover:bg-zinc-900 hover:border-emerald-500/30 transition group">
                         {/* Foto */}
@@ -278,8 +302,9 @@ export default function BottomNavbar() {
                                     <LevelIcon level={currentUser.level || 1} />
                                     <span className="text-[9px] font-mono text-zinc-400">Nv.{currentUser.level || 1}</span>
                                 </div>
-                                <div className="w-5 h-5 flex items-center justify-center bg-black/40 rounded border border-white/5" title={currentUser.tier === 'bicho' ? 'Bicho Solto' : currentUser.tier}>
-                                    <PlanIcon tier={currentUser.tier || 'bicho'} />
+                                {/* 🦈 Badge Dinâmica Aqui */}
+                                <div className="w-5 h-5 flex items-center justify-center bg-black/40 rounded border border-white/5" title={currentUser.plano || currentUser.tier || 'Bicho Solto'}>
+                                    <PlanBadge icon={currentUser.plano_icon} color={currentUser.plano_cor} />
                                 </div>
                             </div>
                         </div>

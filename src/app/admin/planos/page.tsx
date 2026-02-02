@@ -140,17 +140,17 @@ export default function AdminPlanosPage() {
           const novoTier = getTierFromPlan(sol.planoNome, iconPlano);
 
           // 2. APLICA A "MESMA LÍNGUA" NO PERFIL DO USUÁRIO
-          // 🦈 ATUALIZAÇÃO: Gravando 'plano_badge' para garantir exibição correta
+          // 🦈 ATUALIZAÇÃO: Gravando 'plano_badge' para garantir exibição correta e resetando 'plano_status'
           await updateDoc(doc(db, "users", sol.userId), {
               plano: sol.planoNome,
-              plano_badge: sol.planoNome, // <--- CAMPO CORRIGIDO AQUI
+              plano_badge: sol.planoNome, 
               plano_cor: corPlano,
               plano_icon: iconPlano,
               tier: novoTier,
               xpMultiplier: xpMult,        
               nivel_prioridade: prioridade, 
               desconto_loja: desconto,      
-              plano_status: "ativo",
+              plano_status: "ativo", // LIBERA O USUÁRIO AQUI
               data_adesao: new Date().toISOString()
           });
 
@@ -182,9 +182,31 @@ export default function AdminPlanosPage() {
       if(!confirm("Rejeitar solicitação?")) return;
       try {
           await updateDoc(doc(db, "solicitacoes_adesao", sol.id), { status: "rejeitado" });
-          addToast("Solicitação rejeitada.", "info");
+          
+          // 🦈 CORREÇÃO: Se rejeitar, também libera o status do usuário para ele tentar de novo
+          await updateDoc(doc(db, "users", sol.userId), { plano_status: "ativo" });
+          
+          addToast("Solicitação rejeitada e usuário liberado.", "info");
           setViewingReceipt(null);
       } catch(e) { addToast("Erro.", "error"); }
+  };
+
+  // 🦈 NOVA FUNÇÃO: DESTRAVA USUÁRIO NA FORÇA BRUTA
+  const handleDeleteSolicitacao = async (sol: Solicitacao) => {
+      if(!confirm("⚠️ EXCLUIR REGISTRO?\nIsso vai apagar a solicitação e destravar o usuário para tentar novamente.")) return;
+      
+      try {
+          // 1. Apaga a solicitação travada
+          await deleteDoc(doc(db, "solicitacoes_adesao", sol.id));
+          
+          // 2. Reseta o status do usuário para 'ativo' (sem pendências)
+          await updateDoc(doc(db, "users", sol.userId), { plano_status: "ativo" });
+          
+          addToast("Registro excluído e usuário destravado!", "success");
+      } catch (e) {
+          console.error(e);
+          addToast("Erro ao excluir.", "error");
+      }
   };
 
   // --- CRUD PLANOS ---
@@ -360,11 +382,21 @@ export default function AdminPlanosPage() {
                                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-black text-lg ${sol.status === 'pendente' ? 'bg-yellow-500' : sol.status === 'aprovado' ? 'bg-emerald-500' : 'bg-red-500'}`}>{sol.userName.charAt(0)}</div>
                                     <div><h4 className="font-bold text-white text-base">{sol.userName} <span className="text-zinc-500 text-xs font-normal">({sol.userTurma})</span></h4><p className="text-xs text-zinc-400 mt-0.5">Solicitou: <span className="text-emerald-400 font-bold">{sol.planoNome}</span> (R$ {sol.valor})</p></div>
                                 </div>
-                                {sol.status === 'pendente' ? (
-                                    <button onClick={() => setViewingReceipt(sol)} className="bg-zinc-800 hover:bg-white hover:text-black text-zinc-300 px-4 py-2 rounded-lg text-xs font-bold uppercase transition flex items-center gap-2 border border-zinc-700"><Eye size={14}/> Ver Comprovante</button>
-                                ) : (
-                                    <span className={`text-xs font-bold uppercase px-3 py-1 rounded border ${sol.status === 'aprovado' ? 'text-emerald-500 border-emerald-900 bg-emerald-900/20' : 'text-red-500 border-red-900 bg-red-900/20'}`}>{sol.status}</span>
-                                )}
+                                <div className="flex items-center gap-3">
+                                    {sol.status === 'pendente' ? (
+                                        <button onClick={() => setViewingReceipt(sol)} className="bg-zinc-800 hover:bg-white hover:text-black text-zinc-300 px-4 py-2 rounded-lg text-xs font-bold uppercase transition flex items-center gap-2 border border-zinc-700"><Eye size={14}/> Ver Comprovante</button>
+                                    ) : (
+                                        <span className={`text-xs font-bold uppercase px-3 py-1 rounded border ${sol.status === 'aprovado' ? 'text-emerald-500 border-emerald-900 bg-emerald-900/20' : 'text-red-500 border-red-900 bg-red-900/20'}`}>{sol.status}</span>
+                                    )}
+                                    {/* 🦈 BOTÃO DESTRAVA USUÁRIO */}
+                                    <button 
+                                        onClick={() => handleDeleteSolicitacao(sol)} 
+                                        className="p-2 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition" 
+                                        title="Excluir e Destravar Usuário"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

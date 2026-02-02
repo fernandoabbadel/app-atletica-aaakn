@@ -2,33 +2,129 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Search, Heart, MessageCircle, MoreHorizontal, Plus, Flame, 
+  ArrowLeft, Heart, MessageCircle, MoreHorizontal, Flame, 
   Image as ImageIcon, ShieldCheck, Pin, X, Loader2, AlertTriangle, Send, Trash2, Flag,
-  Crown, Star, Medal, Ghost, Lock
+  Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish
 } from "lucide-react";
 import Link from "next/link";
 import { db, storage } from "../../lib/firebase";
 import { 
   collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, 
-  updateDoc, doc, arrayUnion, arrayRemove, limit, getDocs 
+  updateDoc, doc, arrayUnion, arrayRemove, limit, deleteDoc, Timestamp, increment, getDoc 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-// 🦈 IMPORT DA SEGURANÇA
 import { Security } from "../../lib/security";
 
-// Kit de Emergência
-const MODALIDADES_PADRAO = ["Futebol", "Vôlei", "Handebol", "Basquete", "Tênis de Mesa", "Natação", "Bateria", "Cheerleading"];
+// --- TIPAGEM ---
 
-const UserBadges = ({ tier, badges }: { tier?: string, badges?: string[] }) => (
-    <div className="flex items-center gap-1 ml-1">
-        {tier === 'lenda' && <Crown size={10} className="text-yellow-500 fill-yellow-500"/>}
-        {tier === 'atleta' && <Star size={10} className="text-purple-500 fill-purple-500"/>}
-        {tier === 'bicho' && <Ghost size={10} className="text-zinc-400 fill-zinc-400"/>}
-        {badges?.includes('fidelidade') && <Medal size={10} className="text-emerald-500"/>}
-    </div>
-);
+interface AppConfig {
+    titulo?: string;
+    subtitulo?: string;
+    capaUrl?: string;
+}
+
+interface PostData {
+    id: string;
+    userId: string;
+    userName: string;
+    handle: string;
+    avatar: string;
+    texto: string;
+    imagem?: string | null;
+    likes: string[];
+    hype: string[];
+    comentarios: number;
+    denunciasCount: number;
+    categoria: string;
+    plano_cor?: string;
+    plano_icon?: string;
+    plano?: string;
+    role?: string;
+    blocked?: boolean;
+    fixado?: boolean;
+    isTreinador?: boolean;
+    commentsDisabled?: boolean;
+    createdAt: Timestamp | null;
+    isRecent?: boolean; 
+}
+
+interface CommentData {
+    id: string;
+    userId: string;
+    userName: string;
+    avatar: string;
+    texto: string;
+    likes: string[];
+    plano_cor?: string;
+    plano_icon?: string;
+    role?: string;
+    createdAt: Timestamp | null;
+}
+
+// --- CONSTANTES ---
+
+const CATEGORIAS_OFICIAIS = [
+    "Geral", "Futebol", "Vôlei", "Basquete", "Handebol", 
+    "Sinuca", "Truco", "Natação", "Bateria", "Cheerleaders", "Sugestões"
+];
+
+const PLAN_COLORS: Record<string, string> = {
+    yellow: "text-yellow-400",
+    emerald: "text-emerald-400",
+    purple: "text-purple-400",
+    blue: "text-blue-400",
+    red: "text-red-500",
+    zinc: "text-zinc-400"
+};
+
+// --- FUNÇÕES AUXILIARES ---
+
+const formatCustomDate = (timestamp: Timestamp | null | undefined) => {
+    if (!timestamp) return "env...";
+    const date = timestamp.toDate();
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMin < 1) return "agora";
+    if (diffMin < 60) return `${diffMin} min`;
+    if (diffHours < 24) return `${diffHours} h`;
+    if (diffDays <= 7) return `${diffDays} d`;
+    if (diffDays <= 30) return `${Math.floor(diffDays / 7)} sem`;
+    return "mais de 1 mês";
+};
+
+// --- COMPONENTES ---
+
+const UserBadges = ({ userData }: { userData: any }) => {
+    const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
+    const planIcon = userData?.plano_icon || 'ghost';
+    
+    const icons: Record<string, React.ElementType> = { 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap 
+    };
+    const IconComponent = icons[planIcon] || Ghost;
+    
+    const colorKey = userData?.plano_cor || "zinc";
+    const colorClass = PLAN_COLORS[colorKey] || "text-zinc-400";
+
+    return (
+        <div className="flex items-center gap-1 ml-1">
+            {isAdmin && (
+                <span title="Administrador" className="flex items-center">
+                    <ShieldCheck size={12} className="text-red-500 fill-red-500/20" />
+                </span>
+            )}
+            <span title={userData?.plano || "Membro"} className="flex items-center">
+                <IconComponent size={12} className={colorClass}/>
+            </span>
+        </div>
+    );
+};
 
 export default function ComunidadePage() {
   const { user } = useAuth();
@@ -36,9 +132,10 @@ export default function ComunidadePage() {
   
   const [activeTab, setActiveTab] = useState("Geral");
   const [activeFilter, setActiveFilter] = useState<"recent" | "likes" | "comments" | "hype">("recent");
-  const [modalidades, setModalidades] = useState<string[]>(["Geral"]);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>({});
+  const [modalidades, setModalidades] = useState<string[]>(CATEGORIAS_OFICIAIS);
+  
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [config, setConfig] = useState<AppConfig>({});
   const [loading, setLoading] = useState(true);
   
   const [newPostText, setNewPostText] = useState("");
@@ -46,77 +143,90 @@ export default function ComunidadePage() {
   const [isPublishing, setIsPublishing] = useState(false);
 
   const [reportModal, setReportModal] = useState<string | null>(null);
+  const [reportTargetType, setReportTargetType] = useState<"post" | "comment">("post");
   const [reportReason, setReportReason] = useState("");
   const [otherReasonText, setOtherReasonText] = useState("");
   
   const [commentModal, setCommentModal] = useState<string | null>(null);
-  const [commentsList, setCommentsList] = useState<any[]>([]);
+  const [commentsList, setCommentsList] = useState<CommentData[]>([]);
   const [newComment, setNewComment] = useState("");
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [commentMenuOpen, setCommentMenuOpen] = useState<string | null>(null);
 
-  // 1. Configs
   useEffect(() => {
-    onSnapshot(doc(db, "app_config", "comunidade"), (snap) => { if (snap.exists()) setConfig(snap.data()); });
-    
-    const fetchModalidades = async () => {
-        try {
-            const q = query(collection(db, "modalidades"));
-            const snap = await getDocs(q);
-            const mods = snap.docs.map(d => d.data().nome);
-            if (mods.length > 0) setModalidades(["Geral", ...mods]);
-            else setModalidades(["Geral", ...MODALIDADES_PADRAO]);
-        } catch (e) { 
-            setModalidades(["Geral", ...MODALIDADES_PADRAO]);
-        }
-    };
-    fetchModalidades();
+    onSnapshot(doc(db, "app_config", "comunidade"), (snap) => { 
+        if (snap.exists()) setConfig(snap.data() as AppConfig); 
+    });
   }, []);
 
-  // 2. Posts
   useEffect(() => {
     const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PostData[];
+      
       if (!user?.role?.includes('admin')) {
           data = data.filter(p => !p.blocked); 
       }
-      if (activeTab !== "Geral") data = data.filter(p => p.categoria === activeTab);
-      if (activeFilter === 'likes') data.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
-      if (activeFilter === 'comments') data.sort((a, b) => (b.comentarios || 0) - (a.comentarios || 0));
-      if (activeFilter === 'hype') data.sort((a, b) => (b.hype?.length || 0) - (a.hype?.length || 0));
-      setPosts(data);
+      
+      const filteredByTab = data.filter(p => p.categoria === activeTab);
+      let finalData = filteredByTab.slice(0, 20);
+
+      if (activeFilter === 'likes') finalData.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+      if (activeFilter === 'comments') finalData.sort((a, b) => (b.comentarios || 0) - (a.comentarios || 0));
+      if (activeFilter === 'hype') finalData.sort((a, b) => (b.hype?.length || 0) - (a.hype?.length || 0));
+      
+      data.forEach(p => {
+          if (p.createdAt) {
+             const postTime = p.createdAt.toDate().getTime();
+             p.isRecent = (new Date().getTime() - postTime) < (24 * 60 * 60 * 1000);
+          } else {
+             p.isRecent = false;
+          }
+      });
+      
+      setPosts(finalData);
+      (window as any).allPostsRaw = data; 
       setLoading(false);
     });
     return () => unsubscribe();
   }, [activeTab, activeFilter, user]);
 
-  // 3. Comentários
   useEffect(() => {
       if (!commentModal) return;
       const q = query(collection(db, `posts/${commentModal}/comments`), orderBy("createdAt", "asc"));
       const unsub = onSnapshot(q, (snap) => {
-          setCommentsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          let comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as CommentData));
+          comments.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+          setCommentsList(comments);
       });
       return () => unsub();
   }, [commentModal]);
 
+  const getRecentCount = (cat: string) => {
+      const all: PostData[] = (window as any).allPostsRaw || [];
+      return all.filter(p => p.categoria === cat && p.isRecent).length;
+  };
+
   const handlePublish = async () => {
-    if (!user) {
-        addToast("Faça login!", "error");
-        return;
-    }
+    if (!user) return addToast("Faça login!", "error");
     
-    // 🦈 VERIFICAÇÃO DE SEGURANÇA (ANTI-SPAM)
     const securityCheck = await Security.canUserPost(user.uid);
-    if (!securityCheck.allowed) {
-        addToast(securityCheck.reason || "Aguarde para postar.", "error");
-        return;
-    }
+    if (!securityCheck.allowed) return addToast(securityCheck.reason || "Aguarde...", "error");
 
     if (!newPostText.trim() && !imageFile) return;
-    
-    const isTreinador = user.role?.includes("treinador") || user.role?.includes("admin");
-    if (activeTab !== "Geral" && !isTreinador) return addToast("Só o mestre posta aqui! 🏋️‍♂️", "info");
+
+    if (newPostText.length > 150) return addToast("Máximo de 150 caracteres! Seja direto, Tubarão. 🦈", "error");
+
+    const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
+    const userPostsToday = posts.filter(p => 
+        p.userId === user.uid && 
+        p.categoria === activeTab &&
+        p.createdAt && p.createdAt.toDate().getTime() > oneDayAgo
+    );
+
+    if (userPostsToday.length > 0 && !user.role?.includes('admin')) {
+        return addToast(`Você já postou em "${activeTab}" hoje. Volte amanhã! ⏳`, "error");
+    }
 
     setIsPublishing(true);
     try {
@@ -127,11 +237,19 @@ export default function ComunidadePage() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
+      const safeUser = {
+          userId: user.uid ? String(user.uid) : "",
+          userName: user.nome || "Anônimo",
+          handle: user.apelido ? `@${user.apelido}` : "@atleta",
+          avatar: user.foto || "https://github.com/shadcn.png",
+          plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
+          plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+          plano: user.plano ? String(user.plano) : 'Visitante',
+          role: user.role ? String(user.role) : 'user',
+      };
+
       await addDoc(collection(db, "posts"), {
-        userId: user.uid,
-        userName: user.nome || "Anônimo",
-        handle: user.apelido ? `@${user.apelido}` : "@atleta",
-        avatar: user.foto || "https://github.com/shadcn.png",
+        ...safeUser,
         texto: newPostText,
         imagem: imageUrl,
         likes: [],
@@ -139,11 +257,17 @@ export default function ComunidadePage() {
         comentarios: 0,
         denunciasCount: 0,
         categoria: activeTab,
-        isTreinador: isTreinador,
         blocked: false,
         commentsDisabled: false,
         createdAt: serverTimestamp(),
       });
+
+      // 🦈 ATUALIZA CONQUISTAS (POSTS)
+      if (user.uid) {
+          await updateDoc(doc(db, "users", user.uid), {
+              "stats.postsCount": increment(1)
+          });
+      }
 
       setNewPostText("");
       setImageFile(null);
@@ -152,16 +276,87 @@ export default function ComunidadePage() {
     finally { setIsPublishing(false); }
   };
 
+  const handleComment = async () => {
+      if (!user) return addToast("Faça login!", "error");
+      if (!newComment.trim()) return;
+      if (!commentModal) return; 
+
+      const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
+      const myCommentsToday = commentsList.filter(c => 
+          c.userId === user.uid && 
+          c.createdAt && c.createdAt.toDate().getTime() > oneDayAgo
+      );
+
+      if (myCommentsToday.length > 0 && !user.role?.includes('admin')) {
+          return addToast("Você já comentou neste post hoje.", "error");
+      }
+
+      try {
+          const safeUser = {
+              userId: user.uid ? String(user.uid) : "",
+              userName: user.nome || "Anônimo",
+              avatar: user.foto || "/logo.png",
+              plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
+              plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+              role: user.role ? String(user.role) : 'user',
+          };
+
+          await addDoc(collection(db, `posts/${commentModal}/comments`), {
+              ...safeUser,
+              texto: newComment,
+              likes: [],
+              createdAt: serverTimestamp()
+          });
+          
+          await updateDoc(doc(db, "posts", commentModal), { comentarios: commentsList.length + 1 });
+
+          // 🦈 ATUALIZA CONQUISTAS (COMENTÁRIOS)
+          if (user.uid) {
+              await updateDoc(doc(db, "users", user.uid), {
+                  "stats.commentsCount": increment(1)
+              });
+          }
+          
+          setNewComment("");
+      } catch (e) { console.error(e); }
+  };
+
+  const handleDeletePost = async (post: PostData) => {
+      if (!user) return;
+      if (post.userId !== user.uid && !user.role?.includes('admin')) return;
+      if(!confirm("Tem certeza que quer apagar essa mensagem?")) return;
+
+      try {
+          await deleteDoc(doc(db, "posts", post.id));
+          addToast("Mensagem apagada.", "info");
+          setMenuOpen(null);
+      } catch(e) { addToast("Erro ao apagar.", "error"); }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+      if (!user || !commentModal) return;
+      if (!confirm("Excluir comentário?")) return;
+      try {
+          await deleteDoc(doc(db, `posts/${commentModal}/comments`, commentId));
+          await updateDoc(doc(db, "posts", commentModal), { comentarios: Math.max(0, commentsList.length - 1) });
+          addToast("Comentário removido.", "info");
+          setCommentMenuOpen(null);
+      } catch (e) { addToast("Erro ao excluir.", "error"); }
+  };
+
   const handleReport = async () => {
       if (!user) return addToast("Faça login!", "error");
       if (!reportReason) return addToast("Selecione um motivo!", "error");
-      
+      if (!reportModal) return;
+
       const finalReason = reportReason === "Outros" ? `Outros: ${otherReasonText}` : reportReason;
+      
       const postAlvo = posts.find(p => p.id === reportModal);
-      const textoSalvo = postAlvo ? postAlvo.texto : "Conteúdo não carregado/imagem";
+      const textoSalvo = postAlvo ? postAlvo.texto : "Conteúdo reportado";
 
       await addDoc(collection(db, "denuncias"), {
-          postId: reportModal,
+          targetId: reportModal,
+          targetType: reportTargetType,
           postText: textoSalvo,
           reporterId: user.uid,
           reason: finalReason,
@@ -169,8 +364,8 @@ export default function ComunidadePage() {
           status: "pendente"
       });
 
-      if (postAlvo) {
-        await updateDoc(doc(db, "posts", reportModal!), {
+      if (reportTargetType === 'post' && postAlvo) {
+        await updateDoc(doc(db, "posts", reportModal), {
             denunciasCount: (postAlvo.denunciasCount || 0) + 1
         });
       }
@@ -181,30 +376,65 @@ export default function ComunidadePage() {
       setOtherReasonText("");
   };
 
-  const handleComment = async () => {
-      if (!user) return addToast("Faça login!", "error");
-      if (!newComment.trim()) return;
-      try {
-          await addDoc(collection(db, `posts/${commentModal}/comments`), {
-              userId: user.uid,
-              userName: user.nome || "Anônimo",
-              avatar: user.foto || "/logo.png",
-              texto: newComment,
-              tier: user.plano_badge ? user.plano_badge.toLowerCase().split(' ')[0] : 'standard',
-              createdAt: serverTimestamp()
-          });
-          await updateDoc(doc(db, "posts", commentModal!), { comentarios: commentsList.length + 1 });
-          setNewComment("");
-      } catch (e) { console.error(e); }
-  };
-
+  // 🦈 TOGGLE DE AÇÃO NO POST (COM ESTATÍSTICAS)
   const toggleAction = async (postId: string, field: "likes" | "hype", list: string[]) => {
     if (!user) return;
+    if (!user.uid) return;
+
     const postRef = doc(db, "posts", postId);
     const hasInteracted = list.includes(user.uid);
+    
+    // Identifica o autor do post para dar XP/Stats pra ele
+    const postData = posts.find(p => p.id === postId);
+    const authorId = postData?.userId;
+
     try {
+      // 1. Atualiza o array no Post
       await updateDoc(postRef, { [field]: hasInteracted ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+
+      // 2. Atualiza Estatísticas do AUTOR DO POST (Quem RECEBEU)
+      if (authorId && authorId !== user.uid) {
+          const statField = field === "likes" ? "stats.likesReceived" : "stats.hypesReceived";
+          await updateDoc(doc(db, "users", authorId), {
+              [statField]: increment(hasInteracted ? -1 : 1)
+          });
+      }
+
+      // 3. Atualiza Estatísticas de QUEM DEU (Você)
+      const myStatField = field === "likes" ? "stats.likesGiven" : "stats.hypesGiven";
+      await updateDoc(doc(db, "users", user.uid), {
+          [myStatField]: increment(hasInteracted ? -1 : 1)
+      });
+
     } catch (e) { console.error(e); }
+  };
+
+  // 🦈 TOGGLE DE AÇÃO NO COMENTÁRIO (COM ESTATÍSTICAS)
+  const toggleCommentLike = async (comment: CommentData) => {
+      if (!user || !commentModal) return;
+      if (!user.uid) return;
+
+      const commentRef = doc(db, `posts/${commentModal}/comments`, comment.id);
+      const hasLiked = comment.likes?.includes(user.uid);
+      const authorId = comment.userId;
+
+      try {
+          // 1. Atualiza o array no Comentário
+          await updateDoc(commentRef, { likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+
+          // 2. Atualiza Estatísticas do AUTOR DO COMENTÁRIO (Quem RECEBEU)
+          if (authorId && authorId !== user.uid) {
+              await updateDoc(doc(db, "users", authorId), {
+                  "stats.likesReceived": increment(hasLiked ? -1 : 1)
+              });
+          }
+
+          // 3. Atualiza Estatísticas de QUEM DEU (Você)
+          await updateDoc(doc(db, "users", user.uid), {
+              "stats.likesGiven": increment(hasLiked ? -1 : 1)
+          });
+
+      } catch (e) { console.error(e); }
   };
 
   const currentPostCommentsDisabled = posts.find(p => p.id === commentModal)?.commentsDisabled;
@@ -225,9 +455,19 @@ export default function ComunidadePage() {
       {/* ABAS DINÂMICAS */}
       <div className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md border-b border-zinc-900 overflow-x-auto custom-scrollbar">
           <div className="flex gap-2 p-3 min-w-max">
-              {modalidades.map(mod => (
-                  <button key={mod} onClick={() => setActiveTab(mod)} className={`px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all border ${activeTab === mod ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>{mod}</button>
-              ))}
+              {modalidades.map(mod => {
+                  const recentCount = getRecentCount(mod);
+                  return (
+                      <button key={mod} onClick={() => setActiveTab(mod)} className={`relative px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all border ${activeTab === mod ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>
+                          {mod}
+                          {recentCount > 0 && activeTab !== mod && (
+                              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 flex items-center justify-center rounded-full border border-black animate-pulse">
+                                  {recentCount > 9 ? '9+' : recentCount}
+                              </span>
+                          )}
+                      </button>
+                  )
+              })}
           </div>
       </div>
 
@@ -241,18 +481,27 @@ export default function ComunidadePage() {
 
       <main className="max-w-2xl mx-auto">
         {/* POSTAR */}
-        {(activeTab === "Geral" || user?.role?.includes("treinador")) && (
-            <div className="p-4 border-b border-zinc-900 bg-zinc-900/20">
-                <div className="flex gap-3">
-                    <img src={user?.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full shrink-0 object-cover" />
-                    <textarea value={newPostText} onChange={e => setNewPostText(e.target.value)} placeholder={`Mandar um salve na aba ${activeTab}...`} className="bg-transparent flex-1 resize-none text-sm outline-none pt-2 placeholder:text-zinc-600"/>
-                </div>
-                <div className="flex justify-between items-center mt-3">
-                    <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
-                    <button onClick={handlePublish} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-full font-black uppercase text-xs transition">{isPublishing ? <Loader2 className="animate-spin" size={14}/> : "Publicar"}</button>
+        <div className="p-4 border-b border-zinc-900 bg-zinc-900/20">
+            <div className="flex gap-3">
+                <img src={user?.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full shrink-0 object-cover" />
+                <div className="flex-1 relative">
+                    <textarea 
+                        value={newPostText} 
+                        onChange={e => setNewPostText(e.target.value)} 
+                        placeholder={`Mandar um salve na aba ${activeTab}...`} 
+                        className="bg-transparent w-full resize-none text-sm outline-none pt-2 placeholder:text-zinc-600 h-20"
+                        maxLength={150} 
+                    />
+                    <span className={`absolute bottom-0 right-0 text-[9px] font-bold ${newPostText.length >= 140 ? "text-red-500" : "text-zinc-600"}`}>
+                        {newPostText.length}/150
+                    </span>
                 </div>
             </div>
-        )}
+            <div className="flex justify-between items-center mt-3">
+                <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
+                <button onClick={handlePublish} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-full font-black uppercase text-xs transition shadow-lg">{isPublishing ? <Loader2 className="animate-spin" size={14}/> : "Publicar"}</button>
+            </div>
+        </div>
 
         {/* FEED */}
         <div className="divide-y divide-zinc-900">
@@ -266,21 +515,30 @@ export default function ComunidadePage() {
                         <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <Link href={`/perfil/${post.userId}`} className="flex items-center gap-1 font-bold text-sm hover:text-emerald-400 transition">
-                                        {post.userName} {post.isTreinador && <ShieldCheck size={12} className="text-yellow-500"/>}
-                                    </Link>
-                                    <p className="text-[10px] text-zinc-500">{post.handle}</p>
+                                    <div className="flex items-center gap-1.5">
+                                        <Link href={`/perfil/${post.userId}`} className={`font-bold text-sm hover:underline transition ${PLAN_COLORS[post.plano_cor || "zinc"] || "text-zinc-200"}`}>
+                                            {post.userName}
+                                        </Link>
+                                        <UserBadges userData={post} />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-[10px] text-zinc-500">{post.handle}</p>
+                                        <span className="text-[9px] text-zinc-600 font-mono">• {formatCustomDate(post.createdAt)}</span>
+                                    </div>
                                 </div>
                                 <button onClick={() => setMenuOpen(menuOpen === post.id ? null : post.id)} className="text-zinc-600 hover:text-white p-1"><MoreHorizontal size={16}/></button>
                                 {menuOpen === post.id && (
                                     <div className="absolute right-4 top-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-10 overflow-hidden min-w-[140px]">
                                         {user?.role?.includes('admin') && <button onClick={() => updateDoc(doc(db, "posts", post.id), {fixado: !post.fixado})} className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-zinc-800 flex items-center gap-2"><Pin size={14}/> {post.fixado ? 'Desafixar' : 'Fixar'}</button>}
-                                        <button onClick={() => {setReportModal(post.id); setMenuOpen(null)}} className="w-full text-left px-4 py-3 text-xs font-bold text-yellow-500 hover:bg-zinc-800 flex items-center gap-2"><Flag size={14}/> Denunciar</button>
+                                        {(user?.uid === post.userId || user?.role?.includes('admin')) && (
+                                            <button onClick={() => handleDeletePost(post)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-zinc-800 flex items-center gap-2"><Trash2 size={14}/> Excluir</button>
+                                        )}
+                                        <button onClick={() => {setReportModal(post.id); setReportTargetType("post"); setMenuOpen(null)}} className="w-full text-left px-4 py-3 text-xs font-bold text-yellow-500 hover:bg-zinc-800 flex items-center gap-2"><Flag size={14}/> Denunciar</button>
                                     </div>
                                 )}
                             </div>
 
-                            <p className="text-sm text-zinc-300 mt-2 whitespace-pre-line leading-relaxed">{post.texto}</p>
+                            <p className="text-sm text-zinc-300 mt-2 whitespace-pre-line leading-relaxed break-words">{post.texto}</p>
                             {post.imagem && <img src={post.imagem} className="mt-3 rounded-xl border border-zinc-800 w-full max-h-96 object-cover" />}
                             
                             <div className="flex justify-between mt-4 max-w-xs text-zinc-500">
@@ -288,10 +546,10 @@ export default function ComunidadePage() {
                                     <MessageCircle size={18}/> {post.comentarios || 0}
                                     {post.commentsDisabled && <Lock size={12} className="text-red-500 ml-1"/>}
                                 </button>
-                                <button onClick={() => toggleAction(post.id, "likes", post.likes || [])} className={`flex items-center gap-1.5 transition ${post.likes?.includes(user?.uid) ? 'text-red-500' : 'hover:text-red-500'}`}><Heart size={18} className={post.likes?.includes(user?.uid) ? "fill-red-500" : ""} /> {post.likes?.length || 0}</button>
+                                <button onClick={() => toggleAction(post.id, "likes", post.likes || [])} className={`flex items-center gap-1.5 transition ${post.likes?.includes(user?.uid || "") ? 'text-red-500' : 'hover:text-red-500'}`}><Heart size={18} className={post.likes?.includes(user?.uid || "") ? "fill-red-500" : ""} /> {post.likes?.length || 0}</button>
                                 <div className="group relative">
-                                    <button onClick={() => toggleAction(post.id, "hype", post.hype || [])} className={`flex items-center gap-1.5 transition ${post.hype?.includes(user?.uid) ? 'text-orange-500' : 'hover:text-orange-500'}`}>
-                                        <Flame size={18} className={post.hype?.includes(user?.uid) ? "fill-orange-500" : ""}/> <span className="text-[10px]">{post.hype?.length || 0}</span>
+                                    <button onClick={() => toggleAction(post.id, "hype", post.hype || [])} className={`flex items-center gap-1.5 transition ${post.hype?.includes(user?.uid || "") ? 'text-orange-500' : 'hover:text-orange-500'}`}>
+                                        <Flame size={18} className={post.hype?.includes(user?.uid || "") ? "fill-orange-500" : ""}/> <span className="text-[10px]">{post.hype?.length || 0}</span>
                                     </button>
                                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-orange-500 text-black text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap">Dar um Hype!</span>
                                 </div>
@@ -301,6 +559,7 @@ export default function ComunidadePage() {
                     </div>
                 </div>
             ))}
+            {posts.length === 0 && !loading && <div className="py-20 text-center text-zinc-600 text-sm">Seja o primeiro a postar em <b>{activeTab}</b>! 🚀</div>}
         </div>
       </main>
 
@@ -315,14 +574,35 @@ export default function ComunidadePage() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                       {commentsList.length === 0 && <p className="text-center text-zinc-600 text-xs py-10">Nenhum comentário ainda.</p>}
                       {commentsList.map(comment => (
-                          <div key={comment.id} className="flex gap-3">
+                          <div key={comment.id} className="flex gap-3 group">
                               <Link href={`/perfil/${comment.userId}`}><img src={comment.avatar} className="w-8 h-8 rounded-full object-cover border border-zinc-700"/></Link>
-                              <div className="bg-zinc-800/50 p-3 rounded-2xl rounded-tl-none border border-zinc-800/50">
-                                  <div className="flex items-center gap-2">
-                                      <Link href={`/perfil/${comment.userId}`} className="text-xs font-bold text-white hover:underline">{comment.userName}</Link>
-                                      <UserBadges tier={comment.tier}/> 
+                              <div className="flex-1">
+                                  <div className="bg-zinc-800/50 p-3 rounded-2xl rounded-tl-none border border-zinc-800/50 w-full">
+                                      <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                              <Link href={`/perfil/${comment.userId}`} className={`text-xs font-bold hover:underline ${PLAN_COLORS[comment.plano_cor || "zinc"] || "text-white"}`}>{comment.userName}</Link>
+                                              <UserBadges userData={comment}/> 
+                                              <span className="text-[8px] text-zinc-600 ml-auto">{formatCustomDate(comment.createdAt)}</span>
+                                          </div>
+                                          <button onClick={() => setCommentMenuOpen(commentMenuOpen === comment.id ? null : comment.id)} className="text-zinc-500 hover:text-white"><MoreHorizontal size={14}/></button>
+                                      </div>
+                                      <p className="text-xs text-zinc-300 mt-1">{comment.texto}</p>
                                   </div>
-                                  <p className="text-xs text-zinc-300 mt-1">{comment.texto}</p>
+                                  
+                                  <div className="flex items-center gap-4 mt-1 ml-2">
+                                      <button onClick={() => toggleCommentLike(comment)} className={`text-[10px] font-bold flex items-center gap-1 ${comment.likes?.includes(user?.uid || "") ? 'text-red-500' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                                          <Heart size={12} className={comment.likes?.includes(user?.uid || "") ? "fill-red-500" : ""}/> {comment.likes?.length || 0}
+                                      </button>
+                                  </div>
+
+                                  {commentMenuOpen === comment.id && (
+                                      <div className="absolute ml-8 -mt-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 overflow-hidden min-w-[120px]">
+                                          {(user?.uid === comment.userId || user?.role?.includes('admin')) && (
+                                              <button onClick={() => handleDeleteComment(comment.id)} className="w-full text-left px-3 py-2 text-[10px] font-bold text-red-500 hover:bg-zinc-800 flex items-center gap-2"><Trash2 size={12}/> Excluir</button>
+                                          )}
+                                          <button onClick={() => {setReportModal(comment.id); setReportTargetType("comment"); setCommentMenuOpen(null)}} className="w-full text-left px-3 py-2 text-[10px] font-bold text-yellow-500 hover:bg-zinc-800 flex items-center gap-2"><Flag size={12}/> Denunciar</button>
+                                      </div>
+                                  )}
                               </div>
                           </div>
                       ))}
@@ -347,7 +627,7 @@ export default function ComunidadePage() {
               <div className="bg-zinc-900 w-full max-w-sm p-6 rounded-3xl border border-zinc-800 space-y-4" onClick={e => e.stopPropagation()}>
                   <div className="text-center">
                       <AlertTriangle size={40} className="text-red-500 mx-auto mb-2"/>
-                      <h3 className="font-black uppercase text-lg">Reportar Abuso</h3>
+                      <h3 className="font-black uppercase text-lg">Reportar {reportTargetType === 'post' ? 'Post' : 'Comentário'}</h3>
                   </div>
                   <div className="space-y-2">
                       {["Conteúdo Ofensivo", "Spam / Propaganda", "Fake News", "Assédio", "Outros"].map(reason => (
