@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, Search, 
   Shield, Key, Users, UploadCloud, Eye, EyeOff, 
-  Loader2, Calendar, MessageCircle, Lightbulb, Bell, UserPlus 
+  Loader2, Calendar, MessageCircle, Lightbulb, Bell, UserPlus, 
+  CheckCircle, MonitorPlay
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -64,23 +65,14 @@ interface Liga {
   descricao: string;
   senha: string;
   foto: string; // URL da logo
-  logoBase64?: string; // Para compatibilidade com o front
+  logoBase64?: string; // Para compatibilidade
+  visivel?: boolean; // Controle de visibilidade no Dashboard
   membros: Member[];
   eventos: LeagueEvent[];
   perguntas: PerguntaLiga[];
   bizu: string;
   likes: number;
 }
-
-// Helper para Base64 (usado nas perguntas e membros internos se não usar uploadImage)
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
 
 export default function AdminLigasPage() {
   const { addToast } = useToast();
@@ -104,7 +96,7 @@ export default function AdminLigasPage() {
 
   // Form State Principal
   const [formData, setFormData] = useState<Partial<Liga>>({
-    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", 
+    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
     membros: [], eventos: [], perguntas: [], bizu: "", likes: 0
   });
 
@@ -113,13 +105,15 @@ export default function AdminLigasPage() {
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
 
-  // 1. BUSCAR LIGAS EM TEMPO REAL
+  // 1. BUSCAR LIGAS (CORRIGIDO: COLEÇÃO "ligas")
   useEffect(() => {
-    const q = query(collection(db, "ligas_config"), orderBy("nome", "asc"));
+    // ATENÇÃO: Mudado de "ligas_config" para "ligas" para puxar as ligas reais (LAAS, LAMEI, etc)
+    const q = query(collection(db, "ligas"), orderBy("nome", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
+        visivel: doc.data().visivel || false,
         membros: doc.data().membros || [],
         eventos: doc.data().eventos || [],
         perguntas: doc.data().perguntas || []
@@ -130,7 +124,7 @@ export default function AdminLigasPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. BUSCAR USUÁRIOS (Para adicionar membros)
+  // 2. BUSCAR USUÁRIOS
   useEffect(() => {
       const fetchUsers = async () => {
           const snap = await getDocs(collection(db, "users"));
@@ -143,7 +137,7 @@ export default function AdminLigasPage() {
 
   const handleOpenCreate = () => {
     setFormData({ 
-        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", 
+        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
         membros: [], eventos: [], perguntas: [], bizu: "", likes: 0 
     });
     setIsEditing(false);
@@ -162,11 +156,22 @@ export default function AdminLigasPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta Liga?")) return;
     try {
-      await deleteDoc(doc(db, "ligas_config", id));
+      await deleteDoc(doc(db, "ligas", id)); // CORRIGIDO PARA "ligas"
       addToast("Liga removida com sucesso.", "success");
     } catch (e) {
       addToast("Erro ao remover.", "error");
     }
+  };
+
+  // --- FUNÇÃO: TOGGLE VISIBILIDADE DASHBOARD ---
+  const toggleVisibility = async (liga: Liga) => {
+      const novoStatus = !liga.visivel;
+      try {
+          await updateDoc(doc(db, "ligas", liga.id), { visivel: novoStatus }); // CORRIGIDO PARA "ligas"
+          addToast(novoStatus ? "Liga visível no Dashboard! 📱" : "Liga ocultada do Dashboard.", novoStatus ? "success" : "info");
+      } catch (e) {
+          addToast("Erro ao atualizar visibilidade.", "error");
+      }
   };
 
   const handleSave = async () => {
@@ -174,10 +179,10 @@ export default function AdminLigasPage() {
 
     try {
       if (isEditing && editingId) {
-        await updateDoc(doc(db, "ligas_config", editingId), formData);
+        await updateDoc(doc(db, "ligas", editingId), formData); // CORRIGIDO PARA "ligas"
         addToast("Liga atualizada!", "success");
       } else {
-        await addDoc(collection(db, "ligas_config"), formData);
+        await addDoc(collection(db, "ligas"), formData); // CORRIGIDO PARA "ligas"
         addToast("Liga criada!", "success");
       }
       setShowModal(false);
@@ -191,7 +196,7 @@ export default function AdminLigasPage() {
     if (file) {
       setUploading(true);
       const { url } = await uploadImage(file, "ligas");
-      if (url) setFormData(prev => ({ ...prev, foto: url, logoBase64: url })); // Salva em ambos para compatibilidade
+      if (url) setFormData(prev => ({ ...prev, foto: url, logoBase64: url })); 
       setUploading(false);
     }
   };
@@ -273,7 +278,7 @@ export default function AdminLigasPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
       {/* HEADER */}
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex items-center justify-between">
+      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition">
             <ArrowLeft size={20} className="text-zinc-400" />
@@ -291,47 +296,63 @@ export default function AdminLigasPage() {
         {/* LISTA DE LIGAS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {ligas.map(liga => (
-            <div key={liga.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 group hover:border-emerald-500/30 transition">
+            <div key={liga.id} className={`bg-zinc-900 border rounded-2xl p-5 flex flex-col gap-4 group transition relative overflow-hidden ${liga.visivel ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'border-zinc-800 opacity-90'}`}>
               
-              <div className="flex items-start justify-between">
+              {/* Badge de Visibilidade */}
+              {liga.visivel && (
+                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] font-bold px-2 py-1 rounded-bl-xl uppercase flex items-center gap-1">
+                      <MonitorPlay size={10}/> No Dashboard
+                  </div>
+              )}
+
+              <div className="flex items-start justify-between mt-2">
                 <div className="flex items-center gap-3">
                   <img 
                     src={liga.foto || "https://github.com/shadcn.png"} 
-                    className="w-12 h-12 rounded-full object-cover border-2 border-zinc-800"
+                    className={`w-12 h-12 rounded-full object-cover border-2 ${liga.visivel ? 'border-emerald-500' : 'border-zinc-800'}`}
                   />
                   <div>
-                    <h3 className="font-bold text-white uppercase">{liga.nome}</h3>
-                    <p className="text-xs text-zinc-500 font-bold">{liga.sigla} • {liga.presidente}</p>
+                    <h3 className="font-bold text-white uppercase text-sm truncate w-32" title={liga.nome}>{liga.nome}</h3>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase">{liga.sigla}</p>
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => handleOpenEdit(liga)} className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"><Edit size={16}/></button>
-                  <button onClick={() => handleDelete(liga.id)} className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"><Trash2 size={16}/></button>
                 </div>
               </div>
 
-              {/* VISUALIZADOR DE SENHA */}
-              <div className="bg-black/40 p-3 rounded-xl border border-zinc-800 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <Key size={14} className="text-emerald-500"/>
-                    <span className="font-mono">
-                        {showPassword[liga.id] ? liga.senha : "••••••••"}
+              {/* Botões de Ação */}
+              <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-1">
+                  {/* Botão de Visibilidade */}
+                  <button 
+                    onClick={() => toggleVisibility(liga)} 
+                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition ${liga.visivel ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' : 'bg-zinc-800 text-zinc-500 hover:text-white hover:bg-zinc-700'}`}
+                    title={liga.visivel ? "Ocultar do Dashboard" : "Mostrar no Dashboard"}
+                  >
+                      {liga.visivel ? <Eye size={16}/> : <EyeOff size={16}/>}
+                      <span className="text-[10px] font-bold uppercase">{liga.visivel ? "Visível" : "Oculto"}</span>
+                  </button>
+
+                  <button onClick={() => handleOpenEdit(liga)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"><Edit size={16}/></button>
+                  <button onClick={() => handleDelete(liga.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"><Trash2 size={16}/></button>
+              </div>
+
+              {/* Senha */}
+              <div className="flex justify-between items-center bg-black/30 p-2 rounded-lg border border-zinc-800/50">
+                <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                    <Key size={10}/>
+                    <span className="font-mono tracking-wider">
+                        {showPassword[liga.id] ? liga.senha : "••••••"}
                     </span>
                 </div>
-                <button onClick={() => togglePasswordVisibility(liga.id)} className="text-zinc-500 hover:text-white">
-                    {showPassword[liga.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
+                <button onClick={() => togglePasswordVisibility(liga.id)} className="text-zinc-600 hover:text-zinc-300">
+                    {showPassword[liga.id] ? <EyeOff size={12}/> : <Eye size={12}/>}
                 </button>
               </div>
 
-              <div className="text-[10px] text-zinc-500 line-clamp-2">
-                  {liga.descricao}
-              </div>
             </div>
           ))}
         </div>
       </main>
 
-      {/* MODAL CRIAR/EDITAR (COM ABAS) */}
+      {/* MODAL (Visibilidade também no modal) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-zinc-950 w-full max-w-2xl rounded-2xl border border-zinc-800 p-6 space-y-4 animate-in zoom-in-95 my-10">
@@ -340,7 +361,6 @@ export default function AdminLigasPage() {
                 <button onClick={() => setShowModal(false)}><X size={20} className="text-zinc-500 hover:text-white"/></button>
             </div>
 
-            {/* ABAS DO MODAL */}
             <div className="flex border-b border-zinc-800 mb-4 overflow-x-auto">
                 {['info', 'membros', 'eventos', 'shark'].map(tab => (
                     <button 
@@ -354,7 +374,6 @@ export default function AdminLigasPage() {
             </div>
 
             <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
-                {/* 1. ABA INFO */}
                 {activeTab === 'info' && (
                     <div className="space-y-3">
                         <div className="flex justify-center mb-4">
@@ -368,6 +387,21 @@ export default function AdminLigasPage() {
                             <input type="text" placeholder="Nome da Liga" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none" value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})}/>
                             <input type="text" placeholder="Sigla" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none uppercase" value={formData.sigla} onChange={e => setFormData({...formData, sigla: e.target.value})}/>
                         </div>
+                        
+                        {/* CHECKBOX VISIBILIDADE */}
+                        <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-xl border border-zinc-800">
+                            <input 
+                                type="checkbox" 
+                                id="visivelDash" 
+                                checked={formData.visivel} 
+                                onChange={e => setFormData({...formData, visivel: e.target.checked})}
+                                className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                            />
+                            <label htmlFor="visivelDash" className="text-sm text-white cursor-pointer select-none font-bold flex items-center gap-2">
+                                <MonitorPlay size={14} className="text-emerald-500"/> Mostrar no Dashboard (Carrossel)
+                            </label>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-3">
                             <input type="text" placeholder="Presidente" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none" value={formData.presidente} onChange={e => setFormData({...formData, presidente: e.target.value})}/>
                             <input type="text" placeholder="Senha de Acesso" className="w-full bg-zinc-900 border border-emerald-500/30 p-3 rounded-xl text-sm text-white outline-none" value={formData.senha} onChange={e => setFormData({...formData, senha: e.target.value})}/>
@@ -377,7 +411,7 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 2. ABA MEMBROS */}
+                {/* (Outras abas membros, eventos, shark mantidas iguais...) */}
                 {activeTab === 'membros' && (
                     <div className="space-y-3">
                         <button onClick={() => setSearchUserModal(true)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><UserPlus size={16}/> Adicionar Membro</button>
@@ -394,7 +428,6 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 3. ABA EVENTOS */}
                 {activeTab === 'eventos' && (
                     <div className="space-y-3">
                         <button onClick={() => handleOpenEventModal(null)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><Calendar size={16}/> Adicionar Evento</button>
@@ -410,7 +443,6 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 4. ABA SHARK ROUND */}
                 {activeTab === 'shark' && (
                     <div className="space-y-3">
                         <div className="flex justify-between items-center"><h3 className="text-xs font-bold text-zinc-500 uppercase">Banco de Questões ({formData.perguntas?.length}/10)</h3><button onClick={addQuestion} className="text-emerald-500 text-xs font-bold hover:underline">+ Adicionar</button></div>
@@ -438,7 +470,7 @@ export default function AdminLigasPage() {
         </div>
       )}
 
-      {/* MODAL SEARCH USER */}
+      {/* MODAL SEARCH USER (Mantido) */}
       {searchUserModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
             <div className="bg-zinc-900 w-full max-w-md rounded-2xl border border-zinc-800 p-6 shadow-2xl relative animate-in zoom-in-95">
@@ -460,7 +492,7 @@ export default function AdminLigasPage() {
         </div>
       )}
 
-      {/* MODAL EVENTO */}
+      {/* MODAL EVENTO (Mantido) */}
       {eventModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
               <div className="bg-zinc-950 w-full max-w-md rounded-2xl border border-zinc-800 p-6 space-y-3 animate-in zoom-in-95">

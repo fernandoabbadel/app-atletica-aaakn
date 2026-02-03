@@ -1292,10 +1292,9 @@ export default function AdminConfiguracoesPage() {
 
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Search, Edit2, Trash2, Save, Target,
-  Zap, Users, TrendingUp, Award, Crown, History, Calendar, Clock, ExternalLink,
-  FolderPlus, X, Power, PowerOff, Filter, CheckCircle2, MessageSquare, Flame, 
-  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw
+  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Edit2, Trash2, Save, Target,
+  Zap, Users, TrendingUp, Award, Crown, History, Power, PowerOff, Flame, 
+  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw, Gem
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -1304,6 +1303,8 @@ import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, 
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../../lib/achievements";
 
 // --- DADOS PADRÃƒO DAS PATENTES (PARA RESTAURAR) ---
+// Esses dados definem a "RÃ©gua" de evoluÃ§Ã£o. 
+// O AuthContext vai ler isso para saber qual Ã­cone dar ao usuÃ¡rio.
 const DEFAULT_PATENTES = [
     { id: "p1", titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish", opacity: true },
     { id: "p2", titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
@@ -1313,7 +1314,7 @@ const DEFAULT_PATENTES = [
     { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
-// Lista de Ãcones disponÃ­veis para seleÃ§Ã£o
+// Lista de Ãcones disponÃ­veis para seleÃ§Ã£o (Sincronizado com a Comunidade)
 const ICON_OPTIONS = [
     { label: "Peixe", value: "Fish", icon: <Fish/> },
     { label: "Espadas", value: "Swords", icon: <Swords/> },
@@ -1325,6 +1326,7 @@ const ICON_OPTIONS = [
     { label: "TrofÃ©u", value: "Trophy", icon: <Trophy/> },
     { label: "Medalha", value: "Medal", icon: <Medal/> },
     { label: "CoraÃ§Ã£o", value: "Heart", icon: <Heart/> },
+    { label: "Diamante", value: "Gem", icon: <Gem/> }, // Adicionado Gem
 ];
 
 export default function AdminConquistasPage() {
@@ -1371,7 +1373,6 @@ export default function AdminConquistasPage() {
         if (data.length > 0) {
             setPatentes(data);
         } else {
-            // Se vazio no banco, nÃ£o mostra nada (usuÃ¡rio deve clicar em restaurar)
             setPatentes([]); 
         }
         setLoading(false);
@@ -11488,7 +11489,8 @@ import {
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
   Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout, Camera,
-  Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem
+  Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem,
+  Skull, Rocket, Heart, ThumbsUp, LayoutGrid, UserPlus
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
@@ -11503,10 +11505,15 @@ interface UserData {
     tier?: 'bicho' | 'atleta' | 'lenda' | 'standard'; 
     level?: number;
     role?: 'admin_geral' | 'admin_gestor' | 'master' | 'user';
-    // Novos campos dinÃ¢micos
+    
+    // Novos campos dinÃ¢micos (Visual)
     plano?: string;
     plano_cor?: string;
     plano_icon?: string;
+    
+    patente?: string;
+    patente_icon?: string;
+    patente_cor?: string;
 }
 
 interface Notification {
@@ -11535,45 +11542,85 @@ const TURMA_IMAGENS: Record<string, string> = {
     "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
 };
 
-// ðŸ¦ˆ MAPA DE ÃCONES (Igual ao Admin/Carteirinha)
-const ICONS_MAP: any = {
-    ghost: Ghost,
-    star: Star,
-    crown: Crown,
-    shopping: ShoppingBag,
-    zap: Zap,
-    gem: Gem,
-    trophy: Trophy,
-    fish: Fish
+// ðŸ¦ˆ CONSTANTE DE CORES (Igual Comunidade)
+const PLAN_COLORS: Record<string, string> = {
+    yellow: "text-yellow-400",
+    emerald: "text-emerald-400",
+    purple: "text-purple-400",
+    blue: "text-blue-400",
+    red: "text-red-500",
+    zinc: "text-zinc-400"
 };
 
-// Ãcone de NÃ­vel (Gamification)
-const LevelIcon = ({ level }: { level: number }) => {
-    if (level === 1) return <Fish className="text-orange-400" size={14} />; 
-    if (level === 2) return <Swords className="text-blue-400" size={14} />;
-    if (level >= 5) return <Crown className="text-yellow-400" size={14} />;
-    return <Fish className="text-zinc-500" size={14} />;
-};
-
-// ðŸ¦ˆ ÃCONE DO PLANO (LÃ³gica DinÃ¢mica)
-const PlanBadge = ({ icon, color }: { icon?: string, color?: string }) => {
-    // 1. Resolve o Ãcone
-    const IconComponent = ICONS_MAP[icon || 'ghost'] || Ghost;
+// ðŸ¦ˆ COMPONENTE VISUAL INTELIGENTE (Igual Comunidade)
+const UserBadges = ({ userData }: { userData: UserData }) => {
+    // Verifica Admin
+    const isAdmin = userData?.role === 'master' || userData?.role === 'admin_geral' || userData?.role === 'admin_gestor';
     
-    // 2. Resolve a Cor (Tailwind Classes)
-    const colorClass = {
-        yellow: "text-yellow-500",
-        emerald: "text-emerald-400",
-        purple: "text-purple-400",
-        blue: "text-blue-400",
-        red: "text-red-500",
-        zinc: "text-zinc-400"
-    }[color || 'zinc'] || "text-zinc-400";
+    // 1. Tratamento do Ãcone do PLANO
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
 
-    return <IconComponent size={16} className={colorClass}/>;
+    // 2. Tratamento do Ãcone da PATENTE
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    
+    // 3. Tratamento das Cores (SEPARADAS)
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+
+    // Mapa Visual Completo
+    const icons: any = { 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, 
+        trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Skull, rocket: Rocket, medal: Medal, heart: Heart,
+        thumbsup: ThumbsUp, layoutgrid: LayoutGrid, userplus: UserPlus, 
+        target: Target, user: User 
+    };
+    
+    const PlanIcon = icons[planIconName] || User;
+    const PatentIcon = icons[patentIconName] || Fish;
+
+    // Tooltip
+    const tooltipText = `${userData?.patente || 'Novato'} â€¢ ${userData?.plano || 'Visitante'}`;
+
+    return (
+        <div className="flex items-center gap-1.5" title={tooltipText}>
+            
+            {/* 1. Ãcone de Admin */}
+            {isAdmin && (
+                <span className="flex items-center bg-red-500/10 p-0.5 rounded border border-red-500/20">
+                    <ShieldCheck size={12} className="text-red-500" />
+                </span>
+            )}
+
+            {/* 2. Ãcone do Plano */}
+            <span className={`flex items-center opacity-80 ${planColorClass}`}>
+                <PlanIcon size={14} />
+            </span>
+
+            {/* 3. Ãcone da Patente (Sem duplicar se for igual) */}
+            {planIconName !== patentIconName && (
+                <span className={`flex items-center ${patentColorClass}`}>
+                    <PatentIcon size={16} className="drop-shadow-sm" />
+                </span>
+            )}
+        </div>
+    );
 };
 
-// Banner Dourado (MantÃ©m lÃ³gica visual, mas verifica tier para exibir)
+// Ãcone de NÃ­vel (Gamification) - Mantido para mostrar nÃ­vel numÃ©rico
+const LevelIcon = ({ level }: { level: number }) => {
+    if (level === 1) return <Fish className="text-orange-400" size={12} />; 
+    if (level === 2) return <Swords className="text-blue-400" size={12} />;
+    if (level >= 5) return <Crown className="text-yellow-400" size={12} />;
+    return <Fish className="text-zinc-500" size={12} />;
+};
+
+// Banner Dourado
 const SocioGrowthBanner = ({ tier, closeMenu, router }: any) => {
     if (tier === 'lenda') return null;
     return (
@@ -11783,8 +11830,8 @@ export default function BottomNavbar() {
                                     <span className="text-[9px] font-mono text-zinc-400">Nv.{currentUser.level || 1}</span>
                                 </div>
                                 {/* ðŸ¦ˆ Badge DinÃ¢mica Aqui */}
-                                <div className="w-5 h-5 flex items-center justify-center bg-black/40 rounded border border-white/5" title={currentUser.plano || currentUser.tier || 'Bicho Solto'}>
-                                    <PlanBadge icon={currentUser.plano_icon} color={currentUser.plano_cor} />
+                                <div className="flex items-center h-5 bg-black/40 rounded border border-white/5 px-1.5">
+                                    <UserBadges userData={currentUser} />
                                 </div>
                             </div>
                         </div>
@@ -12397,7 +12444,8 @@ import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Heart, MessageCircle, MoreHorizontal, Flame, 
   Image as ImageIcon, ShieldCheck, Pin, X, Loader2, AlertTriangle, Send, Trash2, Flag,
-  Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish
+  Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish, User, 
+  Swords, Skull, Rocket, Medal, RefreshCw, ThumbsUp, LayoutGrid, UserPlus, Target
 } from "lucide-react";
 import Link from "next/link";
 import { db, storage } from "../../lib/firebase";
@@ -12431,9 +12479,15 @@ interface PostData {
     comentarios: number;
     denunciasCount: number;
     categoria: string;
+    
+    // Dados Visuais (Snapshot)
     plano_cor?: string;
     plano_icon?: string;
     plano?: string;
+    patente?: string; 
+    patente_icon?: string; 
+    patente_cor?: string; 
+    
     role?: string;
     blocked?: boolean;
     fixado?: boolean;
@@ -12450,8 +12504,14 @@ interface CommentData {
     avatar: string;
     texto: string;
     likes: string[];
+    
     plano_cor?: string;
     plano_icon?: string;
+    plano?: string;
+    patente?: string;
+    patente_icon?: string; 
+    patente_cor?: string; 
+    
     role?: string;
     createdAt: Timestamp | null;
 }
@@ -12495,26 +12555,59 @@ const formatCustomDate = (timestamp: Timestamp | null | undefined) => {
 
 const UserBadges = ({ userData }: { userData: any }) => {
     const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
-    const planIcon = userData?.plano_icon || 'ghost';
     
+    // 1. DefiniÃ§Ã£o dos Ãcones
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
+
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    
+    // 2. DefiniÃ§Ã£o das Cores (SEPARADAS) ðŸ¦ˆ FIX CRÃTICO
+    
+    // Cor do Plano (Para o Ã­cone do plano)
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+
+    // Cor da Patente (Para o Ã­cone da patente)
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+
+    // Mapa Visual Completo
     const icons: Record<string, React.ElementType> = { 
-        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, 
+        trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Skull, rocket: Rocket, medal: Medal, heart: Heart,
+        thumbsup: ThumbsUp, layoutgrid: LayoutGrid, userplus: UserPlus, 
+        target: Target, user: User 
     };
-    const IconComponent = icons[planIcon] || Ghost;
     
-    const colorKey = userData?.plano_cor || "zinc";
-    const colorClass = PLAN_COLORS[colorKey] || "text-zinc-400";
+    const PlanIcon = icons[planIconName] || User;
+    const PatentIcon = icons[patentIconName] || Fish;
+
+    const tooltipText = `${userData?.patente || 'Novato'} â€¢ ${userData?.plano || 'Visitante'}`;
 
     return (
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-1.5 ml-1 select-none" title={tooltipText}>
+            
+            {/* 1. Ãcone de Admin */}
             {isAdmin && (
-                <span title="Administrador" className="flex items-center">
-                    <ShieldCheck size={12} className="text-red-500 fill-red-500/20" />
+                <span className="flex items-center bg-red-500/10 p-0.5 rounded border border-red-500/20">
+                    <ShieldCheck size={10} className="text-red-500" />
                 </span>
             )}
-            <span title={userData?.plano || "Membro"} className="flex items-center">
-                <IconComponent size={12} className={colorClass}/>
+
+            {/* 2. Ãcone do Plano (Usa a cor do Plano) */}
+            <span className={`flex items-center opacity-80 ${planColorClass}`}>
+                <PlanIcon size={12} />
             </span>
+
+            {/* 3. Ãcone da Patente (Usa a cor da Patente) */}
+            {planIconName !== patentIconName && (
+                <span className={`flex items-center ${patentColorClass}`}> 
+                    <PatentIcon size={14} className="drop-shadow-sm" />
+                </span>
+            )}
         </div>
     );
 };
@@ -12533,7 +12626,10 @@ export default function ComunidadePage() {
   
   const [newPostText, setNewPostText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  
+  // ðŸ¦ˆ TRAVAS ANTI-SPAM
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   const [reportModal, setReportModal] = useState<string | null>(null);
   const [reportTargetType, setReportTargetType] = useState<"post" | "comment">("post");
@@ -12602,7 +12698,8 @@ export default function ComunidadePage() {
 
   const handlePublish = async () => {
     if (!user) return addToast("FaÃ§a login!", "error");
-    
+    if (isPublishing) return; // ðŸš« TRAVA ANTI-SPAM
+
     const securityCheck = await Security.canUserPost(user.uid);
     if (!securityCheck.allowed) return addToast(securityCheck.reason || "Aguarde...", "error");
 
@@ -12621,7 +12718,7 @@ export default function ComunidadePage() {
         return addToast(`VocÃª jÃ¡ postou em "${activeTab}" hoje. Volte amanhÃ£! â³`, "error");
     }
 
-    setIsPublishing(true);
+    setIsPublishing(true); 
     try {
       let imageUrl = null;
       if (imageFile) {
@@ -12635,9 +12732,15 @@ export default function ComunidadePage() {
           userName: user.nome || "AnÃ´nimo",
           handle: user.apelido ? `@${user.apelido}` : "@atleta",
           avatar: user.foto || "https://github.com/shadcn.png",
+          
           plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-          plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+          plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
           plano: user.plano ? String(user.plano) : 'Visitante',
+          
+          patente: user.patente ? String(user.patente) : 'Novato', 
+          patente_icon: user.patente_icon || 'Fish', 
+          patente_cor: user.patente_cor || 'text-zinc-400',
+          
           role: user.role ? String(user.role) : 'user',
       };
 
@@ -12655,7 +12758,6 @@ export default function ComunidadePage() {
         createdAt: serverTimestamp(),
       });
 
-      // ðŸ¦ˆ ATUALIZA CONQUISTAS (POSTS)
       if (user.uid) {
           await updateDoc(doc(db, "users", user.uid), {
               "stats.postsCount": increment(1)
@@ -12665,14 +12767,18 @@ export default function ComunidadePage() {
       setNewPostText("");
       setImageFile(null);
       addToast("Postado! ðŸ¦ˆ", "success");
-    } catch (e) { addToast("Erro ao postar.", "error"); }
-    finally { setIsPublishing(false); }
+    } catch (e) { 
+        addToast("Erro ao postar.", "error"); 
+    } finally { 
+        setIsPublishing(false); 
+    }
   };
 
   const handleComment = async () => {
       if (!user) return addToast("FaÃ§a login!", "error");
       if (!newComment.trim()) return;
       if (!commentModal) return; 
+      if (isPostingComment) return; // ðŸš« TRAVA ANTI-SPAM
 
       const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
       const myCommentsToday = commentsList.filter(c => 
@@ -12684,13 +12790,21 @@ export default function ComunidadePage() {
           return addToast("VocÃª jÃ¡ comentou neste post hoje.", "error");
       }
 
+      setIsPostingComment(true); 
       try {
           const safeUser = {
               userId: user.uid ? String(user.uid) : "",
               userName: user.nome || "AnÃ´nimo",
               avatar: user.foto || "/logo.png",
+              
               plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-              plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+              plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
+              plano: user.plano ? String(user.plano) : 'Membro',
+              
+              patente: user.patente ? String(user.patente) : 'Novato',
+              patente_icon: user.patente_icon || 'Fish',
+              patente_cor: user.patente_cor || 'text-zinc-400',
+              
               role: user.role ? String(user.role) : 'user',
           };
 
@@ -12703,7 +12817,6 @@ export default function ComunidadePage() {
           
           await updateDoc(doc(db, "posts", commentModal), { comentarios: commentsList.length + 1 });
 
-          // ðŸ¦ˆ ATUALIZA CONQUISTAS (COMENTÃRIOS)
           if (user.uid) {
               await updateDoc(doc(db, "users", user.uid), {
                   "stats.commentsCount": increment(1)
@@ -12711,7 +12824,11 @@ export default function ComunidadePage() {
           }
           
           setNewComment("");
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+          console.error(e); 
+      } finally {
+          setIsPostingComment(false);
+      }
   };
 
   const handleDeletePost = async (post: PostData) => {
@@ -12769,7 +12886,6 @@ export default function ComunidadePage() {
       setOtherReasonText("");
   };
 
-  // ðŸ¦ˆ TOGGLE DE AÃ‡ÃƒO NO POST (COM ESTATÃSTICAS)
   const toggleAction = async (postId: string, field: "likes" | "hype", list: string[]) => {
     if (!user) return;
     if (!user.uid) return;
@@ -12777,15 +12893,12 @@ export default function ComunidadePage() {
     const postRef = doc(db, "posts", postId);
     const hasInteracted = list.includes(user.uid);
     
-    // Identifica o autor do post para dar XP/Stats pra ele
     const postData = posts.find(p => p.id === postId);
     const authorId = postData?.userId;
 
     try {
-      // 1. Atualiza o array no Post
       await updateDoc(postRef, { [field]: hasInteracted ? arrayRemove(user.uid) : arrayUnion(user.uid) });
 
-      // 2. Atualiza EstatÃ­sticas do AUTOR DO POST (Quem RECEBEU)
       if (authorId && authorId !== user.uid) {
           const statField = field === "likes" ? "stats.likesReceived" : "stats.hypesReceived";
           await updateDoc(doc(db, "users", authorId), {
@@ -12793,7 +12906,6 @@ export default function ComunidadePage() {
           });
       }
 
-      // 3. Atualiza EstatÃ­sticas de QUEM DEU (VocÃª)
       const myStatField = field === "likes" ? "stats.likesGiven" : "stats.hypesGiven";
       await updateDoc(doc(db, "users", user.uid), {
           [myStatField]: increment(hasInteracted ? -1 : 1)
@@ -12802,7 +12914,6 @@ export default function ComunidadePage() {
     } catch (e) { console.error(e); }
   };
 
-  // ðŸ¦ˆ TOGGLE DE AÃ‡ÃƒO NO COMENTÃRIO (COM ESTATÃSTICAS)
   const toggleCommentLike = async (comment: CommentData) => {
       if (!user || !commentModal) return;
       if (!user.uid) return;
@@ -12812,17 +12923,14 @@ export default function ComunidadePage() {
       const authorId = comment.userId;
 
       try {
-          // 1. Atualiza o array no ComentÃ¡rio
           await updateDoc(commentRef, { likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
 
-          // 2. Atualiza EstatÃ­sticas do AUTOR DO COMENTÃRIO (Quem RECEBEU)
           if (authorId && authorId !== user.uid) {
               await updateDoc(doc(db, "users", authorId), {
                   "stats.likesReceived": increment(hasLiked ? -1 : 1)
               });
           }
 
-          // 3. Atualiza EstatÃ­sticas de QUEM DEU (VocÃª)
           await updateDoc(doc(db, "users", user.uid), {
               "stats.likesGiven": increment(hasLiked ? -1 : 1)
           });
@@ -12892,7 +13000,15 @@ export default function ComunidadePage() {
             </div>
             <div className="flex justify-between items-center mt-3">
                 <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
-                <button onClick={handlePublish} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-full font-black uppercase text-xs transition shadow-lg">{isPublishing ? <Loader2 className="animate-spin" size={14}/> : "Publicar"}</button>
+                
+                {/* ðŸ¦ˆ BOTÃƒO TRAVADO SE JÃ ESTIVER PUBLICANDO */}
+                <button 
+                    onClick={handlePublish} 
+                    disabled={isPublishing} 
+                    className={`px-6 py-2 rounded-full font-black uppercase text-xs transition shadow-lg flex items-center gap-2 ${isPublishing ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+                >
+                    {isPublishing ? <><Loader2 className="animate-spin" size={14}/> Enviando...</> : "Publicar"}
+                </button>
             </div>
         </div>
 
@@ -13003,7 +13119,10 @@ export default function ComunidadePage() {
                   {!currentPostCommentsDisabled ? (
                       <div className="p-3 border-t border-zinc-800 bg-black flex gap-2 sm:rounded-b-3xl">
                           <input type="text" value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Escreva..." className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 text-sm text-white outline-none focus:border-emerald-500" onKeyDown={e => e.key === 'Enter' && handleComment()}/>
-                          <button onClick={handleComment} disabled={!newComment.trim()} className="bg-emerald-600 p-2.5 rounded-full text-white disabled:opacity-50"><Send size={18}/></button>
+                          {/* ðŸ¦ˆ BOTÃƒO TRAVADO NO COMENTÃRIO TAMBÃ‰M */}
+                          <button onClick={handleComment} disabled={!newComment.trim() || isPostingComment} className={`p-2.5 rounded-full text-white transition ${isPostingComment ? 'bg-zinc-700 opacity-50' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                              {isPostingComment ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}
+                          </button>
                       </div>
                   ) : (
                       <div className="p-4 bg-red-900/20 text-red-500 text-xs font-bold text-center border-t border-red-900/30">
@@ -13833,16 +13952,15 @@ import {
   Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
   Beer, Ticket, BookOpen, DollarSign, HeartHandshake, Heart, Megaphone, 
   ShieldAlert, Crown, Activity, Dumbbell, Flame, Zap, Wallet, Timer, MessageCircle, Gamepad2,
-  // ðŸ¦ˆ NOVOS ÃCONES IMPORTADOS:
   ThumbsUp, LayoutGrid, UserPlus, Target, Star, Ghost, Medal
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
-// ðŸ¦ˆ ICONMAP ATUALIZADO (Com ThumbsUp, Heart, Zap, etc)
+// ðŸ¦ˆ ICONMAP ATUALIZADO (Sincronizado com Admin e Comunidade)
 const IconMap: any = {
     Fish: <Fish />, Rocket: <Rocket />, Swords: <Swords />, Skull: <Skull />, 
     ShoppingBag: <ShoppingBag />, Gem: <Gem />, PartyPopper: <PartyPopper />, 
@@ -13851,54 +13969,54 @@ const IconMap: any = {
     ShieldAlert: <ShieldAlert />, Activity: <Activity />, Dumbbell: <Dumbbell />, 
     Flame: <Flame />, Crown: <Crown />, Zap: <Zap />, Wallet: <Wallet />, 
     Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />,
-    // --- NOVOS ADICIONADOS ---
-    ThumbsUp: <ThumbsUp />, 
-    LayoutGrid: <LayoutGrid />, 
-    CheckCircle2: <CheckCircle2 />,
-    UserPlus: <UserPlus />,
-    Target: <Target />,
-    Star: <Star />,
-    Ghost: <Ghost />,
-    Medal: <Medal />
+    ThumbsUp: <ThumbsUp />, LayoutGrid: <LayoutGrid />, CheckCircle2: <CheckCircle2 />,
+    UserPlus: <UserPlus />, Target: <Target />, Star: <Star />, Ghost: <Ghost />, Medal: <Medal />
 };
 
-// DefiniÃ§Ã£o das Patentes (NÃ­veis)
-const BADGES = [
-    { id: 1, titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", icon: <Fish className="opacity-50" size={64}/> },
-    { id: 2, titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: <Fish size={64}/> },
-    { id: 3, titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: <Swords size={64}/> },
-    { id: 4, titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/30", icon: <Fish size={64}/> },
-    { id: 5, titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: <Fish size={80} className="scale-125"/> },
-    { id: 6, titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", bg: "bg-red-500/10", border: "border-red-500/30", icon: <Crown size={64}/> },
+// Dados padrÃ£o de patentes (Fallback enquanto carrega do banco)
+const DEFAULT_BADGES = [
+    { id: "p1", titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", iconName: "Fish" },
+    { id: "p2", titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", iconName: "Fish" },
+    { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", iconName: "Swords" },
+    { id: "p4", titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/30", iconName: "Fish" },
+    { id: "p5", titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", iconName: "Fish" },
+    { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", bg: "bg-red-500/10", border: "border-red-500/30", iconName: "Crown" },
 ];
 
 export default function ConquistasPage() {
   const { user } = useAuth();
   const [filtro, setFiltro] = useState<AchievementCategory | "Todas">("Todas");
   
-  // ðŸ¦ˆ ESTADO DINÃ‚MICO PARA CONQUISTAS (VEM DO FIREBASE)
+  // ðŸ¦ˆ ESTADOS DINÃ‚MICOS (VEM DO FIREBASE)
   const [catalog, setCatalog] = useState<any[]>(ACHIEVEMENTS_CATALOG);
+  const [badgesList, setBadgesList] = useState<any[]>(DEFAULT_BADGES);
 
-  // 1. OUVIR ATUALIZAÃ‡Ã•ES DO ADMIN EM TEMPO REAL
+  // 1. OUVIR ATUALIZAÃ‡Ã•ES DO ADMIN (Conquistas e Patentes)
   useEffect(() => {
-      const unsubscribe = onSnapshot(collection(db, "achievements_config"), (snap) => {
+      // A. Conquistas
+      const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
           const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          if (data.length > 0) {
-              setCatalog(data);
-          }
+          if (data.length > 0) setCatalog(data);
       });
-      return () => unsubscribe();
+
+      // B. Patentes (Para sincronizar Ã­cones e cores)
+      const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+      const unsubPatentes = onSnapshot(qPatentes, (snap) => {
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (data.length > 0) setBadgesList(data);
+      });
+
+      return () => { unsubAch(); unsubPatentes(); };
   }, []);
 
   const userStats = user?.stats || {}; 
   
-  // Calcula desbloqueios usando o CATÃLOGO DINÃ‚MICO
+  // Calcula desbloqueios
   const calculatedAchievements = useMemo(() => {
       let unlockedCount = 0;
       let totalXp = 0;
 
       const processed = catalog.map(ach => {
-          // Acesso dinÃ¢mico seguro
           const userValue = userStats[ach.statKey] || 0;
           const isUnlocked = userValue >= ach.target;
           
@@ -13910,24 +14028,28 @@ export default function ConquistasPage() {
           return { ...ach, progress: userValue, isUnlocked };
       });
 
-      // Ordenar: Desbloqueadas primeiro
       processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
       return { list: processed, unlockedCount, totalXp };
   }, [userStats, catalog]);
 
-  // ðŸ¦ˆ XP exibido deve ser o calculado ou o do banco, o que for maior (seguranÃ§a)
+  // XP do usuÃ¡rio (Usa o maior valor entre o calculado e o salvo)
   const displayXp = Math.max(user?.xp || 0, calculatedAchievements.totalXp);
 
-  // LÃ³gica de Patente AutomÃ¡tica
-  const currentBadgeIndex = BADGES.slice().reverse().findIndex(b => displayXp >= b.minXp);
-  const realCurrentIndex = currentBadgeIndex === -1 ? 0 : BADGES.length - 1 - currentBadgeIndex;
+  // LÃ³gica de NavegaÃ§Ã£o nas Patentes
+  const currentBadgeIndex = badgesList.slice().reverse().findIndex(b => displayXp >= b.minXp);
+  const realCurrentIndex = currentBadgeIndex === -1 ? 0 : badgesList.length - 1 - currentBadgeIndex;
   
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
 
-  useEffect(() => { setViewIndex(realCurrentIndex); }, [realCurrentIndex]);
+  // Sincroniza viewIndex quando os dados carregam ou XP muda
+  useEffect(() => { 
+      if (badgesList.length > 0) {
+          setViewIndex(realCurrentIndex); 
+      }
+  }, [realCurrentIndex, badgesList]);
 
-  const displayedBadge = BADGES[viewIndex];
+  const displayedBadge = badgesList[viewIndex] || DEFAULT_BADGES[0];
   
   const isCurrent = viewIndex === realCurrentIndex;
   const isLocked = viewIndex > realCurrentIndex;
@@ -13940,7 +14062,7 @@ export default function ConquistasPage() {
   if (isPast) {
       progressPercent = 100; 
   } else if (isCurrent) {
-      const nextBadge = BADGES[viewIndex + 1];
+      const nextBadge = badgesList[viewIndex + 1];
       if (nextBadge) {
           const totalRange = nextBadge.minXp - displayedBadge.minXp;
           const currentProgress = displayXp - displayedBadge.minXp;
@@ -13953,19 +14075,28 @@ export default function ConquistasPage() {
           
           xpNeeded = nextBadge.minXp - displayXp;
       } else {
-          progressPercent = 100; // NÃ­vel MÃ¡ximo (Megalodon)
+          progressPercent = 100; // NÃ­vel MÃ¡ximo
       }
   } else if (isLocked) {
       progressPercent = 0; 
       xpNeeded = displayedBadge.minXp - displayXp;
   }
 
-  const handleNext = () => { if (viewIndex < BADGES.length - 1) setViewIndex(viewIndex + 1); };
+  const handleNext = () => { if (viewIndex < badgesList.length - 1) setViewIndex(viewIndex + 1); };
   const handlePrev = () => { if (viewIndex > 0) setViewIndex(viewIndex - 1); };
 
   const filteredList = filtro === "Todas" 
     ? calculatedAchievements.list 
     : calculatedAchievements.list.filter(c => c.cat === filtro);
+
+  // Helper para renderizar Ã­cone da patente com tamanho correto
+  const renderBadgeIcon = (iconName: string, isLocked: boolean) => {
+      const Icon = IconMap[iconName] || <Fish />;
+      return React.cloneElement(Icon, { 
+          size: 64, 
+          className: isLocked ? 'opacity-50 blur-[2px]' : '' 
+      });
+  };
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-10 selection:bg-emerald-500/30">
@@ -13985,21 +14116,21 @@ export default function ConquistasPage() {
       <main className="p-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
         {/* CARROSSEL DE NÃVEL */}
-        <section className={`relative overflow-hidden rounded-3xl border ${displayedBadge.border} ${displayedBadge.bg} p-6 text-center shadow-2xl transition-colors duration-500`}>
+        <section className={`relative overflow-hidden rounded-3xl border ${displayedBadge.border || 'border-zinc-800'} ${displayedBadge.bg || 'bg-zinc-900'} p-6 text-center shadow-2xl transition-colors duration-500`}>
             
             <button onClick={handlePrev} disabled={viewIndex === 0} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronLeft size={32}/></button>
-            <button onClick={handleNext} disabled={viewIndex === BADGES.length - 1} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronRight size={32}/></button>
+            <button onClick={handleNext} disabled={viewIndex === badgesList.length - 1} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronRight size={32}/></button>
 
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent pointer-events-none"></div>
 
             <div className="relative z-10 px-6">
-                <div className={`mx-auto mb-4 flex h-28 w-28 items-center justify-center rounded-full bg-zinc-950/80 border-4 ${displayedBadge.border} shadow-[0_0_40px_rgba(0,0,0,0.3)] transition-all duration-500`}>
-                    <div className={`drop-shadow-lg ${displayedBadge.cor} ${isLocked ? 'grayscale opacity-50 blur-[2px]' : ''}`}>
-                        {isLocked ? <Lock size={48}/> : displayedBadge.icon}
+                <div className={`mx-auto mb-4 flex h-28 w-28 items-center justify-center rounded-full bg-zinc-950/80 border-4 ${displayedBadge.border || 'border-zinc-700'} shadow-[0_0_40px_rgba(0,0,0,0.3)] transition-all duration-500`}>
+                    <div className={`drop-shadow-lg ${displayedBadge.cor || 'text-zinc-400'} ${isLocked ? 'grayscale' : ''}`}>
+                        {isLocked ? <Lock size={48}/> : renderBadgeIcon(displayedBadge.iconName, isLocked)}
                     </div>
                 </div>
                 
-                <h2 className={`text-3xl font-black uppercase italic tracking-tighter ${displayedBadge.cor} drop-shadow-md transition-all duration-500`}>
+                <h2 className={`text-3xl font-black uppercase italic tracking-tighter ${displayedBadge.cor || 'text-white'} drop-shadow-md transition-all duration-500`}>
                     {displayedBadge.titulo}
                 </h2>
                 
@@ -14011,7 +14142,7 @@ export default function ConquistasPage() {
                                 <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${progressPercent}%` }}></div>
                             </div>
                             <p className="text-[10px] text-zinc-400 mt-2 font-mono">
-                                {displayXp.toLocaleString()} / {BADGES[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP
+                                {displayXp.toLocaleString()} / {badgesList[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP
                             </p>
                         </div>
                     )}
@@ -14049,8 +14180,6 @@ export default function ConquistasPage() {
             <div className="grid grid-cols-1 gap-3">
                 {filteredList.map((item) => {
                     const percent = Math.min((item.progress / item.target) * 100, 100);
-
-                    // ðŸ¦ˆ SEGURANÃ‡A: Fallback se o Ã­cone nÃ£o existir no mapa
                     const IconComponent = IconMap[item.iconName] || <Lock size={20}/>;
 
                     return (
@@ -14062,7 +14191,6 @@ export default function ConquistasPage() {
                                     <span className="text-2xl">{item.isUnlocked ? IconComponent : <Lock size={20}/>}</span>
                                 </div>
 
-                                {/* ðŸ¦ˆ CORREÃ‡ÃƒO CSS: pr-16 para nÃ£o sobrepor o XP */}
                                 <div className="flex-1 min-w-0 pr-16">
                                     <div className="flex justify-between items-start">
                                         <h4 className={`text-sm font-bold truncate ${item.isUnlocked ? "text-white" : "text-zinc-400"}`}>{item.titulo}</h4>
@@ -15161,32 +15289,114 @@ import {
   Loader2, Crown, MessageCircle, AlertTriangle, 
   Heart, Send, Plus, Trash2, ShieldAlert, Star,
   Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords,
-  ChevronLeft, ChevronRight, Flag
+  ChevronLeft, ChevronRight, Flag, Medal, Skull, Rocket
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
-    doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc 
+  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
+  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs 
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// --- MAPEAMENTO DE ÃCONES ---
-const ICONS_MAP: any = {
-  ghost: Ghost,
-  star: Star,
-  crown: Crown,
-  shopping: ShoppingBag,
-  zap: Zap,
-  gem: Gem,
-  trophy: Trophy,
-  fish: Fish
+// --- INTERFACES ---
+interface Evento {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  data: string;
+  hora: string;
+  local: string;
+  imagem?: string;
+  imagePositionY?: number;
+  tipo: string;
+  isLowStock?: boolean;
+  stats?: {
+    confirmados: number;
+    talvez: number;
+    likes?: number;
+  };
+  lotes?: Array<{
+    nome: string;
+    preco: string;
+    status: 'ativo' | 'esgotado' | 'em_breve';
+  }>;
+}
+
+interface Rsvp {
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  status: 'going' | 'maybe';
+  timestamp?: any;
+}
+
+interface Comentario {
+  id: string;
+  text: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  userPlanoCor?: string;
+  userPlanoIcon?: string;
+  userPatente?: string; 
+  role?: string;
+  likes: string[];
+  reports: string[];
+  hidden: boolean;
+  createdAt: any;
+}
+
+interface EnqueteOption {
+  text: string;
+  votes: number;
+  creatorId?: string;
+  creatorName?: string;
+  creatorAvatar?: string;
+  votesByTurma?: Record<string, number>;
+}
+
+interface Enquete {
+  id: string;
+  question: string;
+  options: EnqueteOption[];
+  voters: string[];
+  userVotes?: Record<string, number[]>;
+  createdAt: any;
+}
+
+// --- CONFIGURAÃ‡ÃƒO DE ÃCONES (IGUAL AO ADMIN/CONQUISTAS) ---
+const ICON_COMPONENTS: Record<string, any> = {
+    Fish: Fish,
+    Swords: Swords,
+    Crown: Crown,
+    Skull: Skull,
+    Rocket: Rocket,
+    Star: Star,
+    Zap: Zap,
+    Trophy: Trophy,
+    Medal: Medal,
+    Heart: Heart,
+    Ghost: Ghost,
+    Gem: Gem,
+    ShoppingBag: ShoppingBag
 };
 
-// Cores dos Planos
-const PLAN_COLORS: any = {
+// DADOS PADRÃƒO DAS PATENTES (FALLBACK)
+const DEFAULT_PATENTES = [
+    { id: "p1", titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
+    { id: "p2", titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
+    { id: "p4", titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { id: "p5", titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
+];
+
+const PLAN_COLORS: Record<string, string> = {
     yellow: "text-yellow-400",
     emerald: "text-emerald-400",
     purple: "text-purple-400",
@@ -15205,6 +15415,20 @@ const TURMA_IMAGENS: Record<string, string> = {
 // --- HELPER: PARSER DE DATA ---
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const [hours, mins] = timeStr.split(':').map(Number);
+        
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [d, m, y] = dateStr.split('/').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
         const months: Record<string, number> = {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
@@ -15212,28 +15436,24 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const parts = cleanDate.split(' '); 
         
-        if (parts.length < 2) return null;
-        
-        const day = parseInt(parts[0]);
-        const monthKey = Object.keys(months).find(m => parts[1].includes(m));
-        
-        if (!monthKey || isNaN(day)) return null;
-
-        const now = new Date();
-        const year = now.getFullYear();
-        const [hours, mins] = timeStr.split(':').map(Number);
-        
-        let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
-        
-        if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) eventDate.setFullYear(year + 1);
-        
-        return eventDate;
+        if (parts.length >= 2) {
+            const day = parseInt(parts[0]);
+            const monthKey = Object.keys(months).find(m => parts[1].includes(m));
+            
+            if (monthKey !== undefined && !isNaN(day)) {
+                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
+                if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
+                    eventDate.setFullYear(currentYear + 1);
+                }
+                return eventDate;
+            }
+        }
+        return null;
     } catch (e) {
         return null;
     }
 };
 
-// --- CONTADOR VISUAL COOL ---
 function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
   const [timeLeft, setTimeLeft] = useState<{d: number, h: number, m: number, s: number} | null>(null);
   const [status, setStatus] = useState("CALCULANDO...");
@@ -15268,50 +15488,48 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
     return () => clearInterval(interval);
   }, [dateStr, timeStr]);
 
-  if (status) {
-      return (
-        <div className="bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.4)] animate-pulse">
-            <span className="text-sm font-black text-emerald-400 tracking-[0.2em]">{status}</span>
-        </div>
-      );
-  }
+  if (status) return <div className="bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.4)] animate-pulse"><span className="text-sm font-black text-emerald-400 tracking-[0.2em]">{status}</span></div>;
 
   return (
     <div className="flex gap-3 bg-black/40 backdrop-blur-sm p-2 rounded-2xl border border-white/10 shadow-2xl">
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.d || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Dias</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.h || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Hrs</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.m || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Min</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-emerald-900/20 w-12 h-14 rounded-xl border border-emerald-500/30">
-            <span className="text-xl font-black text-emerald-400 leading-none">{String(timeLeft?.s || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Seg</span>
-        </div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.d || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Dias</span></div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.h || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Hrs</span></div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.m || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Min</span></div>
+        <div className="flex flex-col items-center justify-center bg-emerald-900/20 w-12 h-14 rounded-xl border border-emerald-500/30"><span className="text-xl font-black text-emerald-400 leading-none">{String(timeLeft?.s || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Seg</span></div>
     </div>
   );
 }
 
 // --- BADGES DO USUÃRIO ---
-const UserBadges = ({ data }: { data: any }) => {
+const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: any[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
-    const PlanIcon = ICONS_MAP[data.userPlanoIcon || 'ghost'] || Ghost;
-    const colorClass = PLAN_COLORS[data.userPlanoCor || 'zinc'];
+    
+    // Plano Badge
+    const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
+    const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
+
+    // Patente Badge
+    const patenteName = data.userPatente || "PlÃ¢ncton";
+    const patenteConfig = patentesConfig.find(p => p.titulo === patenteName) || patentesConfig[0] || DEFAULT_PATENTES[0];
+    
+    const PatenteIcon = ICON_COMPONENTS[patenteConfig.iconName] || Fish;
+    const patenteColor = patenteConfig.cor || "text-zinc-400";
 
     return (
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-1.5 ml-1">
             {isAdminUser && (
                 <span title="Admin">
                     <ShieldAlert size={12} className="text-red-500 fill-red-500/20" />
                 </span>
             )}
-            <PlanIcon size={12} className={colorClass} />
+            
+            {data.userPlanoIcon && data.userPlanoIcon !== 'ghost' && (
+                 <PlanIcon size={12} className={planColor} title="Plano VIP" />
+            )}
+
+            <div title={`Patente: ${patenteConfig.titulo}`} className="flex items-center justify-center">
+                <PatenteIcon size={12} className={patenteColor} />
+            </div>
         </div>
     );
 };
@@ -15321,10 +15539,11 @@ export default function DetalhesEventoPage() {
   const { user, isAdmin } = useAuth(); 
   const { addToast } = useToast();
   
-  const [evento, setEvento] = useState<any>(null);
-  const [rsvps, setRsvps] = useState<any[]>([]);
-  const [comentarios, setComentarios] = useState<any[]>([]);
-  const [enquetes, setEnquetes] = useState<any[]>([]);
+  const [evento, setEvento] = useState<Evento | null>(null);
+  const [rsvps, setRsvps] = useState<Rsvp[]>([]);
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [enquetes, setEnquetes] = useState<Enquete[]>([]);
+  const [patentesConfig, setPatentesConfig] = useState<any[]>(DEFAULT_PATENTES);
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
   
@@ -15332,61 +15551,88 @@ export default function DetalhesEventoPage() {
   const [newComment, setNewComment] = useState("");
   const [newPollOption, setNewPollOption] = useState("");
   
-  // ðŸ¦ˆ ESTADO PARA CARROSSEL DE ENQUETES
   const [currentPollIndex, setCurrentPollIndex] = useState(0);
 
-  // 1. CARREGAMENTO REAL DO FIREBASE
+  // --- SINC INICIAL ---
   useEffect(() => {
       if (!params.id) return;
       const eventId = params.id as string;
 
+      // 1. Evento
       const unsubEvent = onSnapshot(doc(db, "eventos", eventId), (docSnap) => {
-          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() });
+          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() } as Evento);
           else setEvento(null);
           setLoading(false);
       });
 
+      // 2. RSVPs
       const unsubRsvp = onSnapshot(collection(db, "eventos", eventId, "rsvps"), (snap) => {
-          const lista = snap.docs.map(d => d.data());
+          const lista = snap.docs.map(d => d.data() as Rsvp);
           setRsvps(lista);
           if (user) {
-              const me = lista.find((p: any) => p.userId === user.uid);
+              const me = lista.find((p) => p.userId === user.uid);
               setUserRsvp(me ? me.status : null);
           }
       });
 
+      // 3. ComentÃ¡rios
       const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
       const unsubCom = onSnapshot(qCom, (snap) => {
-          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
+          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()} as Comentario)));
       });
 
+      // 4. Enquetes
       const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
-          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
+          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()} as Enquete)));
       });
 
-      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); };
+      // 5. Patentes (Global Config)
+      const unsubPatentes = onSnapshot(query(collection(db, "patentes_config"), orderBy("minXp", "asc")), (snap) => {
+          const data = snap.docs.map(d => d.data());
+          if (data.length > 0) {
+              setPatentesConfig(data);
+          }
+      });
+
+      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); unsubPatentes(); };
   }, [params.id, user]);
 
   // --- ACTIONS ---
 
   const handleRSVP = async (status: "going" | "maybe") => {
-      if (!user) return addToast("FaÃ§a login para confirmar!", "error");
+      if (!user || !evento) return addToast("FaÃ§a login para confirmar!", "error");
       try {
           await runTransaction(db, async (t) => {
               const ref = doc(db, "eventos", evento.id, "rsvps", user.uid);
+              const eventRef = doc(db, "eventos", evento.id);
+              
               const docSnap = await t.get(ref);
-              const old = docSnap.exists() ? docSnap.data().status : null;
+              const old = docSnap.exists() ? (docSnap.data() as Rsvp).status : null;
 
               if (old === status) {
+                  // Remover RSVP
                   t.delete(ref);
-                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  t.update(eventRef, { 
+                      [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1),
+                      // ðŸ¦ˆ REMOVE DO ARRAY PARA O PERFIL SABER
+                      interessados: arrayRemove(user.uid) 
+                  });
               } else {
-                  if (old) t.update(doc(db, "eventos", evento.id), { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  // Adicionar ou Trocar
+                  if (old) {
+                      t.update(eventRef, { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  }
+                  
                   t.set(ref, {
                       userId: user.uid, status, userName: user.nome || "AnÃ´nimo", 
                       userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
-                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1) });
+                  
+                  t.update(eventRef, { 
+                      [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1),
+                      // ðŸ¦ˆ ADICIONA NO ARRAY PARA O PERFIL SABER
+                      interessados: arrayUnion(user.uid) 
+                  });
               }
           });
           addToast("Lista atualizada!", "success");
@@ -15394,18 +15640,18 @@ export default function DetalhesEventoPage() {
   };
 
   const handleSendComment = async () => {
-      if (!newComment.trim() || !user) return;
+      if (!newComment.trim() || !user || !evento) return;
       
       const newCommentData = {
           text: newComment, 
           userId: user.uid, 
           userName: user.nome || "AnÃ´nimo",
           userAvatar: user.foto || "", 
-          userTurma: user.turma || "",
+          userTurma: user.turma || "Geral",
           
           userPlanoCor: user.plano_cor || "zinc",
           userPlanoIcon: user.plano_icon || "ghost",
-          userPatente: user.patente || "Novato",
+          userPatente: user.patente || "PlÃ¢ncton", 
           role: user.role || 'user',
 
           createdAt: serverTimestamp(), 
@@ -15426,7 +15672,7 @@ export default function DetalhesEventoPage() {
   };
 
   const handleLikeComment = async (comId: string, currentLikes: string[], authorId: string) => {
-      if (!user) return;
+      if (!user || !evento) return;
       const ref = doc(db, "eventos", evento.id, "comentarios", comId);
       const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
       const hasLiked = safeLikes.includes(user.uid);
@@ -15447,7 +15693,7 @@ export default function DetalhesEventoPage() {
   };
 
   const handleDeleteComment = async (comId: string) => {
-      if (!confirm("Apagar este comentÃ¡rio?")) return;
+      if (!evento || !confirm("Apagar este comentÃ¡rio?")) return;
       try {
           await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
           addToast("ComentÃ¡rio apagado.", "info");
@@ -15455,19 +15701,19 @@ export default function DetalhesEventoPage() {
   };
 
   const handleReportComment = async (comId: string) => {
-      if (!user) return;
+      if (!user || !evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { reports: arrayUnion(user.uid) });
       addToast("ComentÃ¡rio denunciado.", "info");
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
-     await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
-     addToast(currentStatus ? "ComentÃ¡rio restaurado." : "ComentÃ¡rio ocultado.", "info");
+      if(!evento) return;
+      await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
+      addToast(currentStatus ? "ComentÃ¡rio restaurado." : "ComentÃ¡rio ocultado.", "info");
   };
 
-  // ENQUETES (MÃºltipla Escolha e Respostas DinÃ¢micas)
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
-      if (!user) return addToast("Login necessÃ¡rio.", "error");
+      if (!user || !evento) return addToast("Login necessÃ¡rio.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       
       try {
@@ -15475,36 +15721,48 @@ export default function DetalhesEventoPage() {
             const pollDoc = await t.get(pollRef);
             if (!pollDoc.exists()) throw "Enquete nÃ£o existe";
             
-            const data = pollDoc.data();
-            
+            const data = pollDoc.data() as Enquete;
             const newOptions = [...data.options];
-            newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
-            
-            const userTurma = user.turma || "Geral";
-            if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
-            newOptions[optionIndex].votesByTurma[userTurma] = (newOptions[optionIndex].votesByTurma[userTurma] || 0) + 1;
+            const userVotes = data.userVotes || {}; 
+            const myVotes = userVotes[user.uid] || [];
 
-            t.update(pollRef, {
-                options: newOptions,
-                voters: arrayUnion(user.uid)
-            });
+            if (myVotes.includes(optionIndex)) {
+                newOptions[optionIndex].votes = Math.max(0, (newOptions[optionIndex].votes || 0) - 1);
+                const userTurma = user.turma || "Geral";
+                if(newOptions[optionIndex].votesByTurma && newOptions[optionIndex].votesByTurma![userTurma] > 0) {
+                     newOptions[optionIndex].votesByTurma![userTurma]--;
+                }
+                const newMyVotes = myVotes.filter(v => v !== optionIndex);
+                userVotes[user.uid] = newMyVotes;
+
+                t.update(pollRef, { options: newOptions, userVotes: userVotes });
+            } else {
+                if (myVotes.length >= 3) {
+                    throw "VocÃª jÃ¡ escolheu 3 opÃ§Ãµes!";
+                }
+                newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
+                const userTurma = user.turma || "Geral";
+                if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
+                newOptions[optionIndex].votesByTurma![userTurma] = (newOptions[optionIndex].votesByTurma![userTurma] || 0) + 1;
+                userVotes[user.uid] = [...myVotes, optionIndex];
+
+                t.update(pollRef, { options: newOptions, userVotes: userVotes, voters: arrayUnion(user.uid) });
+            }
         });
-        addToast("Voto computado!", "success");
       } catch (e: any) {
         addToast(typeof e === 'string' ? e : "Erro ao votar.", "error");
       }
   };
 
-  // ðŸ¦ˆ ID 640: Adicionando info do criador na opÃ§Ã£o
   const handleCreatePollOption = async (pollId: string) => {
-      if(!newPollOption || !user) return;
+      if(!newPollOption || !user || !evento) return;
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ 
               text: newPollOption, 
               votes: 0, 
               creatorId: user.uid,
-              creatorName: user.nome?.split(" ")[0] || "AnÃ´nimo", // Primeiro nome
+              creatorName: user.nome?.split(" ")[0] || "AnÃ´nimo", 
               creatorAvatar: user.foto || "",
               votesByTurma: {} 
           })
@@ -15518,22 +15776,19 @@ export default function DetalhesEventoPage() {
       addToast("Enquete reportada Ã  moderaÃ§Ã£o.", "info");
   };
 
-  // ðŸ¦ˆ ID 640: Reportar OpÃ§Ã£o EspecÃ­fica
   const handleReportOption = async (pollId: string, optionText: string) => {
       if(!user) return;
       addToast(`OpÃ§Ã£o "${optionText}" denunciada.`, "info");
   };
 
-  // ðŸ¦ˆ CARROSSEL LÃ“GICA
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
   const currentPoll = enquetes[currentPollIndex];
 
-  // ðŸ¦ˆ LÃ“GICA TOP 3 TURMAS
   const topTurmasPoll = useMemo(() => {
       if (!currentPoll) return [];
       const counts: Record<string, number> = {};
-      currentPoll.options?.forEach((opt: any) => {
+      currentPoll.options?.forEach((opt) => {
           if (opt.votesByTurma) {
               Object.entries(opt.votesByTurma).forEach(([turma, count]) => {
                   counts[turma] = (counts[turma] || 0) + (count as number);
@@ -15544,7 +15799,7 @@ export default function DetalhesEventoPage() {
   }, [currentPoll]);
 
   const handleShare = () => {
-      if (typeof navigator !== 'undefined' && navigator.share) {
+      if (evento && typeof navigator !== 'undefined' && navigator.share) {
           navigator.share({ title: evento.titulo, url: window.location.href });
       } else {
           navigator.clipboard.writeText(window.location.href);
@@ -15686,7 +15941,6 @@ export default function DetalhesEventoPage() {
                         <button onClick={() => handleReportPoll(currentPoll.id)} className="text-zinc-600 hover:text-yellow-500"><ShieldAlert size={14}/></button>
                     </div>
                     
-                    {/* ðŸ¦ˆ TOP 3 TURMAS GANHANDO */}
                     {topTurmasPoll.length > 0 && (
                         <div className="flex gap-2 mb-2 items-center bg-black/20 p-2 rounded-lg border border-white/5">
                             {topTurmasPoll.map(turma => (
@@ -15701,29 +15955,35 @@ export default function DetalhesEventoPage() {
                     )}
 
                     <div className="space-y-2">
-                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: any, idx: number) => {
-                            const totalVotes = currentPoll.options.reduce((acc:number, o:any) => acc + (o.votes || 0), 0);
+                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
+                            const totalVotes = currentPoll.options.reduce((acc, o) => acc + (o.votes || 0), 0);
                             const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
+                            const userVotedHere = currentPoll.userVotes?.[user?.uid || ""]?.includes(idx);
+
                             return (
                                 <div key={idx} className="relative group">
-                                    <button onClick={() => handleVotePoll(currentPoll.id, idx)} className="w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition" title={`${opt.votes} votos`}>
-                                        <div className="absolute left-0 top-0 h-full bg-purple-500/20 transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                    <button 
+                                        onClick={() => handleVotePoll(currentPoll.id, idx)} 
+                                        className={`w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition ${userVotedHere ? 'border border-purple-500/50' : ''}`}
+                                        title={`${opt.votes} votos`}
+                                    >
+                                        <div className={`absolute left-0 top-0 h-full transition-all duration-500 ${userVotedHere ? 'bg-purple-500/40' : 'bg-purple-500/20'}`} style={{ width: `${percent}%` }}></div>
                                         
                                         <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
-                                            {/* ðŸ¦ˆ AVATAR DO CRIADOR */}
                                             {opt.creatorAvatar && (
                                                 <img src={opt.creatorAvatar} className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
                                             )}
-                                            <span className="truncate text-left">{opt.text}</span>
+                                            <span className="truncate text-left flex items-center gap-1">
+                                                {opt.text}
+                                                {userVotedHere && <CheckCircle size={10} className="text-purple-400"/>}
+                                            </span>
                                         </div>
                                         
-                                        {/* ðŸ¦ˆ ID 654: QTD VOTOS (NÃƒO %) */}
                                         <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400 flex items-center gap-1">
                                             {opt.votes} <span className="text-[8px] font-normal uppercase">Votos</span>
                                         </span>
                                     </button>
                                     
-                                    {/* ðŸ¦ˆ ID 640: BOTÃƒO REPORTAR OPÃ‡ÃƒO */}
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleReportOption(currentPoll.id, opt.text); }}
                                         className="absolute right-[-20px] top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
@@ -15746,6 +16006,7 @@ export default function DetalhesEventoPage() {
                         />
                         <button onClick={() => handleCreatePollOption(currentPoll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
                     </div>
+                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">* MÃ¡ximo 3 escolhas por usuÃ¡rio.</p>
                 </div>
             ) : (
                 <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
@@ -15788,14 +16049,22 @@ export default function DetalhesEventoPage() {
                                             <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
                                                 {c.userName}
                                             </p>
-                                            <UserBadges data={c} />
+                                            {/* ID 651: Nova LÃ³gica de Badge baseada na Config Global */}
+                                            <UserBadges data={c} patentesConfig={patentesConfig} />
                                         </div>
-                                        <span className="text-[9px] text-zinc-600 font-mono mt-0.5">{c.userTurma || "Visitante"}</span>
+                                        {/* ID 653: Foto da Turma + Nome */}
+                                        <div className="flex items-center gap-1 mt-0.5 opacity-60">
+                                            <img 
+                                                src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
+                                                className="w-3 h-3 rounded-full object-cover border border-zinc-800"
+                                            />
+                                            <span className="text-[9px] text-zinc-300 font-mono">{c.userTurma || "Visitante"}</span>
+                                        </div>
                                     </div>
 
                                     <div className="flex gap-2 text-zinc-500">
-                                        <button onClick={() => handleLikeComment(c.id, c.likes || [], c.userId)} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
-                                            <Heart size={12} className={likesArray.includes(user?.uid) ? "fill-current" : ""}/> 
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [], c.userId)} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid || "") ? 'text-red-500' : ''}`}>
+                                            <Heart size={12} className={likesArray.includes(user?.uid || "") ? "fill-current" : ""}/> 
                                             <span className="text-[9px]">{likesArray.length || 0}</span>
                                         </button>
                                         
@@ -15873,7 +16142,7 @@ export default function DetalhesEventoPage() {
 
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Filter, 
   Loader2, ArrowRight, Heart, Clock, Zap, Users, Crown 
@@ -15883,8 +16152,36 @@ import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
-  increment, getDocs 
+  increment, getDocs, limit 
 } from "firebase/firestore";
+import { useToast } from "../../context/ToastContext";
+
+// --- INTERFACES ---
+interface Evento {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  data: string;
+  hora: string;
+  local: string;
+  imagem?: string;
+  imagePositionY?: number;
+  tipo: string;
+  destaque?: string;
+  categoria?: string;
+  isLowStock?: boolean;
+  stats?: {
+    confirmados: number;
+    talvez: number;
+    likes?: number;
+  };
+  lotes?: Array<{
+    nome: string;
+    preco: string;
+    status: 'ativo' | 'esgotado' | 'em_breve';
+  }>;
+  interessados?: string[]; // Array de UIDs para controle
+}
 
 // --- CONFIGURAÃ‡ÃƒO DE IMAGENS ---
 const TURMA_IMAGENS: Record<string, string> = {
@@ -15894,13 +16191,61 @@ const TURMA_IMAGENS: Record<string, string> = {
     "Geral": "https://github.com/shadcn.png" 
 };
 
+// --- HELPER: PARSER DE DATA ---
+const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
+    try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const [hours, mins] = timeStr.split(':').map(Number);
+        
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [d, m, y] = dateStr.split('/').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        const months: Record<string, number> = {
+            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
+            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÃ‡O': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
+            'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
+        };
+        const cleanDate = dateStr.toUpperCase().trim();
+        const parts = cleanDate.split(' '); 
+        
+        if (parts.length >= 2) {
+            const day = parseInt(parts[0]);
+            // Busca parcial (ex: "NOV" em "NOVEMBRO")
+            const monthStr = parts[1].substring(0, 3);
+            const monthKey = Object.keys(months).find(m => m.startsWith(monthStr));
+            
+            if (monthKey && !isNaN(day)) {
+                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
+                // Se a data jÃ¡ passou (ex: JAN sendo que estamos em DEZ), assume prÃ³ximo ano
+                if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
+                    eventDate.setFullYear(currentYear + 1);
+                }
+                return eventDate;
+            }
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+};
+
 // --- COMPONENTE: RANKING DE TURMAS (RSVP) ---
 function EventClassRanking({ eventId }: { eventId: string }) {
   const [ranking, setRanking] = useState<{turma: string, count: number, img: string}[]>([]);
   const [totalConfirmados, setTotalConfirmados] = useState(0);
 
   useEffect(() => {
-    const q = collection(db, "eventos", eventId, "rsvps");
+    // Busca apenas os 20 primeiros RSVPs para montar um preview rÃ¡pido
+    const q = query(collection(db, "eventos", eventId, "rsvps"), limit(50));
     getDocs(q).then((snap) => {
         const counts: Record<string, number> = {};
         let total = 0;
@@ -15933,7 +16278,7 @@ function EventClassRanking({ eventId }: { eventId: string }) {
     <div className="flex items-center gap-3 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
         <div className="flex -space-x-2">
             {ranking.map((r, i) => (
-                <div key={r.turma} className={`relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden z-[${30-i*10}]`}>
+                <div key={r.turma} className="relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden" style={{ zIndex: 30 - i * 10 }}>
                     <img src={r.img} className="w-full h-full object-cover"/>
                 </div>
             ))}
@@ -15947,47 +16292,32 @@ function EventClassRanking({ eventId }: { eventId: string }) {
 }
 
 // --- COMPONENTE: CONTADOR ---
-function EventCountdown({ targetDate }: { targetDate: string }) {
+function EventCountdown({ targetDate, targetTime }: { targetDate: string, targetTime: string }) {
   const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
 
   useEffect(() => {
     const calculateTime = () => {
         if (!targetDate) return "EM BREVE";
-        const months: Record<string, number> = {
-            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
-            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
-            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÃ‡O': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
-            'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
-        };
+        
+        const eventDate = parseEventDate(targetDate, targetTime);
+        if (!eventDate) return targetDate; // Fallback se nÃ£o conseguir parsear
+
         const now = new Date();
-        let eventDate = new Date();
-        let isValid = false;
-        const cleanDate = targetDate.toUpperCase().trim();
-        const parts = cleanDate.split(' ');
-
-        if (parts.length >= 2) {
-            const day = parseInt(parts[0]);
-            const monthStr = parts[1].substring(0, 3);
-            const month = months[monthStr];
-            if (!isNaN(day) && month !== undefined) {
-                eventDate = new Date(now.getFullYear(), month, day, 23, 59, 59);
-                if (eventDate < now) eventDate.setFullYear(now.getFullYear() + 1);
-                isValid = true;
-            }
-        }
-        if (!isValid) return targetDate;
-
         const diff = eventDate.getTime() - now.getTime();
+        
         if (diff < 0) return "HOJE!";
+        
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        
         if (days > 0) return `FALTAM ${days} DIAS`;
         return `FALTAM ${hours} HORAS`;
     };
+    
     setTimeLeft(calculateTime());
     const interval = setInterval(() => setTimeLeft(calculateTime()), 60000);
     return () => clearInterval(interval);
-  }, [targetDate]);
+  }, [targetDate, targetTime]);
 
   return (
     <div className="flex items-center gap-1 text-[10px] font-black bg-black/60 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10 shadow-lg animate-in fade-in">
@@ -15997,24 +16327,25 @@ function EventCountdown({ targetDate }: { targetDate: string }) {
   );
 }
 
-// --- COMPONENTE: CARD DO EVENTO (COM LIKE NO RODAPÃ‰) ---
-function EventCard({ ev, userId }: { ev: any, userId?: string }) {
+// --- COMPONENTE: CARD DO EVENTO ---
+function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(ev.stats?.likes || 0);
 
-  const loteAtivo = ev.lotes?.find((l: any) => l.status === 'ativo');
-  const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes?.length > 0 ? "Esgotado" : "Em breve");
+  const loteAtivo = ev.lotes?.find((l) => l.status === 'ativo');
+  const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes && ev.lotes.length > 0 ? "Esgotado" : "Em breve");
 
   const handleLike = async (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation(); // Impede de abrir o link do card
-    if (!userId) return; // Se nÃ£o logado, nÃ£o faz nada
+    e.stopPropagation(); 
+    if (!userId) return; 
     
     const newLiked = !liked;
     setLiked(newLiked);
-    setLikesCount((prev: number) => newLiked ? prev + 1 : prev - 1);
+    setLikesCount((prev) => newLiked ? prev + 1 : prev - 1);
     
-    // Atualiza no Firebase
+    // Atualiza no Firebase (apenas stats visual, nÃ£o salva array de likes aqui para economizar escrita)
+    // Se quiser salvar array, precisaria ler o doc. Aqui Ã© uma otimizaÃ§Ã£o UI.
     const eventRef = doc(db, "eventos", ev.id);
     await updateDoc(eventRef, { [`stats.likes`]: increment(newLiked ? 1 : -1) });
   };
@@ -16046,7 +16377,7 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
 
             {/* Contador */}
             <div className="absolute bottom-3 right-3">
-                <EventCountdown targetDate={ev.data} />
+                <EventCountdown targetDate={ev.data} targetTime={ev.hora} />
             </div>
         </div>
 
@@ -16078,7 +16409,7 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* BOTÃƒO DE LIKE (NOVO LOCAL) */}
+                    {/* BOTÃƒO DE LIKE */}
                     <button 
                         onClick={handleLike}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-all ${liked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'}`}
@@ -16103,20 +16434,21 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
 // --- PÃGINA PRINCIPAL ---
 export default function EventosPage() {
   const { user } = useAuth();
-  const [eventos, setEventos] = useState<any[]>([]);
+  const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("Todos");
 
   useEffect(() => {
+    // Query sem limit para trazer todos e filtrar no front se necessÃ¡rio, 
+    // mas ordenando por criaÃ§Ã£o para pegar os mais novos.
     const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"));
     
-    // Listener robusto anti-loop
     const unsubscribe = onSnapshot(q, (snapshot) => {
         try {
             const lista = snapshot.docs.map(doc => ({ 
                 id: doc.id, 
                 ...doc.data() 
-            }));
+            } as Evento));
             setEventos(lista);
         } catch (e) {
             console.error("Erro eventos:", e);
@@ -16171,7 +16503,7 @@ export default function EventosPage() {
           ))}
       </div>
 
-      {/* GRID RESPONSIVO (1 COL MOBILE, 2 TABLET, 3 PC) */}
+      {/* GRID RESPONSIVO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
           {filteredEvents.map((ev) => (
               <EventCard key={ev.id} ev={ev} userId={user?.uid} />
@@ -18345,6 +18677,8 @@ interface LigaData {
     perguntas: PerguntaLiga[]; 
     membros?: Member[]; 
     eventos?: LeagueEvent[];
+    // Novo campo auxiliar para busca
+    membrosIds?: string[];
 }
 
 // --- HELPER PARA BASE64 ---
@@ -18594,17 +18928,23 @@ export default function LigasAdminPage() {
       } catch (e) { addToast("Erro.", "error"); }
   };
 
-  // --- SALVAR TUDO ---
+  // --- SALVAR TUDO (AQUI ESTÃ O PULO DO GATO ðŸ¦ˆ) ---
   const handleSaveAll = async () => {
       if (!ligaData) return;
       if (ligaData.perguntas.length < 10) return addToast("MÃ­nimo 10 perguntas necessÃ¡rias.", "error");
       
       setLoading(true);
       try {
-          // 1. Atualiza Config Liga
-          await updateDoc(doc(db, "ligas_config", ligaData.id), { ...ligaData });
+          // 1. Cria array auxiliar de IDs para busca
+          const membrosIds = ligaData.membros?.map(m => m.id) || [];
 
-          // 2. Sincroniza Eventos (Cria/Atualiza no Global)
+          // 2. Atualiza Config Liga (COM membrosIds)
+          await updateDoc(doc(db, "ligas_config", ligaData.id), { 
+              ...ligaData,
+              membrosIds: membrosIds // <--- O CAMPO MÃGICO
+          });
+
+          // 3. Sincroniza Eventos (Cria/Atualiza no Global)
           if (ligaData.eventos && ligaData.eventos.length > 0) {
               const batchPromises = ligaData.eventos.map(async (ev) => {
                   const eventId = ev.globalEventId || doc(collection(db, "eventos")).id;
@@ -18629,10 +18969,7 @@ export default function LigasAdminPage() {
                       createdAt: serverTimestamp() 
                   }, { merge: true });
 
-                  // Se tiver pergunta inicial e for novo, cria
                   if (ev.pollQuestion) {
-                      // Verifica se jÃ¡ existe pra nÃ£o duplicar (simples)
-                      // Idealmente, verificaria collection, mas aqui vamos confiar no fluxo
                       await addDoc(collection(db, "eventos", eventId, "enquetes"), {
                           question: ev.pollQuestion,
                           options: [],
@@ -18641,16 +18978,16 @@ export default function LigasAdminPage() {
                           creatorId: ligaData.id,
                           isOfficial: true
                       });
-                      // Limpa para nÃ£o recriar na prÃ³xima
                       ev.pollQuestion = ""; 
                   }
               });
               
               await Promise.all(batchPromises);
+              // Salva de novo a liga para garantir IDs de eventos atualizados
               await updateDoc(doc(db, "ligas_config", ligaData.id), { eventos: ligaData.eventos });
           }
 
-          // 3. NotificaÃ§Ã£o Bizu
+          // 4. NotificaÃ§Ã£o Bizu
           if (sendNotification && ligaData.bizu) {
               await addDoc(collection(db, "notifications"), {
                   title: `Novo Bizu da ${ligaData.sigla}! ðŸ¦ˆ`,
@@ -18684,6 +19021,7 @@ export default function LigasAdminPage() {
       setLigaData({ ...ligaData, perguntas: novas });
   };
 
+  // --- RENDERIZAÃ‡ÃƒO ---
   if (!isLoggedIn) return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4 font-sans text-white">
           <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl space-y-4">
@@ -18739,8 +19077,6 @@ export default function LigasAdminPage() {
           {/* 1. VISUAL */}
           {activeTab === 'visual' && ligaData && (
               <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-6">
-                  {/* ... Campos de Visual (Sigla, Nome, Logo, DescriÃ§Ã£o, Bizu) ... */}
-                  {/* (Mantive igual para economizar linhas, o foco Ã© Eventos) */}
                   <div className="grid grid-cols-2 gap-4">
                       <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Sigla</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-sm outline-none focus:border-emerald-500 font-bold uppercase" value={ligaData.sigla} onChange={e => setLigaData({...ligaData, sigla: e.target.value})} maxLength={6}/></div>
                       <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-sm outline-none focus:border-emerald-500" value={ligaData.nome} onChange={e => setLigaData({...ligaData, nome: e.target.value})}/></div>
@@ -18773,8 +19109,6 @@ export default function LigasAdminPage() {
           {/* 2. MEMBROS */}
           {activeTab === 'members' && ligaData && (
               <div className="space-y-6">
-                  {/* ... Lista de Membros e Modal de Busca ... */}
-                  {/* (CÃ³digo igual, foco Ã© Eventos) */}
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                       <div><h3 className="text-sm font-bold uppercase text-white">Diretoria</h3><p className="text-[10px] text-zinc-500">Adicione os membros oficiais.</p></div>
                       <button onClick={() => setSearchUserModal(true)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition"><UserPlus size={14}/> Adicionar Aluno</button>
@@ -18830,7 +19164,6 @@ export default function LigasAdminPage() {
           {/* 4. SHARK ROUND */}
           {activeTab === 'shark' && ligaData && (
               <div className="space-y-6">
-                  {/* ... CÃ³digo do Shark Round (Mantido igual) ... */}
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                       <div><h3 className="text-sm font-bold uppercase text-white flex items-center gap-2">Banco de QuestÃµes <span className={`text-[10px] px-2 py-0.5 rounded border ${ligaData.perguntas.length >= 10 ? 'border-emerald-500 text-emerald-500' : 'border-red-500 text-red-500'}`}>{ligaData.perguntas.length}/10 MÃ­nimo</span></h3></div>
                       <button onClick={addQuestion} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Plus size={14}/> Nova Pergunta</button>
@@ -18967,13 +19300,11 @@ export default function LigasAdminPage() {
                       </div>
                       <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
                       
-                      {/* ðŸ”¥ DESCRIÃ‡ÃƒO DO EVENTO */}
                       <div>
                           <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">DescriÃ§Ã£o do Evento</label>
                           <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" placeholder="Detalhes, regras, atraÃ§Ãµes..." value={currentEvent.descricao || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, descricao: e.target.value })} />
                       </div>
 
-                      {/* ðŸ¦ˆ ENQUETE INICIAL */}
                       <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl">
                           <label className="text-[10px] text-purple-400 font-bold uppercase mb-2 flex items-center gap-2"><MessageCircle size={12}/> Pergunta da Enquete (Opcional)</label>
                           <input 
@@ -18985,7 +19316,6 @@ export default function LigasAdminPage() {
                           />
                       </div>
 
-                      {/* GestÃ£o de Lotes */}
                       <div className="bg-black/40 border border-zinc-800 rounded-xl p-4">
                           <label className="text-xs text-zinc-500 font-bold uppercase mb-2 block">Lotes de Ingressos</label>
                           <div className="grid grid-cols-3 gap-2 mb-2">
@@ -20680,18 +21010,18 @@ import {
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
   UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
-  Zap, Gem, Trophy, ShoppingBag, Medal 
+  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Dumbbell, Clock, CheckCircle
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
   doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
-  addDoc, serverTimestamp, orderBy, onSnapshot 
+  addDoc, serverTimestamp, orderBy, onSnapshot, where, limit 
 } from "firebase/firestore";
 import Link from "next/link";
 
-// --- TIPAGEM BLINDADA ---
+// --- TIPAGEM ---
 interface UserProfile {
   uid: string;
   nome: string;
@@ -20714,7 +21044,9 @@ interface UserProfile {
   plano_icon?: string;
   
   patente?: string;
-  tier?: 'bicho' | 'atleta' | 'lenda';
+  patente_icon?: string;
+  patente_cor?: string;
+  tier?: 'bicho' | 'atleta' | 'lenda'; 
   
   level?: number;
   xp?: number;
@@ -20723,18 +21055,25 @@ interface UserProfile {
   stats?: {
     arenaWins?: number;
     arenaLosses?: number;
+    followersCount?: number;
+    followingCount?: number;
     [key: string]: number | undefined;
   };
   
   [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
-interface FollowerUser {
+interface FollowData {
     uid: string;
     nome: string;
     foto: string;
     turma: string;
 }
+
+const PLAN_COLORS: Record<string, string> = {
+    yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
+    blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
+};
 
 const getSportInfo = (sport: string) => {
     const map: Record<string, { emoji: string, label: string, color: string }> = {
@@ -20754,79 +21093,85 @@ const getSportInfo = (sport: string) => {
     return map[sport.toLowerCase()] || { emoji: "ðŸ…", label: sport, color: "bg-zinc-800 text-zinc-400" };
 };
 
-// ðŸ¦ˆ BADGE DE NÃVEL (SOMENTE ÃCONE COM TOOLTIP)
+// --- COMPONENTES VISUAIS ---
+
 const LevelBadge = ({ xp }: { xp: number }) => {
     const [patentes, setPatentes] = useState<any[]>([]);
-
     useEffect(() => {
-        const q = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+        const q = query(collection(db, "patentes_config")); 
         const unsub = onSnapshot(q, (snap) => {
             const data = snap.docs.map(d => d.data());
+            data.sort((a, b) => a.minXp - b.minXp);
             if (data.length > 0) setPatentes(data);
             else setPatentes([{ titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
         });
         return () => unsub();
     }, []);
-
     const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
     if (!currentBadge) return null;
-
     const IconMap: any = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
     const IconComp = IconMap[currentBadge.iconName] || Fish;
     const colorClass = currentBadge.cor || "text-zinc-500";
-    
-    // Borda baseada na cor
     let borderClass = "border-zinc-700";
     if (colorClass.includes("orange")) borderClass = "border-orange-500/50";
-    if (colorClass.includes("blue")) borderClass = "border-blue-500/50";
-    if (colorClass.includes("purple")) borderClass = "border-purple-500/50";
-    if (colorClass.includes("emerald")) borderClass = "border-emerald-500/50";
-    if (colorClass.includes("yellow")) borderClass = "border-yellow-500/50";
-    if (colorClass.includes("red")) borderClass = "border-red-500/50";
+    else if (colorClass.includes("red")) borderClass = "border-red-500/50";
+    else if (colorClass.includes("emerald")) borderClass = "border-emerald-500/50";
+    else if (colorClass.includes("blue")) borderClass = "border-blue-500/50";
+    else if (colorClass.includes("yellow")) borderClass = "border-yellow-500/50";
 
     return (
-        <div className={`relative group cursor-help p-3 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
+        <div title={`${currentBadge.titulo} â€¢ ${xp} XP`} className={`relative group cursor-help p-3 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
             <IconComp size={20} className={colorClass} />
-            
-            {/* TOOLTIP */}
-            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl flex flex-col items-center min-w-[80px]">
-                <span className={`uppercase tracking-wider ${colorClass} mb-0.5`}>{currentBadge.titulo}</span>
-                <span className="text-zinc-500 font-mono text-[9px]">{xp} XP</span>
-                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 rotate-45"></div>
-            </div>
         </div>
     );
 };
 
-// ðŸ¦ˆ BADGE DE PLANO (SOMENTE ÃCONE COM TOOLTIP)
+const ProfileBadges = ({ userData }: { userData: UserProfile }) => {
+    const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+    const icons: Record<string, React.ElementType> = { 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Ghost, rocket: Star, medal: Medal, heart: Heart, thumbsup: UserCheck, layoutgrid: ShoppingBag, 
+        userplus: UserPlus, target: Trophy, user: Users 
+    };
+    const PlanIcon = icons[planIconName] || Users;
+    const PatentIcon = icons[patentIconName] || Fish;
+
+    return (
+        <div className="flex items-center gap-5 bg-black/40 px-6 py-3 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+            {isAdmin && <div title="Administrador" className="cursor-help transform hover:scale-110"><ShieldCheck size={24} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" /></div>}
+            <div title={`Plano: ${userData.plano || "Visitante"}`} className={`cursor-help transform hover:scale-110 ${planColorClass}`}><PlanIcon size={24} className="drop-shadow-sm" /></div>
+            {planIconName !== patentIconName && <div className="w-px h-6 bg-zinc-700/50"></div>}
+            {planIconName !== patentIconName && (<div title={`Patente: ${userData.patente || "Novato"}`} className={`cursor-help transform hover:scale-110 ${patentColorClass}`}><PatentIcon size={28} className="drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" /></div>)}
+        </div>
+    );
+};
+
 const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
     const IconMap: Record<string, React.ElementType> = {
         'ghost': Ghost, 'star': Star, 'crown': Crown, 'fish': Fish,
-        'zap': Zap, 'gem': Gem, 'trophy': Trophy, 'shopping': ShoppingBag
+        'zap': Zap, 'gem': Gem, 'trophy': Trophy, 'shopping': ShoppingBag, 'user': Users
     };
-
     const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
     const title = nome || "Bicho Solto";
-
-    const getBadgeStyle = (c?: string) => {
-        switch(c) {
-            case 'yellow': return 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
-            case 'emerald': return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
-            case 'zinc': return 'text-zinc-400 border-zinc-500/50 bg-zinc-500/10';
-            case 'purple': return 'text-purple-400 border-purple-500/50 bg-purple-500/10';
-            case 'blue': return 'text-blue-400 border-blue-500/50 bg-blue-500/10';
-            case 'red': return 'text-red-500 border-red-500/50 bg-red-500/10';
-            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; 
-        }
-    };
-
-    const styleClass = getBadgeStyle(cor);
+    let styleClass = 'text-zinc-500 border-zinc-700 bg-zinc-900';
+    if(cor === 'yellow') styleClass = 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
+    else if(cor === 'emerald') styleClass = 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
+    else if(cor === 'zinc') styleClass = 'text-zinc-400 border-zinc-500/50 bg-zinc-500/10';
+    else if(cor === 'purple') styleClass = 'text-purple-400 border-purple-500/50 bg-purple-500/10';
+    else if(cor === 'blue') styleClass = 'text-blue-400 border-blue-500/50 bg-blue-500/10';
+    else if(cor === 'red') styleClass = 'text-red-500 border-red-500/50 bg-red-500/10';
 
     return (
         <div className={`relative group cursor-help p-3 rounded-full border shadow-lg transition-transform hover:scale-110 ${styleClass}`}>
             <IconComponent size={20} className="animate-pulse-slow" />
-            
-            {/* TOOLTIP */}
             <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-3 py-2 bg-black/95 text-white text-[10px] font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-2xl">
                 <span className="uppercase tracking-wider">Plano {title}</span>
                 <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45"></div>
@@ -20847,11 +21192,17 @@ export default function PerfilPublicoPage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [followersList, setFollowersList] = useState<FollowerUser[]>([]);
-  const [followingList, setFollowingList] = useState<FollowerUser[]>([]);
+  const [followersList, setFollowersList] = useState<FollowData[]>([]);
+  const [followingList, setFollowingList] = useState<FollowData[]>([]);
   
-  const [showFollowersModal, setShowFollowersModal] = useState(false);
-  const [activeListType, setActiveListType] = useState<'followers' | 'following'>('followers');
+  // ðŸ¦ˆ CORREÃ‡ÃƒO DO ERRO: Usar activeModal para controlar qual lista estÃ¡ aberta
+  const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
+  const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
+
+  const [recentPosts, setRecentPosts] = useState<any[]>([]);
+  const [myEvents, setMyEvents] = useState<any[]>([]);
+  const [myTreinos, setMyTreinos] = useState<any[]>([]);
+  const [myLigas, setMyLigas] = useState<any[]>([]);
 
   const isOwnProfile = user?.uid === params.id;
 
@@ -20863,21 +21214,54 @@ export default function PerfilPublicoPage() {
         try {
             const docRef = doc(db, "users", uid);
             const docSnap = await getDoc(docRef);
+            
             if (docSnap.exists()) {
-                setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
+                const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+                setProfile(data);
                 
-                const followersSnap = await getDocs(collection(db, "users", uid, "followers"));
-                setFollowersCount(followersSnap.size);
+                // Seguidores
+                if (data.stats?.followersCount !== undefined) setFollowersCount(data.stats.followersCount);
+                else { const snap = await getDocs(collection(db, "users", uid, "followers")); setFollowersCount(snap.size); }
+                if (data.stats?.followingCount !== undefined) setFollowingCount(data.stats.followingCount);
+                else { const snap = await getDocs(collection(db, "users", uid, "following")); setFollowingCount(snap.size); }
 
-                const followingSnap = await getDocs(collection(db, "users", uid, "following"));
-                setFollowingCount(followingSnap.size);
-
+                // Check Follow
                 if (user) {
-                    const amIFollowing = followersSnap.docs.some(d => d.id === user.uid);
-                    setIsFollowing(amIFollowing);
+                    const amIFollowingRef = doc(db, "users", uid, "followers", user.uid);
+                    const docFollow = await getDoc(amIFollowingRef);
+                    setIsFollowing(docFollow.exists());
                 }
+
+                // 1. POSTS
+                const qPosts = query(collection(db, "posts"), where("userId", "==", uid), limit(20));
+                getDocs(qPosts).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    list.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
+                    setRecentPosts(list.slice(0, 5));
+                });
+
+                // 2. EVENTOS (Busca onde o USUÃRIO VISITADO estÃ¡ interessado)
+                const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", uid), limit(20));
+                getDocs(qEvents).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    list.sort((a, b) => { const da = a.data ? new Date(a.data).getTime() : 0; const db = b.data ? new Date(b.data).getTime() : 0; return da - db; });
+                    setMyEvents(list.slice(0, 5));
+                });
+
+                // 3. LIGAS (Busca onde o USUÃRIO VISITADO Ã© membro)
+                const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", uid));
+                getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+                // 4. TREINOS (Busca onde o USUÃRIO VISITADO estÃ¡ confirmado)
+                // ðŸ¦ˆ CORREÃ‡ÃƒO: Query na coleÃ§Ã£o 'treinos'
+                const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", uid), limit(20));
+                getDocs(qTreinos).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    setMyTreinos(list.slice(0, 5));
+                });
+
             } else {
-                addToast("TubarÃ£o nÃ£o encontrado.", "error");
+                addToast("UsuÃ¡rio nÃ£o encontrado.", "error");
                 router.push("/dashboard");
             }
         } catch (error) { console.error(error); } 
@@ -20888,10 +21272,8 @@ export default function PerfilPublicoPage() {
 
   const handleFollow = async () => {
       if (!user || !profile) return;
-      
       const targetFollowerRef = doc(db, "users", profile.uid, "followers", user.uid);
       const myFollowingRef = doc(db, "users", user.uid, "following", profile.uid);
-      
       try {
           if (isFollowing) {
               await deleteDoc(targetFollowerRef);
@@ -20902,16 +21284,9 @@ export default function PerfilPublicoPage() {
           } else {
               const myData = { uid: user.uid, nome: user.nome, foto: user.foto || "", turma: user.turma || "" };
               const targetData = { uid: profile.uid, nome: profile.nome, foto: profile.foto || "", turma: profile.turma || "" };
-
               await setDoc(targetFollowerRef, { ...myData, followedAt: serverTimestamp() });
               await setDoc(myFollowingRef, { ...targetData, followedAt: serverTimestamp() });
-
-              await addDoc(collection(db, "notifications"), {
-                  userId: profile.uid, title: "Novo Seguidor! ðŸ¦ˆ",
-                  message: `${user.nome} comeÃ§ou a te seguir.`,
-                  link: `/perfil/${user.uid}`, read: false, type: "social",
-                  createdAt: serverTimestamp()
-              });
+              await addDoc(collection(db, "notifications"), { userId: profile.uid, title: "Novo Seguidor! ðŸ¦ˆ", message: `${user.nome} comeÃ§ou a te seguir.`, link: `/perfil/${user.uid}`, read: false, type: "social", createdAt: serverTimestamp() });
               setIsFollowing(true);
               setFollowersCount(p => p + 1);
               addToast("Seguindo!", "success");
@@ -20921,210 +21296,170 @@ export default function PerfilPublicoPage() {
 
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile) return;
-      setActiveListType(type);
-      setShowFollowersModal(true);
+      setActiveModal(type);
       
       const colName = type === 'followers' ? 'followers' : 'following';
       const q = query(collection(db, "users", profile.uid, colName));
       const snap = await getDocs(q);
       
-      if (type === 'followers') setFollowersList(snap.docs.map(d => d.data() as FollowerUser));
-      else setFollowingList(snap.docs.map(d => d.data() as FollowerUser));
-  };
-
-  // ðŸ¦ˆ Helper para definir badge
-  const getBadgeProps = () => {
-      if (!profile) return { nome: 'Carregando...', cor: 'zinc', iconName: 'ghost' };
-      if (profile.plano) {
-          return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
-      }
-      if (profile.tier === 'atleta') return { nome: 'Atleta', cor: 'emerald', iconName: 'zap' };
-      if (profile.tier === 'lenda') return { nome: 'Lenda', cor: 'yellow', iconName: 'crown' };
-      return { nome: 'Bicho Solto', cor: 'zinc', iconName: 'ghost' };
+      if (type === 'followers') setFollowersList(snap.docs.map(d => d.data() as FollowData));
+      else setFollowingList(snap.docs.map(d => d.data() as FollowData));
   };
 
   if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
   if (!profile) return null;
 
-  const getIdade = () => {
-      if (profile.dataNascimento) {
-          const birth = new Date(profile.dataNascimento);
-          const today = new Date();
-          let age = today.getFullYear() - birth.getFullYear();
-          const m = today.getMonth() - birth.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-          return age;
-      }
-      return null;
-  };
-
+  const getIdade = () => { if (profile.dataNascimento) { const birth = new Date(profile.dataNascimento); const today = new Date(); let age = today.getFullYear() - birth.getFullYear(); if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--; return age; } return null; };
   const showAge = isOwnProfile || profile.idadePublica;
   const showWhatsapp = isOwnProfile || profile.whatsappPublico;
   const showRelacionamento = isOwnProfile || profile.relacionamentoPublico;
-  const badgeProps = getBadgeProps();
-  
-  // ðŸ¦ˆ IMAGEM DA TURMA (FALLBACK)
   const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
+  const badgeProps = { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
-      
       {/* CAPA + FOTO */}
       <div className="relative">
-        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
-            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
-            <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
-        </div>
-
+        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative"><div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div><img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/><button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button></div>
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
             <div className="relative mb-3 group">
-                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
-                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
-                </div>
-                {/* ðŸ¦ˆ FOTO DA TURMA NO CÃRCULO PEQUENO */}
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
-                    <img src={turmaImage} className="w-full h-full object-cover"/>
-                </div>
+                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/></div>
+                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden"><img src={turmaImage} className="w-full h-full object-cover"/></div>
             </div>
-
-            <div className="text-center space-y-1 mb-4">
-                <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">
-                    {profile.apelido || profile.nome.split(" ")[0]}
-                    {profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}
-                </h1>
-                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
-                <div className="flex items-center justify-center gap-2 mt-2">
-                    <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
-                    {showAge && getIdade() !== null && (
-                        <div className="relative group/age">
-                            <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">
-                                {getIdade()} Anos
-                                {profile.idadePublica === false && isOwnProfile && <Lock size={8} className="text-zinc-500"/>}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </div>
-
+            <div className="text-center space-y-1 mb-4"><h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">{profile.apelido || profile.nome.split(" ")[0]}{profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}</h1><p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p><div className="flex items-center justify-center gap-2 mt-2"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>{showAge && getIdade() !== null && (<div className="relative group/age"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">{getIdade()} Anos{!profile.idadePublica && <Lock size={8} className="text-zinc-500"/>}</span></div>)}</div></div>
+            
             <div className="flex items-center gap-6 mb-6 justify-center w-full">
-                
-                {/* ðŸ¦ˆ Badge do Plano (Somente Ãcone) */}
-                <PlanBadge 
-                    nome={badgeProps.nome} 
-                    cor={badgeProps.cor} 
-                    iconName={badgeProps.iconName}
-                />
-                
+                {/* Badge Plano (Isolada) */}
+                <PlanBadge nome={badgeProps.nome} cor={badgeProps.cor} iconName={badgeProps.iconName} />
+
                 {isOwnProfile ? (
                     <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar Perfil</Link>
                 ) : (
                     <button onClick={handleFollow} className={`px-8 py-2 rounded-full text-xs font-bold uppercase border transition shadow-lg flex items-center gap-2 ${isFollowing ? 'bg-zinc-900 border-zinc-700 text-zinc-400' : 'bg-emerald-600 border-emerald-500 text-white hover:scale-105'}`}>{isFollowing ? <UserCheck size={14}/> : <UserPlus size={14}/>} {isFollowing ? "Seguindo" : "Seguir"}</button>
                 )}
                 
-                {/* ðŸ¦ˆ Badge de NÃ­vel (Somente Ãcone) */}
+                {/* Badge NÃ­vel */}
                 <LevelBadge xp={profile.xp || 0} />
             </div>
 
             <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
-                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followersCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span>
-                </button>
-                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followingCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span>
-                </button>
-                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center">
-                    <span className="text-xl font-black text-white">{profile.xp || 0}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span>
-                </div>
+                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95"><span className="text-xl font-black text-white">{followersCount}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span></button>
+                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95"><span className="text-xl font-black text-white">{followingCount}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span></button>
+                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center"><span className="text-xl font-black text-white">{profile.xp || 0}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span></div>
             </div>
-            
-            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
 
-             <div className="flex gap-3 mb-8 justify-center w-full">
+            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
+            
+            <div className="flex gap-3 mb-8 justify-center w-full">
                 {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
-                
-                {profile.telefone && (
-                    <div className="relative">
-                        {showWhatsapp ? (
-                            <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
-                        ) : (
-                            <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed" title="Privado"><Lock size={20}/></div>
-                        )}
-                        {profile.whatsappPublico === false && isOwnProfile && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700"><Lock size={10} className="text-zinc-400"/></div>}
-                    </div>
-                )}
+                <div className="relative">
+                    {showWhatsapp ? (
+                         <a href={`https://wa.me/55${profile.telefone?.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
+                    ) : (
+                         <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed"><Lock size={20}/></div>
+                    )}
+                    {profile.whatsappPublico === false && isOwnProfile && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700"><Lock size={10} className="text-zinc-400"/></div>}
+                </div>
                 <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
             </div>
-            
-            <div className="w-full max-w-sm space-y-4">
-                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha TÃ©cnica</h3>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div>
-                        <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
-                    </div>
-                    
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
-                        <div>
-                            <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
-                            <div className="flex items-center gap-1">
-                                <p className="text-xs font-bold text-white uppercase truncate max-w-[80px]">
-                                    {showRelacionamento ? (profile.statusRelacionamento || "N/A") : "Privado"}
-                                </p>
-                                {profile.relacionamentoPublico === false && isOwnProfile && <Lock size={10} className="text-zinc-500"/>}
-                                {!isOwnProfile && !showRelacionamento && <Lock size={10} className="text-zinc-600"/>}
-                            </div>
-                        </div>
-                    </div>
 
-                    {profile.pets && (
-                        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2">
-                            <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div>
-                            <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div>
-                        </div>
-                    )}
+            {/* ABAS */}
+            <div className="w-full max-w-sm">
+                <div className="flex justify-between border-b border-zinc-800 mb-4 overflow-x-auto">
+                    {['posts', 'eventos', 'treinos', 'ligas'].map((tab) => (
+                        <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === tab ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>{tab}</button>
+                    ))}
                 </div>
 
+                <div className="min-h-[200px]">
+                    {/* POSTS */}
+                    {activeTab === 'posts' && (
+                        recentPosts.length > 0 ? (
+                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">"{p.texto}"</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
+                    )}
+
+                    {/* EVENTOS */}
+                    {activeTab === 'eventos' && (
+                        myEvents.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><img src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data Ã  definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum evento marcado.</div>
+                    )}
+
+                    {/* LIGAS (ID 685: Visual Grande) */}
+                    {activeTab === 'ligas' && (
+                        myLigas.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-4 animate-in fade-in">
+                                {myLigas.map(l => (
+                                    <Link href="/ligas_unitau" key={l.id} className="flex flex-col items-center gap-2 group">
+                                        <div className="w-24 h-24 rounded-full bg-black border-2 border-zinc-800 p-0.5 group-hover:border-emerald-500 group-hover:scale-105 transition-all shadow-lg">
+                                            <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center relative">
+                                                {l.logoBase64 ? (
+                                                    <img src={l.logoBase64} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <Users size={32} className="text-zinc-500"/>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider text-center line-clamp-1 w-full">{l.sigla || "Liga"}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">NÃ£o participa de ligas.</div>
+                    )}
+
+                    {/* TREINOS (CARD COM FOTO) */}
+                    {activeTab === 'treinos' && (
+                        myTreinos.length > 0 ? (
+                             <div className="grid gap-3 animate-in fade-in">
+                                {myTreinos.map(t => (
+                                    <Link href={`/treinos/${t.id}`} key={t.id} className="group flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg h-24">
+                                        <div className="w-24 h-full bg-zinc-800 relative overflow-hidden shrink-0">
+                                             <img src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"/>
+                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
+                                        </div>
+                                        <div className="flex-1 p-3 flex flex-col justify-center">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <p className="text-sm font-black text-white uppercase truncate">{t.modalidade}</p>
+                                                <div className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><CheckCircle size={8}/> Eu Vou</div>
+                                            </div>
+                                            <div className="flex flex-col gap-1 text-[10px] text-zinc-400 font-bold uppercase">
+                                                <span className="flex items-center gap-1.5"><Calendar size={10} className="text-emerald-500"/> {t.dia}</span>
+                                                <span className="flex items-center gap-1.5"><Clock size={10} className="text-emerald-500"/> {t.horario}</span>
+                                                <span className="flex items-center gap-1.5"><MapPin size={10} className="text-emerald-500"/> {t.local}</span>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                ))}
+                             </div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum treino confirmado.</div>
+                    )}
+                </div>
+            </div>
+
+            {/* FICHA TÃ‰CNICA */}
+            <div className="w-full max-w-sm mt-8 border-t border-zinc-800 pt-6">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-zinc-500 mb-3">Ficha TÃ©cnica</h3>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div></div>
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p><div className="flex items-center gap-1"><p className="text-xs font-bold text-white uppercase truncate max-w-[80px]">{showRelacionamento ? (profile.statusRelacionamento || "N/A") : "Privado"}</p>{!showRelacionamento && !isOwnProfile && <Lock size={10} className="text-zinc-600"/>}{profile.relacionamentoPublico === false && isOwnProfile && <Lock size={10} className="text-zinc-500"/>}</div></div></div>
+                    {profile.pets && (<div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div></div>)}
+                </div>
                 {profile.esportes && profile.esportes.length > 0 && (
-                    <div className="pt-4">
-                        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {profile.esportes.map((sport: any, i: number) => {
-                                const info = getSportInfo(sport);
-                                return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>;
-                            })}
-                        </div>
-                    </div>
+                    <div className="pt-4"><h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3><div className="flex flex-wrap gap-2">{profile.esportes.map((sport, i) => { const info = getSportInfo(sport); return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>; })}</div></div>
                 )}
             </div>
         </div>
       </div>
-      
-      {showFollowersModal && (
+      {activeModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
                   <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
-                          <Users size={16} className="text-emerald-500"/> 
-                          {activeListType === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
-                      </h3>
-                      <button onClick={() => setShowFollowersModal(false)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
+                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">{activeModal === 'followers' ? <Users size={16} className="text-emerald-500"/> : <UserCheck size={16} className="text-blue-500"/>} {activeModal === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}</h3>
+                      <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                      {(activeListType === 'followers' ? followersList : followingList).length === 0 ? (
-                          <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div>
-                      ) : (
-                          (activeListType === 'followers' ? followersList : followingList).map((f: any) => (
-                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
-                                  <div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
-                                  <div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div>
-                              </Link>
-                          ))
-                      )}
+                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
                   </div>
               </div>
           </div>
@@ -21145,17 +21480,19 @@ import {
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
   X, PawPrint, Users, Lock, Heart, UserCheck,
-  Zap, Gem, Trophy, ShoppingBag, Medal 
+  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Dumbbell, 
+  ChevronRight, ThumbsUp, LayoutGrid, UserPlus, Target, User,
+  Skull, Rocket, Clock, CheckCircle
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; 
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
-  doc, getDoc, collection, query, getDocs, updateDoc, orderBy, onSnapshot 
+  doc, getDoc, collection, query, getDocs, onSnapshot, where, limit 
 } from "firebase/firestore";
 import Link from "next/link";
 
-// --- TIPAGEM BLINDADA ---
+// --- TIPAGEM ---
 interface UserProfile {
   uid: string;
   nome: string;
@@ -21173,12 +21510,12 @@ interface UserProfile {
   esportes?: string[];
   role?: string;
   
-  // Campos Visuais
   plano?: string;        
   plano_cor?: string; 
   plano_icon?: string;
-  
   patente?: string;
+  patente_icon?: string;
+  patente_cor?: string;
   tier?: 'bicho' | 'atleta' | 'lenda'; 
   
   level?: number;
@@ -21188,9 +21525,10 @@ interface UserProfile {
   stats?: {
     arenaWins?: number;
     arenaLosses?: number;
+    followersCount?: number;
+    followingCount?: number;
     [key: string]: number | undefined;
   };
-  
   [key: string]: string | number | boolean | undefined | null | object | string[];
 }
 
@@ -21200,6 +21538,11 @@ interface FollowData {
     foto: string;
     turma: string;
 }
+
+const PLAN_COLORS: Record<string, string> = {
+    yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
+    blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
+};
 
 const getSportInfo = (sport: string) => {
     const map: Record<string, { emoji: string, label: string, color: string }> = {
@@ -21219,83 +21562,56 @@ const getSportInfo = (sport: string) => {
     return map[sport.toLowerCase()] || { emoji: "ðŸ…", label: sport, color: "bg-zinc-800 text-zinc-400" };
 };
 
-// ðŸ¦ˆ BADGE DE NÃVEL (SOMENTE ÃCONE COM TOOLTIP)
+// ðŸ¦ˆ LEVEL BADGE
 const LevelBadge = ({ xp }: { xp: number }) => {
     const [patentes, setPatentes] = useState<any[]>([]);
-
     useEffect(() => {
-        const q = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
+        const q = query(collection(db, "patentes_config")); 
         const unsub = onSnapshot(q, (snap) => {
             const data = snap.docs.map(d => d.data());
+            data.sort((a, b) => a.minXp - b.minXp);
             if (data.length > 0) setPatentes(data);
             else setPatentes([{ titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
         });
         return () => unsub();
     }, []);
-
     const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
     if (!currentBadge) return null;
-
-    const IconMap: any = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
+    const IconMap: any = { Fish, Swords, Crown, Skull, Rocket, Star, Zap, Trophy, Medal, Heart };
     const IconComp = IconMap[currentBadge.iconName] || Fish;
     const colorClass = currentBadge.cor || "text-zinc-500";
-    
-    // Borda baseada na cor
-    let borderClass = "border-zinc-700";
-    if (colorClass.includes("orange")) borderClass = "border-orange-500/50";
-    if (colorClass.includes("blue")) borderClass = "border-blue-500/50";
-    if (colorClass.includes("purple")) borderClass = "border-purple-500/50";
-    if (colorClass.includes("emerald")) borderClass = "border-emerald-500/50";
-    if (colorClass.includes("yellow")) borderClass = "border-yellow-500/50";
-    if (colorClass.includes("red")) borderClass = "border-red-500/50";
-
     return (
-        <div className={`relative group cursor-help p-2 rounded-full bg-zinc-900 border ${borderClass} shadow-lg transition-transform hover:scale-110`}>
+        <div title={`${currentBadge.titulo} â€¢ ${xp} XP`} className={`relative group cursor-help p-2 rounded-full bg-zinc-900 border border-zinc-700 shadow-lg transition-transform hover:scale-110`}>
             <IconComp size={20} className={colorClass} />
-            
-            {/* TOOLTIP: Nome da Patente e XP */}
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-xl flex flex-col items-center">
-                <span className={`uppercase tracking-wider ${colorClass}`}>{currentBadge.titulo}</span>
-                <span className="text-zinc-500 font-mono text-[8px]">{xp} XP</span>
-                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 rotate-45"></div>
-            </div>
         </div>
     );
 };
 
-// ðŸ¦ˆ BADGE DE PLANO (SOMENTE ÃCONE COM TOOLTIP)
-const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
-    const IconMap: Record<string, React.ElementType> = {
-        'ghost': Ghost, 'star': Star, 'crown': Crown, 'fish': Fish,
-        'zap': Zap, 'gem': Gem, 'trophy': Trophy, 'shopping': ShoppingBag
+// ðŸ¦ˆ PROFILE BADGES
+const ProfileBadges = ({ userData }: { userData: UserProfile }) => {
+    const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+    const icons: Record<string, React.ElementType> = { 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Skull, rocket: Rocket, medal: Medal, heart: Heart, thumbsup: ThumbsUp, layoutgrid: LayoutGrid, 
+        userplus: UserPlus, target: Target, user: User 
     };
-
-    const IconComponent = (iconName && IconMap[iconName]) ? IconMap[iconName] : Ghost;
-    const title = nome || "Bicho Solto";
-
-    const getBadgeStyle = (c?: string) => {
-        switch(c) {
-            case 'yellow': return 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
-            case 'emerald': return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
-            case 'zinc': return 'text-zinc-400 border-zinc-500/50 bg-zinc-500/10';
-            case 'purple': return 'text-purple-400 border-purple-500/50 bg-purple-500/10';
-            case 'blue': return 'text-blue-400 border-blue-500/50 bg-blue-500/10';
-            case 'red': return 'text-red-500 border-red-500/50 bg-red-500/10';
-            default: return 'text-zinc-500 border-zinc-700 bg-zinc-900'; 
-        }
-    };
-
-    const styleClass = getBadgeStyle(cor);
+    const PlanIcon = icons[planIconName] || User;
+    const PatentIcon = icons[patentIconName] || Fish;
 
     return (
-        <div className={`relative group cursor-help p-2 rounded-full border shadow-lg transition-transform hover:scale-110 ${styleClass}`}>
-            <IconComponent size={20} className="animate-pulse-slow" />
-            
-            {/* TOOLTIP: Nome do Plano */}
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-800 pointer-events-none z-50 shadow-xl">
-                <span className="uppercase tracking-wider">Plano {title}</span>
-                <div className="w-2 h-2 bg-black border-r border-b border-zinc-800 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45"></div>
-            </div>
+        <div className="flex items-center gap-5 bg-black/40 px-6 py-3 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+            {isAdmin && <div title="Admin" className="cursor-help transform hover:scale-110 transition-transform"><ShieldCheck size={24} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" /></div>}
+            <div title={`Plano: ${userData.plano || "Visitante"}`} className={`cursor-help transform hover:scale-110 transition-transform ${planColorClass}`}><PlanIcon size={24} className="drop-shadow-sm" /></div>
+            {planIconName !== patentIconName && <div className="w-px h-6 bg-zinc-700/50"></div>}
+            {planIconName !== patentIconName && (<div title={`Patente: ${userData.patente || "Novato"}`} className={`cursor-help transform hover:scale-110 transition-transform ${patentColorClass}`}><PatentIcon size={28} className="drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" /></div>)}
         </div>
     );
 };
@@ -21304,16 +21620,19 @@ export default function MeuPerfilPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { addToast } = useToast();
-
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  
   const [followersList, setFollowersList] = useState<FollowData[]>([]);
   const [followingList, setFollowingList] = useState<FollowData[]>([]);
   const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
+  const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
+  
+  const [recentPosts, setRecentPosts] = useState<any[]>([]);
+  const [myEvents, setMyEvents] = useState<any[]>([]);
+  const [myTreinos, setMyTreinos] = useState<any[]>([]);
+  const [myLigas, setMyLigas] = useState<any[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -21323,22 +21642,44 @@ export default function MeuPerfilPage() {
         try {
             const docRef = doc(db, "users", user.uid);
             const docSnap = await getDoc(docRef);
-            
             if (docSnap.exists()) {
                 const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
                 setProfile(data);
                 
-                if (data.tier && !data.plano) {
-                    // LÃ³gica de migraÃ§Ã£o (mantida oculta por brevidade, mas existente)
-                }
+                if (data.stats?.followersCount !== undefined) setFollowersCount(data.stats.followersCount);
+                else { const snap = await getDocs(collection(db, "users", user.uid, "followers")); setFollowersCount(snap.size); }
+                if (data.stats?.followingCount !== undefined) setFollowingCount(data.stats.followingCount);
+                else { const snap = await getDocs(collection(db, "users", user.uid, "following")); setFollowingCount(snap.size); }
 
-                const followersSnap = await getDocs(collection(db, "users", user.uid, "followers"));
-                setFollowersCount(followersSnap.size);
-                const followingSnap = await getDocs(collection(db, "users", user.uid, "following"));
-                setFollowingCount(followingSnap.size);
-            } else {
-                addToast("Perfil nÃ£o encontrado.", "error");
-            }
+                // 1. POSTS
+                const qPosts = query(collection(db, "posts"), where("userId", "==", user.uid), limit(20));
+                getDocs(qPosts).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    list.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
+                    setRecentPosts(list.slice(0, 5));
+                });
+
+                // 2. EVENTOS
+                const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", user.uid), limit(20));
+                getDocs(qEvents).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    list.sort((a, b) => { const da = a.data ? new Date(a.data).getTime() : 0; const db = b.data ? new Date(b.data).getTime() : 0; return da - db; });
+                    setMyEvents(list.slice(0, 5));
+                });
+
+                // 3. LIGAS (ID 684)
+                const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", user.uid));
+                getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+                // 4. TREINOS (ID 687 - CORREÃ‡ÃƒO CRÃTICA)
+                const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", user.uid), limit(20));
+                getDocs(qTreinos).then(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    // OrdenaÃ§Ã£o simples por dia/horÃ¡rio se disponÃ­vel
+                    setMyTreinos(list.slice(0, 5));
+                });
+
+            } else { addToast("Perfil nÃ£o encontrado.", "error"); }
         } catch (error) { console.error(error); } 
         finally { setLoading(false); }
     };
@@ -21356,189 +21697,143 @@ export default function MeuPerfilPage() {
       else setFollowingList(list);
   };
 
-  const getBadgeProps = () => {
-      if (!profile) return { nome: 'Carregando...', cor: 'zinc', iconName: 'ghost' };
-      if (profile.plano) return { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
-      if (profile.tier === 'atleta') return { nome: 'Atleta', cor: 'emerald', iconName: 'zap' };
-      if (profile.tier === 'lenda') return { nome: 'Lenda', cor: 'yellow', iconName: 'crown' };
-      return { nome: 'Bicho Solto', cor: 'zinc', iconName: 'ghost' };
-  };
-
   if (loading || authLoading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
   if (!profile) return null;
 
-  const getIdade = () => {
-      if (profile.dataNascimento) {
-          const birth = new Date(profile.dataNascimento);
-          const today = new Date();
-          let age = today.getFullYear() - birth.getFullYear();
-          const m = today.getMonth() - birth.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-          return age;
-      }
-      return null;
-  };
-
+  const getIdade = () => { if (profile.dataNascimento) { const birth = new Date(profile.dataNascimento); const today = new Date(); let age = today.getFullYear() - birth.getFullYear(); if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--; return age; } return null; };
   const isWhatsappPrivate = profile.whatsappPublico === false;
   const isAgePrivate = profile.idadePublica === false;
   const isRelationPrivate = profile.relacionamentoPublico === false;
-  const badgeProps = getBadgeProps();
-  
-  // ðŸ¦ˆ IMAGEM DA TURMA PARA O AVATAR PEQUENO (FALLBACK)
   const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
-      
-      {/* CAPA + FOTO */}
       <div className="relative">
-        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
-            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
-            <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
-        </div>
-
+        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative"><div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div><img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/><button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button></div>
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
             <div className="relative mb-3 group">
-                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
-                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
-                </div>
-                {/* ðŸ¦ˆ CORREÃ‡ÃƒO: FOTO DA TURMA NO CÃRCULO PEQUENO */}
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
-                    <img src={turmaImage} className="w-full h-full object-cover"/>
-                </div>
+                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/></div>
+                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden"><img src={turmaImage} className="w-full h-full object-cover"/></div>
             </div>
-
-            <div className="text-center space-y-1 mb-4">
-                <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">
-                    {profile.apelido || profile.nome.split(" ")[0]}
-                    {profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}
-                </h1>
-                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
-                <div className="flex items-center justify-center gap-2 mt-2">
-                    <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
-                    {getIdade() !== null && (
-                        <div className="relative group/age">
-                            <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">
-                                {getIdade()} Anos
-                                {isAgePrivate && <Lock size={8} className="text-zinc-500" />}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="flex items-center gap-6 mb-6 justify-center w-full">
-                
-                {/* ðŸ¦ˆ Badge do Plano (Somente Ãcone) */}
-                <PlanBadge 
-                    nome={badgeProps.nome} 
-                    cor={badgeProps.cor} 
-                    iconName={badgeProps.iconName}
-                />
-                
-                <Link href="/cadastro" className="px-8 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2">
-                    <Edit3 size={14}/> Editar Perfil
-                </Link>
-                
-                {/* ðŸ¦ˆ Badge de NÃ­vel (Somente Ãcone) */}
-                <LevelBadge xp={profile.xp || 0} />
-            </div>
-
+            <div className="text-center space-y-1 mb-4"><h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">{profile.apelido || profile.nome.split(" ")[0]}{profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}</h1><p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p><div className="flex items-center justify-center gap-2 mt-2"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>{getIdade() !== null && (<div className="relative group/age"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">{getIdade()} Anos{isAgePrivate && <Lock size={8} className="text-zinc-500" />}</span></div>)}</div></div>
+            <div className="mb-6"><ProfileBadges userData={profile} /></div>
+            <div className="flex items-center gap-4 mb-6"><Link href="/cadastro" className="px-6 py-2 bg-zinc-800 rounded-full text-xs font-bold uppercase border border-zinc-700 hover:bg-zinc-700 hover:border-emerald-500 transition shadow-lg flex items-center gap-2"><Edit3 size={14}/> Editar Perfil</Link></div>
             <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8">
-                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followersCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span>
-                </button>
-                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95">
-                    <span className="text-xl font-black text-white">{followingCount}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span>
-                </button>
-                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center">
-                    <span className="text-xl font-black text-white">{profile.xp || 0}</span>
-                    <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span>
-                </div>
+                <button onClick={() => handleOpenList('followers')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95"><span className="text-xl font-black text-white">{followersCount}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguidores</span></button>
+                <button onClick={() => handleOpenList('following')} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center hover:bg-zinc-800 transition active:scale-95"><span className="text-xl font-black text-white">{followingCount}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Seguindo</span></button>
+                <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center"><span className="text-xl font-black text-white">{profile.xp || 0}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span></div>
             </div>
-
             {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
-
             <div className="flex gap-3 mb-8 justify-center w-full">
                 {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
-                
-                {profile.telefone && (
-                    <div className="relative">
-                        {/* BotÃ£o de WhatsApp */}
-                        <a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
-                        {isWhatsappPrivate && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700" title="Privado"><Lock size={10} className="text-zinc-400"/></div>}
-                    </div>
-                )}
-                
+                {profile.telefone && (<div className="relative"><a href={`https://wa.me/55${profile.telefone.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>{isWhatsappPrivate && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700" title="Privado"><Lock size={10} className="text-zinc-400"/></div>}</div>)}
                 <button className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition"><Share2 size={22}/></button>
             </div>
 
-            <div className="w-full max-w-sm space-y-4">
-                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-emerald-500">Ficha TÃ©cnica</h3>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div>
-                        <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div>
-                    </div>
-                    
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3">
-                        <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div>
-                        <div>
-                            <p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p>
-                            <div className="flex items-center gap-1">
-                                <p className="text-xs font-bold text-white uppercase">{profile.statusRelacionamento || "N/A"}</p>
-                                {isRelationPrivate && <span title="Privado"><Lock size={10} className="text-zinc-500"/></span>}
-                            </div>
-                        </div>
-                    </div>
+            <div className="w-full max-w-sm">
+                <div className="flex justify-between border-b border-zinc-800 mb-4 overflow-x-auto">
+                    {['posts', 'eventos', 'treinos', 'ligas'].map((tab) => (
+                        <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === tab ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>{tab}</button>
+                    ))}
+                </div>
+                <div className="min-h-[200px]">
+                    {/* POSTS */}
+                    {activeTab === 'posts' && (
+                        recentPosts.length > 0 ? (
+                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">"{p.texto}"</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
+                    )}
 
-                    {profile.pets && (
-                        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2">
-                            <div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div>
-                            <div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div>
-                        </div>
+                    {/* EVENTOS */}
+                    {activeTab === 'eventos' && (
+                        myEvents.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><img src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data Ã  definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum evento marcado.</div>
+                    )}
+
+                    {/* LIGAS (ID 685: Visual Grande) */}
+                    {activeTab === 'ligas' && (
+                        myLigas.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-4 animate-in fade-in">
+                                {myLigas.map(l => (
+                                    <Link href="/ligas_unitau" key={l.id} className="flex flex-col items-center gap-2 group">
+                                        <div className="w-24 h-24 rounded-full bg-black border-2 border-zinc-800 p-0.5 group-hover:border-emerald-500 group-hover:scale-105 transition-all shadow-lg">
+                                            <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center">
+                                                {l.logoBase64 ? (
+                                                    <img src={l.logoBase64} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <Users size={32} className="text-zinc-500"/>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider text-center line-clamp-1 w-full">{l.sigla || "Liga"}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">NÃ£o participa de ligas.</div>
+                    )}
+
+                    {/* TREINOS (Visual Melhorado com Foto) */}
+                    {activeTab === 'treinos' && (
+                        myTreinos.length > 0 ? (
+                             <div className="grid gap-3 animate-in fade-in">
+                                {myTreinos.map(t => (
+                                    <Link href={`/treinos/${t.id}`} key={t.id} className="group flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg h-24">
+                                        {/* Foto do Treino */}
+                                        <div className="w-24 h-full bg-zinc-800 relative overflow-hidden shrink-0">
+                                             <img
+                                                src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"}
+                                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
+                                             />
+                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
+                                        </div>
+                                        
+                                        {/* Infos */}
+                                        <div className="flex-1 p-3 flex flex-col justify-center">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <p className="text-sm font-black text-white uppercase truncate">{t.modalidade}</p>
+                                                <div className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1">
+                                                    <CheckCircle size={8}/> Eu Vou
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex flex-col gap-1 text-[10px] text-zinc-400 font-bold uppercase">
+                                                <span className="flex items-center gap-1.5"><Calendar size={10} className="text-emerald-500"/> {t.dia}</span>
+                                                <span className="flex items-center gap-1.5"><Clock size={10} className="text-emerald-500"/> {t.horario}</span>
+                                                <span className="flex items-center gap-1.5"><MapPin size={10} className="text-emerald-500"/> {t.local}</span>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                ))}
+                             </div>
+                        ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum treino confirmado.</div>
                     )}
                 </div>
+            </div>
 
+            {/* FICHA TÃ‰CNICA */}
+            <div className="w-full max-w-sm mt-8 border-t border-zinc-800 pt-6">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-zinc-500 mb-3">Ficha TÃ©cnica</h3>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><MapPin size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Origem</p><p className="text-xs font-bold text-white">{profile.cidadeOrigem || "N/A"}</p></div></div>
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><Heart size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Status</p><div className="flex items-center gap-1"><p className="text-xs font-bold text-white uppercase">{profile.statusRelacionamento || "N/A"}</p>{isRelationPrivate && <span title="Privado"><Lock size={10} className="text-zinc-500"/></span>}</div></div></div>
+                    {profile.pets && (<div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 col-span-2"><div className="p-2 bg-zinc-800 rounded-lg text-emerald-500"><PawPrint size={16}/></div><div><p className="text-[9px] text-zinc-500 uppercase font-bold">Mascote</p><p className="text-xs font-bold text-white uppercase">{profile.pets}</p></div></div>)}
+                </div>
                 {profile.esportes && profile.esportes.length > 0 && (
-                    <div className="pt-4">
-                        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {profile.esportes.map((sport, i) => {
-                                const info = getSportInfo(sport);
-                                return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>;
-                            })}
-                        </div>
-                    </div>
+                    <div className="pt-4"><h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-blue-500 mb-3">Modalidades</h3><div className="flex flex-wrap gap-2">{profile.esportes.map((sport, i) => { const info = getSportInfo(sport); return <span key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide border border-white/5 shadow-sm ${info.color}`}><span className="text-sm">{info.emoji}</span> {info.label}</span>; })}</div></div>
                 )}
             </div>
         </div>
       </div>
-
       {activeModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
                   <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
-                          {activeModal === 'followers' ? <Users size={16} className="text-emerald-500"/> : <UserCheck size={16} className="text-blue-500"/>}
-                          {activeModal === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}
-                      </h3>
+                      <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">{activeModal === 'followers' ? <Users size={16} className="text-emerald-500"/> : <UserCheck size={16} className="text-blue-500"/>} {activeModal === 'followers' ? `Seguidores (${followersList.length})` : `Seguindo (${followingList.length})`}</h3>
                       <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? (
-                          <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div>
-                      ) : (
-                          (activeModal === 'followers' ? followersList : followingList).map(f => (
-                              <Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800">
-                                  <div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
-                                  <div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div>
-                              </Link>
-                          ))
-                      )}
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
                   </div>
               </div>
           </div>
@@ -23118,12 +23413,17 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { doc, onSnapshot, collection, runTransaction, serverTimestamp } from "firebase/firestore";
+import { 
+  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
+  arrayUnion, arrayRemove 
+} from "firebase/firestore";
 
 // Mapa de Imagens das Turmas
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg",
+    "Geral": "https://github.com/shadcn.png"
 };
 
 export default function TreinoDetalhesPage() {
@@ -23134,7 +23434,7 @@ export default function TreinoDetalhesPage() {
 
   const [treino, setTreino] = useState<any>(null);
   const [rsvps, setRsvps] = useState<any[]>([]);
-  const [chamadaAdmin, setChamadaAdmin] = useState<any[]>([]); // ðŸ¦ˆ Nova lista: Oficial do Admin
+  const [chamadaAdmin, setChamadaAdmin] = useState<any[]>([]); 
   
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
@@ -23178,7 +23478,7 @@ export default function TreinoDetalhesPage() {
   const listaFinal = useMemo(() => {
       const map = new Map();
 
-      // Passo 1: Adiciona quem marcou "Eu Vou" (Estado Inicial)
+      // Passo 1: Adiciona quem marcou "Eu Vou"
       rsvps.forEach(r => {
           if (r.status === 'going') {
               map.set(r.userId, { 
@@ -23186,32 +23486,29 @@ export default function TreinoDetalhesPage() {
                   nome: r.userName, 
                   turma: r.userTurma, 
                   avatar: r.userAvatar,
-                  statusVisual: 'confirmado' // PadrÃ£o: Confirmado pelo usuÃ¡rio
+                  statusVisual: 'confirmado' 
               });
           }
       });
 
-      // Passo 2: Sobrescreve/Adiciona com a Lista Oficial do Admin
+      // Passo 2: Sobrescreve com a Lista Oficial do Admin
       chamadaAdmin.forEach(c => {
           const existing = map.get(c.userId) || {};
-          // Se o admin marcou, isso prevalece sobre o RSVP
           map.set(c.userId, {
-              ...existing, // MantÃ©m dados existentes se houver
-              ...c,        // Atualiza com dados do admin (pode ser mais atualizado)
-              userId: c.userId, // Garante ID
-              statusVisual: c.status // 'presente' (Verde) ou 'falta' (Vermelho)
+              ...existing, 
+              ...c,        
+              userId: c.userId, 
+              statusVisual: c.status // 'presente' ou 'falta'
           });
       });
 
-      // Retorna array ordenado por nome (Fica mais fÃ¡cil de achar)
       return Array.from(map.values()).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
   }, [rsvps, chamadaAdmin]);
 
-  // 3. CÃLCULO DO RANKING DE TURMAS (Baseado na lista final)
+  // 3. CÃLCULO DO RANKING DE TURMAS
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
       listaFinal.forEach(aluno => {
-          // Contamos quem confirmou ou quem o admin deu presenÃ§a (ignoramos faltas no ranking de forÃ§a)
           if (aluno.statusVisual !== 'falta' && aluno.turma) {
               const t = aluno.turma.toUpperCase();
               counts[t] = (counts[t] || 0) + 1;
@@ -23220,10 +23517,10 @@ export default function TreinoDetalhesPage() {
       return Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
-          .map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] }));
+          .map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"] }));
   }, [listaFinal]);
 
-  // 4. AÃ‡ÃƒO DE RSVP
+  // ðŸ¦ˆ 4. AÃ‡ÃƒO DE RSVP CORRIGIDA PARA ATUALIZAR PERFIL ðŸ¦ˆ
   const handleRSVP = async (status: "going" | "not_going") => {
       if (!user) return addToast("FaÃ§a login para confirmar!", "error");
       if (loadingAction) return;
@@ -23232,8 +23529,12 @@ export default function TreinoDetalhesPage() {
       try {
           await runTransaction(db, async (t) => {
               const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
+              const treinoRef = doc(db, "treinos", treino.id);
+
               if (status === 'not_going') {
                   t.delete(rsvpRef);
+                  // ðŸ¦ˆ Remove do array global para o perfil saber
+                  t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
               } else {
                   t.set(rsvpRef, {
                       userId: user.uid,
@@ -23243,6 +23544,8 @@ export default function TreinoDetalhesPage() {
                       status: 'going',
                       timestamp: serverTimestamp()
                   });
+                  // ðŸ¦ˆ Adiciona ao array global para o perfil saber
+                  t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
               }
           });
           addToast(status === 'going' ? "PresenÃ§a confirmada! ðŸ’ª" : "InscriÃ§Ã£o removida.", "success");
@@ -23262,7 +23565,6 @@ export default function TreinoDetalhesPage() {
       return { text: "text-emerald-400", badge: "bg-emerald-600 border-emerald-500 text-white", gradient: "from-emerald-900/40" };
   };
 
-  // Helper para link do Google Maps
   const getMapsLink = () => {
       if (!treino?.local) return "#";
       return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(treino.local)}`;
@@ -23272,7 +23574,6 @@ export default function TreinoDetalhesPage() {
   if (!treino) return null;
 
   const theme = getTheme();
-  // Contagem para exibiÃ§Ã£o (Exclui quem levou falta)
   const confirmadosCount = listaFinal.filter(a => a.statusVisual !== 'falta').length;
 
   return (
@@ -23280,13 +23581,11 @@ export default function TreinoDetalhesPage() {
       
       {/* --- HERO SECTION --- */}
       <div className="relative h-[65vh] w-full">
-        {/* Imagem de Fundo */}
         <div className="absolute inset-0 bg-black">
             <img src={treino.imagem || "https://placehold.co/800x600/111/333?text=AAAKN"} className="w-full h-full object-cover opacity-60" alt={treino.modalidade} />
             <div className={`absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-transparent z-10`}></div>
         </div>
 
-        {/* BotÃµes Topo */}
         <Link href="/treinos" className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 hover:bg-white hover:text-black transition">
             <ArrowLeft size={24} />
         </Link>
@@ -23341,13 +23640,13 @@ export default function TreinoDetalhesPage() {
         {/* 1. BOTÃ•ES DE DECISÃƒO */}
         <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-2 rounded-2xl shadow-inner flex gap-2">
             <button 
-                onClick={() => handleRSVP('not_going')}
+                onClick={(e) => handleRSVP('not_going')}
                 className="flex-1 py-4 rounded-xl border border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 font-bold text-xs uppercase transition-all"
             >
                 <span className="flex flex-col items-center gap-1"><XCircle size={20}/> NÃ£o Vou</span>
             </button>
             <button 
-                onClick={() => handleRSVP('going')}
+                onClick={(e) => handleRSVP('going')}
                 disabled={loadingAction}
                 className={`flex-[2] py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${userRsvp === 'going' ? 'bg-emerald-500 text-black shadow-emerald-500/30' : 'bg-white text-black hover:bg-zinc-200'}`}
             >
@@ -23376,7 +23675,6 @@ export default function TreinoDetalhesPage() {
                             <p className="text-white font-bold text-sm">{treino.local}</p>
                         </div>
                     </div>
-                    {/* ðŸ¦ˆ BOTÃƒO MAPS */}
                     <a href={getMapsLink()} target="_blank" rel="noopener noreferrer" className="bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-bold uppercase px-3 py-2 rounded-xl flex items-center gap-2 transition">
                         Abrir <Navigation size={12}/>
                     </a>
@@ -23408,15 +23706,14 @@ export default function TreinoDetalhesPage() {
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {listaFinal.map((pessoa, idx) => {
-                    // LÃ³gica de Cores baseada no status Oficial do Admin
-                    let statusColor = "border-zinc-800/50 bg-zinc-900/50"; // Neutro (Confirmado App)
+                    let statusColor = "border-zinc-800/50 bg-zinc-900/50"; 
                     let icon = null;
 
                     if (pessoa.statusVisual === 'presente') {
-                        statusColor = "border-emerald-500/20 bg-emerald-900/10"; // Verde (Presente Admin)
+                        statusColor = "border-emerald-500/20 bg-emerald-900/10"; 
                         icon = <CheckCircle size={14} className="text-emerald-500"/>;
                     } else if (pessoa.statusVisual === 'falta') {
-                        statusColor = "border-red-500/20 bg-red-900/10 opacity-60"; // Vermelho (Falta Admin)
+                        statusColor = "border-red-500/20 bg-red-900/10 opacity-60"; 
                         icon = <UserX size={14} className="text-red-500"/>;
                     }
 
@@ -23432,7 +23729,6 @@ export default function TreinoDetalhesPage() {
                                         </p>
                                     </div>
                                 </div>
-                                {/* Badge de Status */}
                                 <div className="flex flex-col items-end">
                                     {icon}
                                     <span className={`text-[8px] uppercase font-black tracking-widest mt-1 ${
@@ -23468,11 +23764,11 @@ export default function TreinoDetalhesPage() {
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "../../lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -23508,7 +23804,7 @@ const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
 function TreinoCard({ treino }: { treino: any }) {
     const { user } = useAuth();
     const { addToast } = useToast();
-    const router = useRouter(); // Para navegaÃ§Ã£o manual se precisar
+    const router = useRouter(); 
     
     const [userRsvp, setUserRsvp] = useState<"going" | null>(null);
     const [stats, setStats] = useState({ confirmados: 0, avatares: [] as string[], turmas: [] as any[] });
@@ -23545,7 +23841,7 @@ function TreinoCard({ treino }: { treino: any }) {
     }, [treino.id, user]);
 
     const handleRSVP = async (e: React.MouseEvent, status: "going" | "not_going") => {
-        e.preventDefault(); // ðŸ¦ˆ IMPEDE DE ENTRAR NA PÃGINA AO CLICAR NO BOTÃƒO
+        e.preventDefault(); 
         e.stopPropagation();
 
         if (!user) return addToast("FaÃ§a login!", "error");
@@ -23555,9 +23851,12 @@ function TreinoCard({ treino }: { treino: any }) {
         try {
             await runTransaction(db, async (t) => {
                 const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
+                const treinoRef = doc(db, "treinos", treino.id); // ReferÃªncia ao documento do treino
                 
                 if (status === "not_going") {
                     t.delete(rsvpRef);
+                    // ðŸ¦ˆ ATUALIZAÃ‡ÃƒO CRÃTICA: Remove do array global para o Perfil saber
+                    t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
                 } else {
                     t.set(rsvpRef, {
                         userId: user.uid,
@@ -23567,10 +23866,21 @@ function TreinoCard({ treino }: { treino: any }) {
                         status: 'going',
                         timestamp: serverTimestamp()
                     });
+                    // ðŸ¦ˆ ATUALIZAÃ‡ÃƒO CRÃTICA: Adiciona ao array global para o Perfil saber
+                    t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
                 }
             });
-        } catch (e) { console.error(e); addToast("Erro ao atualizar.", "error"); }
-        finally { setLoadingAction(false); }
+            if (status === 'going') {
+                 addToast("Bora treinar! ðŸ’ª", "success");
+            } else {
+                 addToast("InscriÃ§Ã£o cancelada.", "info");
+            }
+        } catch (e) { 
+            console.error(e); 
+            addToast("Erro ao atualizar.", "error"); 
+        } finally { 
+            setLoadingAction(false); 
+        }
     };
 
     const getColors = () => {
