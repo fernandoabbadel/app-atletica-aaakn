@@ -6,11 +6,12 @@ import {
   signOut, 
   User as FirebaseUser 
 } from "firebase/auth";
-import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, orderBy, getDocs, where } from "firebase/firestore"; 
+import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore"; 
 import { auth, db, googleProvider } from "../lib/firebase"; 
 import { useRouter, usePathname } from "next/navigation"; 
 import { logActivity } from "../lib/logger"; 
 import LoadingScreen from "../app/loading";
+import { DEFAULT_STATS, DEFAULT_USER_PROPS } from "../constants/userDefaults";
 
 // --- TIPAGEM ---
 export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master" | "vendas";
@@ -55,14 +56,17 @@ export interface User {
   isAnonymous?: boolean; 
   saved_role?: string;
   ultimoLoginDiario?: string;
+  data_adesao?: string;
   
   // Gamification
   level?: number;
   xp?: number;
+  xpMultiplier?: number;
   heroPower?: number;
   rankingPosition?: number;
   stats?: UserStats; 
   sharkCoins?: number;
+  selos?: number;
   
   // Dados Completos
   matricula?: string;
@@ -87,10 +91,13 @@ export interface User {
   // Visual & Planos
   plano?: string;        
   patente?: string; 
+  patente_icon?: string; // 🦈 NOVO
+  patente_cor?: string;  // 🦈 NOVO
   tier?: 'bicho' | 'atleta' | 'lenda'; 
   plano_badge?: string;
   plano_cor?: string;
   plano_icon?: string;
+  desconto_loja?: number;
   
   [key: string]: string | number | boolean | undefined | null | UserStats | string[] | object; 
 }
@@ -116,35 +123,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const [isLocalGuest, setIsLocalGuest] = useState(false);
   
-  // 🦈 CACHES DE DADOS GLOBAIS (Economia de Leitura)
+  // 🦈 CACHES DE DADOS GLOBAIS
   const [patentesCache, setPatentesCache] = useState<any[]>([]); 
   const [planosCache, setPlanosCache] = useState<any[]>([]);
   
   const router = useRouter();
   const pathname = usePathname(); 
 
-  // 1. CARREGAMENTO INICIAL UNIFICADO (Roda 1x ao abrir o app)
+  // 1. CARREGAMENTO INICIAL UNIFICADO
   useEffect(() => {
     setMounted(true);
 
     const fetchData = async () => {
         try {
-            // A. Buscar Patentes (Leitura única)
+            // A. Buscar Patentes
             const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "desc"));
             const snapPatentes = await getDocs(qPatentes);
             if (!snapPatentes.empty) {
                 setPatentesCache(snapPatentes.docs.map(d => d.data()));
             } else {
+                 // Fallback local se o banco estiver vazio (Segurança)
                  setPatentesCache([
-                    { titulo: "Megalodon", minXp: 50000 },
-                    { titulo: "Tubarão Branco", minXp: 15000 },
-                    { titulo: "Barracuda", minXp: 2000 },
-                    { titulo: "Peixe Palhaço", minXp: 500 },
-                    { titulo: "Plâncton", minXp: 0 }
+                    { titulo: "Megalodon", minXp: 50000, iconName: "Crown", cor: "text-red-600" },
+                    { titulo: "Tubarão Branco", minXp: 15000, iconName: "Fish", cor: "text-emerald-400" },
+                    { titulo: "Barracuda", minXp: 2000, iconName: "Swords", cor: "text-blue-400" },
+                    { titulo: "Peixe Palhaço", minXp: 500, iconName: "Fish", cor: "text-orange-400" },
+                    { titulo: "Plâncton", minXp: 0, iconName: "Fish", cor: "text-zinc-400" }
                 ]);
             }
 
-            // B. Buscar Planos (Leitura única - ECONOMIA 💰)
+            // B. Buscar Planos
             const snapPlanos = await getDocs(collection(db, "planos"));
             if (!snapPlanos.empty) {
                 setPlanosCache(snapPlanos.docs.map(d => d.data()));
@@ -155,11 +163,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchData();
   }, []);
 
-  // Helper: Calcula Patente com base no cache
-  const calculatePatente = (xp: number) => {
-      if (patentesCache.length === 0) return "Novato"; 
+  // Helper: Calcula DADOS DA PATENTE com base no cache (Retorna Objeto Completo)
+  const calculatePatenteData = (xp: number) => {
+      if (patentesCache.length === 0) return null;
+      // Como o cache vem ordenado DESC (Megalodon -> Plâncton), o primeiro que o XP cobrir é a patente certa
+      // Ex: XP 3000. Megalodon (50k)? Não. Branco (15k)? Não. Barracuda (2k)? Sim! Retorna Barracuda.
       const found = patentesCache.find(p => xp >= p.minXp);
-      return found ? found.titulo : "Novato";
+      return found || patentesCache[patentesCache.length - 1]; // Fallback para a última (menor)
   };
 
   // 2. MONITORAR AUTH
@@ -178,6 +188,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const unsubDoc = onSnapshot(userRef, async (userSnap) => {
               if (userSnap.exists()) {
                 const userData = userSnap.data() as User;
+
+                // 🚑 --- PROTOCOLO DE AUTO-CURA (SELF-HEALING) --- 🚑
+                let needsRepair = false;
+                const updates: Partial<User> & Record<string, any> = {}; 
+
+                // 1. Checa Gamificação Básica
+                if (userData.xp === undefined) { updates.xp = DEFAULT_USER_PROPS.xp; needsRepair = true; }
+                if (userData.level === undefined) { updates.level = DEFAULT_USER_PROPS.level; needsRepair = true; }
+                if (userData.sharkCoins === undefined) { updates.sharkCoins = DEFAULT_USER_PROPS.sharkCoins; needsRepair = true; }
+                if (!userData.patente) { updates.patente = DEFAULT_USER_PROPS.patente; needsRepair = true; }
+                
+                // 2. Checa Plano/Visual
+                if (!userData.plano) { updates.plano = DEFAULT_USER_PROPS.plano; needsRepair = true; }
+                if (!userData.plano_badge) { updates.plano_badge = DEFAULT_USER_PROPS.plano_badge; needsRepair = true; }
+                if (!userData.plano_cor) { updates.plano_cor = DEFAULT_USER_PROPS.plano_cor; needsRepair = true; }
+                
+                // 3. Checa Stats (Deep Merge)
+                const currentStats = userData.stats || {};
+                const missingStatKeys = Object.keys(DEFAULT_STATS).some(key => currentStats[key] === undefined);
+                
+                if (!userData.stats || missingStatKeys) {
+                    updates.stats = {
+                        ...DEFAULT_STATS, 
+                        ...currentStats
+                    };
+                    needsRepair = true;
+                }
+
+                // APLICA A CURA SE NECESSÁRIO
+                if (needsRepair) {
+                    console.log(`🚑 Auto-Cura ativada para ${userData.nome}. Corrigindo perfil...`);
+                    await updateDoc(userRef, updates);
+                    return; 
+                }
                 
                 // --- 1. LÓGICA DE LOGIN DIÁRIO ---
                 const hoje = new Date().toLocaleDateString('pt-BR'); 
@@ -196,13 +240,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     await logActivity(fbUser.uid, userData.nome, "LOGIN", "Sistema", "Check-in Diário Realizado (+10 XP)");
                 } 
 
-                // --- 2. CÁLCULO DE PATENTE (MEMÓRIA) ---
-                // Verifica se temos cache antes de tentar atualizar
+                // --- 2. CÁLCULO E SINCRONIA DE PATENTE (CORE) ---
                 if (patentesCache.length > 0) {
-                    const currentPatente = calculatePatente(userData.xp || 0);
-                    if (userData.patente !== currentPatente) {
-                         await updateDoc(userRef, { patente: currentPatente });
-                         userData.patente = currentPatente; // Atualiza localmente
+                    const patenteAlvo = calculatePatenteData(userData.xp || 0);
+                    
+                    if (patenteAlvo) {
+                        // Verifica se precisa atualizar QUALQUER campo da patente (Nome, ícone ou cor)
+                        // Isso garante que se o Admin mudar o ícone do Plâncton, o usuário atualiza no próximo login
+                        if (
+                            userData.patente !== patenteAlvo.titulo ||
+                            userData.patente_icon !== patenteAlvo.iconName ||
+                            userData.patente_cor !== patenteAlvo.cor
+                        ) {
+                             console.log(`🦈 Evolução/Sincronia de Patente: ${patenteAlvo.titulo}`);
+                             
+                             const updatesPatente = { 
+                                 patente: patenteAlvo.titulo,
+                                 patente_icon: patenteAlvo.iconName,
+                                 patente_cor: patenteAlvo.cor
+                             };
+
+                             await updateDoc(userRef, updatesPatente);
+                             
+                             // Atualiza estado local imediatamente para refletir na UI sem refresh
+                             userData.patente = patenteAlvo.titulo;
+                             userData.patente_icon = patenteAlvo.iconName;
+                             userData.patente_cor = patenteAlvo.cor;
+                        }
                     }
                 }
 
@@ -211,18 +275,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const planoReal = planosCache.find(p => p.nome === userData.plano);
 
                     if (planoReal) {
-                        // Se a cor ou ícone salvos no usuário forem diferentes da config real
                         if (userData.plano_cor !== planoReal.cor || userData.plano_icon !== planoReal.icon) {
                             console.log(`🦈 Sincronizando visual do plano (Cache) para ${userData.nome}...`);
-                            
                             await updateDoc(userRef, {
                                 plano_cor: planoReal.cor,
                                 plano_icon: planoReal.icon,
-                                // Opcional: atualizar desconto
                                 desconto_loja: planoReal.descontoLoja,
                                 xpMultiplier: planoReal.xpMultiplier
                             });
-                            
                             userData.plano_cor = planoReal.cor;
                             userData.plano_icon = planoReal.icon;
                         }
@@ -232,29 +292,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
                 setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
 
-                // Garante status de criação de conta
-                if (!userData.stats?.accountCreated) {
-                    await updateDoc(userRef, { "stats.accountCreated": 1 });
-                }
-
               } else {
-                // Novo Cadastro
+                // ✅ CRIAÇÃO DE NOVO USUÁRIO
                 const newUser: User = {
+                  ...DEFAULT_USER_PROPS, // Base Padrão
+                  
                   uid: fbUser.uid,
                   nome: fbUser.displayName || "Sem Nome",
                   email: fbUser.email || "",
                   foto: fbUser.photoURL || "https://github.com/shadcn.png",
+                  
                   role: "guest",
                   status: "ativo",
-                  level: 1,
-                  xp: 50,
-                  stats: { accountCreated: 1, loginCount: 1 }, 
-                  plano: "Bicho Solto",
-                  tier: "bicho",
-                  patente: "Plâncton",
-                  isAnonymous: false,
-                  ultimoLoginDiario: new Date().toLocaleDateString('pt-BR')
-                };
+                  
+                  stats: { ...DEFAULT_STATS },
+                  
+                  ultimoLoginDiario: new Date().toLocaleDateString('pt-BR'),
+                  data_adesao: new Date().toISOString()
+                } as User; 
                 
                 await setDoc(userRef, newUser);
                 setUser(newUser);
@@ -282,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [isLocalGuest, patentesCache, planosCache]); // Roda novamente se o cache atualizar
+  }, [isLocalGuest, patentesCache, planosCache]); 
 
   // 3. SEGURANÇA E REDIRECIONAMENTOS
   useEffect(() => {
@@ -314,20 +369,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAsGuest = async () => {
     setLoading(true);
     const guestUser: User = {
+        ...DEFAULT_USER_PROPS,
         uid: "guest_virtual_" + Date.now(),
         nome: "Visitante Tubarão",
         email: "visitante@aaakn.com",
         foto: "/logo.png",
+        
         role: "guest",
         status: "ativo",
         isAnonymous: true,
-        stats: { loginCount: 1 },
-        tier: "bicho",       
+
+        stats: { ...DEFAULT_STATS, loginCount: 1 },
         plano: "Visitante",
         patente: "Visitante",
+        tier: "bicho",
         level: 1,
         xp: 0
-    };
+    } as User;
+
     setIsLocalGuest(true);
     setUser(guestUser);
     setIsAdmin(false);

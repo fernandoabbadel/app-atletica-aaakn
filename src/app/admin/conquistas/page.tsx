@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Search, Edit2, Trash2, Save, Target,
-  Zap, Users, TrendingUp, Award, Crown, History, Calendar, Clock, ExternalLink,
-  FolderPlus, X, Power, PowerOff, Filter, CheckCircle2, MessageSquare, Flame, 
-  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw
+  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Edit2, Trash2, Save, Target,
+  Zap, Users, TrendingUp, Award, Crown, History, Power, PowerOff, Flame, 
+  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw, Gem
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -14,6 +13,8 @@ import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, 
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../../lib/achievements";
 
 // --- DADOS PADRÃO DAS PATENTES (PARA RESTAURAR) ---
+// Esses dados definem a "Régua" de evolução. 
+// O AuthContext vai ler isso para saber qual ícone dar ao usuário.
 const DEFAULT_PATENTES = [
     { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish", opacity: true },
     { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
@@ -23,7 +24,7 @@ const DEFAULT_PATENTES = [
     { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
-// Lista de Ícones disponíveis para seleção
+// Lista de Ícones disponíveis para seleção (Sincronizado com a Comunidade)
 const ICON_OPTIONS = [
     { label: "Peixe", value: "Fish", icon: <Fish/> },
     { label: "Espadas", value: "Swords", icon: <Swords/> },
@@ -35,6 +36,7 @@ const ICON_OPTIONS = [
     { label: "Troféu", value: "Trophy", icon: <Trophy/> },
     { label: "Medalha", value: "Medal", icon: <Medal/> },
     { label: "Coração", value: "Heart", icon: <Heart/> },
+    { label: "Diamante", value: "Gem", icon: <Gem/> }, // Adicionado Gem
 ];
 
 export default function AdminConquistasPage() {
@@ -81,7 +83,6 @@ export default function AdminConquistasPage() {
         if (data.length > 0) {
             setPatentes(data);
         } else {
-            // Se vazio no banco, não mostra nada (usuário deve clicar em restaurar)
             setPatentes([]); 
         }
         setLoading(false);

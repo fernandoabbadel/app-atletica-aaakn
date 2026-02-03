@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Filter, 
   Loader2, ArrowRight, Heart, Clock, Zap, Users, Crown 
@@ -10,8 +10,36 @@ import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
-  increment, getDocs 
+  increment, getDocs, limit 
 } from "firebase/firestore";
+import { useToast } from "../../context/ToastContext";
+
+// --- INTERFACES ---
+interface Evento {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  data: string;
+  hora: string;
+  local: string;
+  imagem?: string;
+  imagePositionY?: number;
+  tipo: string;
+  destaque?: string;
+  categoria?: string;
+  isLowStock?: boolean;
+  stats?: {
+    confirmados: number;
+    talvez: number;
+    likes?: number;
+  };
+  lotes?: Array<{
+    nome: string;
+    preco: string;
+    status: 'ativo' | 'esgotado' | 'em_breve';
+  }>;
+  interessados?: string[]; // Array de UIDs para controle
+}
 
 // --- CONFIGURAÇÃO DE IMAGENS ---
 const TURMA_IMAGENS: Record<string, string> = {
@@ -21,13 +49,61 @@ const TURMA_IMAGENS: Record<string, string> = {
     "Geral": "https://github.com/shadcn.png" 
 };
 
+// --- HELPER: PARSER DE DATA ---
+const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
+    try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const [hours, mins] = timeStr.split(':').map(Number);
+        
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [d, m, y] = dateStr.split('/').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        const months: Record<string, number> = {
+            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
+            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÇO': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
+            'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
+        };
+        const cleanDate = dateStr.toUpperCase().trim();
+        const parts = cleanDate.split(' '); 
+        
+        if (parts.length >= 2) {
+            const day = parseInt(parts[0]);
+            // Busca parcial (ex: "NOV" em "NOVEMBRO")
+            const monthStr = parts[1].substring(0, 3);
+            const monthKey = Object.keys(months).find(m => m.startsWith(monthStr));
+            
+            if (monthKey && !isNaN(day)) {
+                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
+                // Se a data já passou (ex: JAN sendo que estamos em DEZ), assume próximo ano
+                if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
+                    eventDate.setFullYear(currentYear + 1);
+                }
+                return eventDate;
+            }
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+};
+
 // --- COMPONENTE: RANKING DE TURMAS (RSVP) ---
 function EventClassRanking({ eventId }: { eventId: string }) {
   const [ranking, setRanking] = useState<{turma: string, count: number, img: string}[]>([]);
   const [totalConfirmados, setTotalConfirmados] = useState(0);
 
   useEffect(() => {
-    const q = collection(db, "eventos", eventId, "rsvps");
+    // Busca apenas os 20 primeiros RSVPs para montar um preview rápido
+    const q = query(collection(db, "eventos", eventId, "rsvps"), limit(50));
     getDocs(q).then((snap) => {
         const counts: Record<string, number> = {};
         let total = 0;
@@ -60,7 +136,7 @@ function EventClassRanking({ eventId }: { eventId: string }) {
     <div className="flex items-center gap-3 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
         <div className="flex -space-x-2">
             {ranking.map((r, i) => (
-                <div key={r.turma} className={`relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden z-[${30-i*10}]`}>
+                <div key={r.turma} className="relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden" style={{ zIndex: 30 - i * 10 }}>
                     <img src={r.img} className="w-full h-full object-cover"/>
                 </div>
             ))}
@@ -74,47 +150,32 @@ function EventClassRanking({ eventId }: { eventId: string }) {
 }
 
 // --- COMPONENTE: CONTADOR ---
-function EventCountdown({ targetDate }: { targetDate: string }) {
+function EventCountdown({ targetDate, targetTime }: { targetDate: string, targetTime: string }) {
   const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
 
   useEffect(() => {
     const calculateTime = () => {
         if (!targetDate) return "EM BREVE";
-        const months: Record<string, number> = {
-            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
-            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
-            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÇO': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
-            'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
-        };
+        
+        const eventDate = parseEventDate(targetDate, targetTime);
+        if (!eventDate) return targetDate; // Fallback se não conseguir parsear
+
         const now = new Date();
-        let eventDate = new Date();
-        let isValid = false;
-        const cleanDate = targetDate.toUpperCase().trim();
-        const parts = cleanDate.split(' ');
-
-        if (parts.length >= 2) {
-            const day = parseInt(parts[0]);
-            const monthStr = parts[1].substring(0, 3);
-            const month = months[monthStr];
-            if (!isNaN(day) && month !== undefined) {
-                eventDate = new Date(now.getFullYear(), month, day, 23, 59, 59);
-                if (eventDate < now) eventDate.setFullYear(now.getFullYear() + 1);
-                isValid = true;
-            }
-        }
-        if (!isValid) return targetDate;
-
         const diff = eventDate.getTime() - now.getTime();
+        
         if (diff < 0) return "HOJE!";
+        
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        
         if (days > 0) return `FALTAM ${days} DIAS`;
         return `FALTAM ${hours} HORAS`;
     };
+    
     setTimeLeft(calculateTime());
     const interval = setInterval(() => setTimeLeft(calculateTime()), 60000);
     return () => clearInterval(interval);
-  }, [targetDate]);
+  }, [targetDate, targetTime]);
 
   return (
     <div className="flex items-center gap-1 text-[10px] font-black bg-black/60 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10 shadow-lg animate-in fade-in">
@@ -124,24 +185,25 @@ function EventCountdown({ targetDate }: { targetDate: string }) {
   );
 }
 
-// --- COMPONENTE: CARD DO EVENTO (COM LIKE NO RODAPÉ) ---
-function EventCard({ ev, userId }: { ev: any, userId?: string }) {
+// --- COMPONENTE: CARD DO EVENTO ---
+function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(ev.stats?.likes || 0);
 
-  const loteAtivo = ev.lotes?.find((l: any) => l.status === 'ativo');
-  const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes?.length > 0 ? "Esgotado" : "Em breve");
+  const loteAtivo = ev.lotes?.find((l) => l.status === 'ativo');
+  const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes && ev.lotes.length > 0 ? "Esgotado" : "Em breve");
 
   const handleLike = async (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation(); // Impede de abrir o link do card
-    if (!userId) return; // Se não logado, não faz nada
+    e.stopPropagation(); 
+    if (!userId) return; 
     
     const newLiked = !liked;
     setLiked(newLiked);
-    setLikesCount((prev: number) => newLiked ? prev + 1 : prev - 1);
+    setLikesCount((prev) => newLiked ? prev + 1 : prev - 1);
     
-    // Atualiza no Firebase
+    // Atualiza no Firebase (apenas stats visual, não salva array de likes aqui para economizar escrita)
+    // Se quiser salvar array, precisaria ler o doc. Aqui é uma otimização UI.
     const eventRef = doc(db, "eventos", ev.id);
     await updateDoc(eventRef, { [`stats.likes`]: increment(newLiked ? 1 : -1) });
   };
@@ -173,7 +235,7 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
 
             {/* Contador */}
             <div className="absolute bottom-3 right-3">
-                <EventCountdown targetDate={ev.data} />
+                <EventCountdown targetDate={ev.data} targetTime={ev.hora} />
             </div>
         </div>
 
@@ -205,7 +267,7 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* BOTÃO DE LIKE (NOVO LOCAL) */}
+                    {/* BOTÃO DE LIKE */}
                     <button 
                         onClick={handleLike}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-all ${liked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'}`}
@@ -230,20 +292,21 @@ function EventCard({ ev, userId }: { ev: any, userId?: string }) {
 // --- PÁGINA PRINCIPAL ---
 export default function EventosPage() {
   const { user } = useAuth();
-  const [eventos, setEventos] = useState<any[]>([]);
+  const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("Todos");
 
   useEffect(() => {
+    // Query sem limit para trazer todos e filtrar no front se necessário, 
+    // mas ordenando por criação para pegar os mais novos.
     const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"));
     
-    // Listener robusto anti-loop
     const unsubscribe = onSnapshot(q, (snapshot) => {
         try {
             const lista = snapshot.docs.map(doc => ({ 
                 id: doc.id, 
                 ...doc.data() 
-            }));
+            } as Evento));
             setEventos(lista);
         } catch (e) {
             console.error("Erro eventos:", e);
@@ -298,7 +361,7 @@ export default function EventosPage() {
           ))}
       </div>
 
-      {/* GRID RESPONSIVO (1 COL MOBILE, 2 TABLET, 3 PC) */}
+      {/* GRID RESPONSIVO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
           {filteredEvents.map((ev) => (
               <EventCard key={ev.id} ev={ev} userId={user?.uid} />

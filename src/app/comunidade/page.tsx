@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Heart, MessageCircle, MoreHorizontal, Flame, 
   Image as ImageIcon, ShieldCheck, Pin, X, Loader2, AlertTriangle, Send, Trash2, Flag,
-  Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish
+  Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish, User, 
+  Swords, Skull, Rocket, Medal, RefreshCw, ThumbsUp, LayoutGrid, UserPlus, Target
 } from "lucide-react";
 import Link from "next/link";
 import { db, storage } from "../../lib/firebase";
@@ -38,9 +39,15 @@ interface PostData {
     comentarios: number;
     denunciasCount: number;
     categoria: string;
+    
+    // Dados Visuais (Snapshot)
     plano_cor?: string;
     plano_icon?: string;
     plano?: string;
+    patente?: string; 
+    patente_icon?: string; 
+    patente_cor?: string; 
+    
     role?: string;
     blocked?: boolean;
     fixado?: boolean;
@@ -57,8 +64,14 @@ interface CommentData {
     avatar: string;
     texto: string;
     likes: string[];
+    
     plano_cor?: string;
     plano_icon?: string;
+    plano?: string;
+    patente?: string;
+    patente_icon?: string; 
+    patente_cor?: string; 
+    
     role?: string;
     createdAt: Timestamp | null;
 }
@@ -102,26 +115,59 @@ const formatCustomDate = (timestamp: Timestamp | null | undefined) => {
 
 const UserBadges = ({ userData }: { userData: any }) => {
     const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
-    const planIcon = userData?.plano_icon || 'ghost';
     
+    // 1. Definição dos Ícones
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
+
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    
+    // 2. Definição das Cores (SEPARADAS) 🦈 FIX CRÍTICO
+    
+    // Cor do Plano (Para o ícone do plano)
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+
+    // Cor da Patente (Para o ícone da patente)
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+
+    // Mapa Visual Completo
     const icons: Record<string, React.ElementType> = { 
-        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, 
+        trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Skull, rocket: Rocket, medal: Medal, heart: Heart,
+        thumbsup: ThumbsUp, layoutgrid: LayoutGrid, userplus: UserPlus, 
+        target: Target, user: User 
     };
-    const IconComponent = icons[planIcon] || Ghost;
     
-    const colorKey = userData?.plano_cor || "zinc";
-    const colorClass = PLAN_COLORS[colorKey] || "text-zinc-400";
+    const PlanIcon = icons[planIconName] || User;
+    const PatentIcon = icons[patentIconName] || Fish;
+
+    const tooltipText = `${userData?.patente || 'Novato'} • ${userData?.plano || 'Visitante'}`;
 
     return (
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-1.5 ml-1 select-none" title={tooltipText}>
+            
+            {/* 1. Ícone de Admin */}
             {isAdmin && (
-                <span title="Administrador" className="flex items-center">
-                    <ShieldCheck size={12} className="text-red-500 fill-red-500/20" />
+                <span className="flex items-center bg-red-500/10 p-0.5 rounded border border-red-500/20">
+                    <ShieldCheck size={10} className="text-red-500" />
                 </span>
             )}
-            <span title={userData?.plano || "Membro"} className="flex items-center">
-                <IconComponent size={12} className={colorClass}/>
+
+            {/* 2. Ícone do Plano (Usa a cor do Plano) */}
+            <span className={`flex items-center opacity-80 ${planColorClass}`}>
+                <PlanIcon size={12} />
             </span>
+
+            {/* 3. Ícone da Patente (Usa a cor da Patente) */}
+            {planIconName !== patentIconName && (
+                <span className={`flex items-center ${patentColorClass}`}> 
+                    <PatentIcon size={14} className="drop-shadow-sm" />
+                </span>
+            )}
         </div>
     );
 };
@@ -140,7 +186,10 @@ export default function ComunidadePage() {
   
   const [newPostText, setNewPostText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  
+  // 🦈 TRAVAS ANTI-SPAM
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   const [reportModal, setReportModal] = useState<string | null>(null);
   const [reportTargetType, setReportTargetType] = useState<"post" | "comment">("post");
@@ -209,7 +258,8 @@ export default function ComunidadePage() {
 
   const handlePublish = async () => {
     if (!user) return addToast("Faça login!", "error");
-    
+    if (isPublishing) return; // 🚫 TRAVA ANTI-SPAM
+
     const securityCheck = await Security.canUserPost(user.uid);
     if (!securityCheck.allowed) return addToast(securityCheck.reason || "Aguarde...", "error");
 
@@ -228,7 +278,7 @@ export default function ComunidadePage() {
         return addToast(`Você já postou em "${activeTab}" hoje. Volte amanhã! ⏳`, "error");
     }
 
-    setIsPublishing(true);
+    setIsPublishing(true); 
     try {
       let imageUrl = null;
       if (imageFile) {
@@ -242,9 +292,15 @@ export default function ComunidadePage() {
           userName: user.nome || "Anônimo",
           handle: user.apelido ? `@${user.apelido}` : "@atleta",
           avatar: user.foto || "https://github.com/shadcn.png",
+          
           plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-          plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+          plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
           plano: user.plano ? String(user.plano) : 'Visitante',
+          
+          patente: user.patente ? String(user.patente) : 'Novato', 
+          patente_icon: user.patente_icon || 'Fish', 
+          patente_cor: user.patente_cor || 'text-zinc-400',
+          
           role: user.role ? String(user.role) : 'user',
       };
 
@@ -262,7 +318,6 @@ export default function ComunidadePage() {
         createdAt: serverTimestamp(),
       });
 
-      // 🦈 ATUALIZA CONQUISTAS (POSTS)
       if (user.uid) {
           await updateDoc(doc(db, "users", user.uid), {
               "stats.postsCount": increment(1)
@@ -272,14 +327,18 @@ export default function ComunidadePage() {
       setNewPostText("");
       setImageFile(null);
       addToast("Postado! 🦈", "success");
-    } catch (e) { addToast("Erro ao postar.", "error"); }
-    finally { setIsPublishing(false); }
+    } catch (e) { 
+        addToast("Erro ao postar.", "error"); 
+    } finally { 
+        setIsPublishing(false); 
+    }
   };
 
   const handleComment = async () => {
       if (!user) return addToast("Faça login!", "error");
       if (!newComment.trim()) return;
       if (!commentModal) return; 
+      if (isPostingComment) return; // 🚫 TRAVA ANTI-SPAM
 
       const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
       const myCommentsToday = commentsList.filter(c => 
@@ -291,13 +350,21 @@ export default function ComunidadePage() {
           return addToast("Você já comentou neste post hoje.", "error");
       }
 
+      setIsPostingComment(true); 
       try {
           const safeUser = {
               userId: user.uid ? String(user.uid) : "",
               userName: user.nome || "Anônimo",
               avatar: user.foto || "/logo.png",
+              
               plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-              plano_icon: user.plano_icon ? String(user.plano_icon) : 'ghost',
+              plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
+              plano: user.plano ? String(user.plano) : 'Membro',
+              
+              patente: user.patente ? String(user.patente) : 'Novato',
+              patente_icon: user.patente_icon || 'Fish',
+              patente_cor: user.patente_cor || 'text-zinc-400',
+              
               role: user.role ? String(user.role) : 'user',
           };
 
@@ -310,7 +377,6 @@ export default function ComunidadePage() {
           
           await updateDoc(doc(db, "posts", commentModal), { comentarios: commentsList.length + 1 });
 
-          // 🦈 ATUALIZA CONQUISTAS (COMENTÁRIOS)
           if (user.uid) {
               await updateDoc(doc(db, "users", user.uid), {
                   "stats.commentsCount": increment(1)
@@ -318,7 +384,11 @@ export default function ComunidadePage() {
           }
           
           setNewComment("");
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+          console.error(e); 
+      } finally {
+          setIsPostingComment(false);
+      }
   };
 
   const handleDeletePost = async (post: PostData) => {
@@ -376,7 +446,6 @@ export default function ComunidadePage() {
       setOtherReasonText("");
   };
 
-  // 🦈 TOGGLE DE AÇÃO NO POST (COM ESTATÍSTICAS)
   const toggleAction = async (postId: string, field: "likes" | "hype", list: string[]) => {
     if (!user) return;
     if (!user.uid) return;
@@ -384,15 +453,12 @@ export default function ComunidadePage() {
     const postRef = doc(db, "posts", postId);
     const hasInteracted = list.includes(user.uid);
     
-    // Identifica o autor do post para dar XP/Stats pra ele
     const postData = posts.find(p => p.id === postId);
     const authorId = postData?.userId;
 
     try {
-      // 1. Atualiza o array no Post
       await updateDoc(postRef, { [field]: hasInteracted ? arrayRemove(user.uid) : arrayUnion(user.uid) });
 
-      // 2. Atualiza Estatísticas do AUTOR DO POST (Quem RECEBEU)
       if (authorId && authorId !== user.uid) {
           const statField = field === "likes" ? "stats.likesReceived" : "stats.hypesReceived";
           await updateDoc(doc(db, "users", authorId), {
@@ -400,7 +466,6 @@ export default function ComunidadePage() {
           });
       }
 
-      // 3. Atualiza Estatísticas de QUEM DEU (Você)
       const myStatField = field === "likes" ? "stats.likesGiven" : "stats.hypesGiven";
       await updateDoc(doc(db, "users", user.uid), {
           [myStatField]: increment(hasInteracted ? -1 : 1)
@@ -409,7 +474,6 @@ export default function ComunidadePage() {
     } catch (e) { console.error(e); }
   };
 
-  // 🦈 TOGGLE DE AÇÃO NO COMENTÁRIO (COM ESTATÍSTICAS)
   const toggleCommentLike = async (comment: CommentData) => {
       if (!user || !commentModal) return;
       if (!user.uid) return;
@@ -419,17 +483,14 @@ export default function ComunidadePage() {
       const authorId = comment.userId;
 
       try {
-          // 1. Atualiza o array no Comentário
           await updateDoc(commentRef, { likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
 
-          // 2. Atualiza Estatísticas do AUTOR DO COMENTÁRIO (Quem RECEBEU)
           if (authorId && authorId !== user.uid) {
               await updateDoc(doc(db, "users", authorId), {
                   "stats.likesReceived": increment(hasLiked ? -1 : 1)
               });
           }
 
-          // 3. Atualiza Estatísticas de QUEM DEU (Você)
           await updateDoc(doc(db, "users", user.uid), {
               "stats.likesGiven": increment(hasLiked ? -1 : 1)
           });
@@ -499,7 +560,15 @@ export default function ComunidadePage() {
             </div>
             <div className="flex justify-between items-center mt-3">
                 <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
-                <button onClick={handlePublish} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-full font-black uppercase text-xs transition shadow-lg">{isPublishing ? <Loader2 className="animate-spin" size={14}/> : "Publicar"}</button>
+                
+                {/* 🦈 BOTÃO TRAVADO SE JÁ ESTIVER PUBLICANDO */}
+                <button 
+                    onClick={handlePublish} 
+                    disabled={isPublishing} 
+                    className={`px-6 py-2 rounded-full font-black uppercase text-xs transition shadow-lg flex items-center gap-2 ${isPublishing ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+                >
+                    {isPublishing ? <><Loader2 className="animate-spin" size={14}/> Enviando...</> : "Publicar"}
+                </button>
             </div>
         </div>
 
@@ -610,7 +679,10 @@ export default function ComunidadePage() {
                   {!currentPostCommentsDisabled ? (
                       <div className="p-3 border-t border-zinc-800 bg-black flex gap-2 sm:rounded-b-3xl">
                           <input type="text" value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Escreva..." className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 text-sm text-white outline-none focus:border-emerald-500" onKeyDown={e => e.key === 'Enter' && handleComment()}/>
-                          <button onClick={handleComment} disabled={!newComment.trim()} className="bg-emerald-600 p-2.5 rounded-full text-white disabled:opacity-50"><Send size={18}/></button>
+                          {/* 🦈 BOTÃO TRAVADO NO COMENTÁRIO TAMBÉM */}
+                          <button onClick={handleComment} disabled={!newComment.trim() || isPostingComment} className={`p-2.5 rounded-full text-white transition ${isPostingComment ? 'bg-zinc-700 opacity-50' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                              {isPostingComment ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}
+                          </button>
                       </div>
                   ) : (
                       <div className="p-4 bg-red-900/20 text-red-500 text-xs font-bold text-center border-t border-red-900/30">

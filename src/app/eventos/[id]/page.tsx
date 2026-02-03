@@ -7,32 +7,114 @@ import {
   Loader2, Crown, MessageCircle, AlertTriangle, 
   Heart, Send, Plus, Trash2, ShieldAlert, Star,
   Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords,
-  ChevronLeft, ChevronRight, Flag
+  ChevronLeft, ChevronRight, Flag, Medal, Skull, Rocket
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
-    doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-    increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc 
+  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
+  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs 
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
-// --- MAPEAMENTO DE ÍCONES ---
-const ICONS_MAP: any = {
-  ghost: Ghost,
-  star: Star,
-  crown: Crown,
-  shopping: ShoppingBag,
-  zap: Zap,
-  gem: Gem,
-  trophy: Trophy,
-  fish: Fish
+// --- INTERFACES ---
+interface Evento {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  data: string;
+  hora: string;
+  local: string;
+  imagem?: string;
+  imagePositionY?: number;
+  tipo: string;
+  isLowStock?: boolean;
+  stats?: {
+    confirmados: number;
+    talvez: number;
+    likes?: number;
+  };
+  lotes?: Array<{
+    nome: string;
+    preco: string;
+    status: 'ativo' | 'esgotado' | 'em_breve';
+  }>;
+}
+
+interface Rsvp {
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  status: 'going' | 'maybe';
+  timestamp?: any;
+}
+
+interface Comentario {
+  id: string;
+  text: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  userPlanoCor?: string;
+  userPlanoIcon?: string;
+  userPatente?: string; 
+  role?: string;
+  likes: string[];
+  reports: string[];
+  hidden: boolean;
+  createdAt: any;
+}
+
+interface EnqueteOption {
+  text: string;
+  votes: number;
+  creatorId?: string;
+  creatorName?: string;
+  creatorAvatar?: string;
+  votesByTurma?: Record<string, number>;
+}
+
+interface Enquete {
+  id: string;
+  question: string;
+  options: EnqueteOption[];
+  voters: string[];
+  userVotes?: Record<string, number[]>;
+  createdAt: any;
+}
+
+// --- CONFIGURAÇÃO DE ÍCONES (IGUAL AO ADMIN/CONQUISTAS) ---
+const ICON_COMPONENTS: Record<string, any> = {
+    Fish: Fish,
+    Swords: Swords,
+    Crown: Crown,
+    Skull: Skull,
+    Rocket: Rocket,
+    Star: Star,
+    Zap: Zap,
+    Trophy: Trophy,
+    Medal: Medal,
+    Heart: Heart,
+    Ghost: Ghost,
+    Gem: Gem,
+    ShoppingBag: ShoppingBag
 };
 
-// Cores dos Planos
-const PLAN_COLORS: any = {
+// DADOS PADRÃO DAS PATENTES (FALLBACK)
+const DEFAULT_PATENTES = [
+    { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
+    { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
+    { id: "p4", titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { id: "p5", titulo: "Tubarão Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
+];
+
+const PLAN_COLORS: Record<string, string> = {
     yellow: "text-yellow-400",
     emerald: "text-emerald-400",
     purple: "text-purple-400",
@@ -51,6 +133,20 @@ const TURMA_IMAGENS: Record<string, string> = {
 // --- HELPER: PARSER DE DATA ---
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const [hours, mins] = timeStr.split(':').map(Number);
+        
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [d, m, y] = dateStr.split('/').map(Number);
+            return new Date(y, m - 1, d, hours || 0, mins || 0);
+        }
+
         const months: Record<string, number> = {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
@@ -58,28 +154,24 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const parts = cleanDate.split(' '); 
         
-        if (parts.length < 2) return null;
-        
-        const day = parseInt(parts[0]);
-        const monthKey = Object.keys(months).find(m => parts[1].includes(m));
-        
-        if (!monthKey || isNaN(day)) return null;
-
-        const now = new Date();
-        const year = now.getFullYear();
-        const [hours, mins] = timeStr.split(':').map(Number);
-        
-        let eventDate = new Date(year, months[monthKey], day, hours || 0, mins || 0);
-        
-        if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) eventDate.setFullYear(year + 1);
-        
-        return eventDate;
+        if (parts.length >= 2) {
+            const day = parseInt(parts[0]);
+            const monthKey = Object.keys(months).find(m => parts[1].includes(m));
+            
+            if (monthKey !== undefined && !isNaN(day)) {
+                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
+                if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
+                    eventDate.setFullYear(currentYear + 1);
+                }
+                return eventDate;
+            }
+        }
+        return null;
     } catch (e) {
         return null;
     }
 };
 
-// --- CONTADOR VISUAL COOL ---
 function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string }) {
   const [timeLeft, setTimeLeft] = useState<{d: number, h: number, m: number, s: number} | null>(null);
   const [status, setStatus] = useState("CALCULANDO...");
@@ -114,50 +206,48 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
     return () => clearInterval(interval);
   }, [dateStr, timeStr]);
 
-  if (status) {
-      return (
-        <div className="bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.4)] animate-pulse">
-            <span className="text-sm font-black text-emerald-400 tracking-[0.2em]">{status}</span>
-        </div>
-      );
-  }
+  if (status) return <div className="bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.4)] animate-pulse"><span className="text-sm font-black text-emerald-400 tracking-[0.2em]">{status}</span></div>;
 
   return (
     <div className="flex gap-3 bg-black/40 backdrop-blur-sm p-2 rounded-2xl border border-white/10 shadow-2xl">
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.d || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Dias</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.h || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Hrs</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800">
-            <span className="text-xl font-black text-white leading-none">{String(timeLeft?.m || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Min</span>
-        </div>
-        <div className="flex flex-col items-center justify-center bg-emerald-900/20 w-12 h-14 rounded-xl border border-emerald-500/30">
-            <span className="text-xl font-black text-emerald-400 leading-none">{String(timeLeft?.s || 0).padStart(2, '0')}</span>
-            <span className="text-[7px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Seg</span>
-        </div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.d || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Dias</span></div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.h || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Hrs</span></div>
+        <div className="flex flex-col items-center justify-center bg-zinc-900/80 w-12 h-14 rounded-xl border border-zinc-800"><span className="text-xl font-black text-white leading-none">{String(timeLeft?.m || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Min</span></div>
+        <div className="flex flex-col items-center justify-center bg-emerald-900/20 w-12 h-14 rounded-xl border border-emerald-500/30"><span className="text-xl font-black text-emerald-400 leading-none">{String(timeLeft?.s || 0).padStart(2, '0')}</span><span className="text-[7px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Seg</span></div>
     </div>
   );
 }
 
 // --- BADGES DO USUÁRIO ---
-const UserBadges = ({ data }: { data: any }) => {
+const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: any[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
-    const PlanIcon = ICONS_MAP[data.userPlanoIcon || 'ghost'] || Ghost;
-    const colorClass = PLAN_COLORS[data.userPlanoCor || 'zinc'];
+    
+    // Plano Badge
+    const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
+    const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
+
+    // Patente Badge
+    const patenteName = data.userPatente || "Plâncton";
+    const patenteConfig = patentesConfig.find(p => p.titulo === patenteName) || patentesConfig[0] || DEFAULT_PATENTES[0];
+    
+    const PatenteIcon = ICON_COMPONENTS[patenteConfig.iconName] || Fish;
+    const patenteColor = patenteConfig.cor || "text-zinc-400";
 
     return (
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-1.5 ml-1">
             {isAdminUser && (
                 <span title="Admin">
                     <ShieldAlert size={12} className="text-red-500 fill-red-500/20" />
                 </span>
             )}
-            <PlanIcon size={12} className={colorClass} />
+            
+            {data.userPlanoIcon && data.userPlanoIcon !== 'ghost' && (
+                 <PlanIcon size={12} className={planColor} title="Plano VIP" />
+            )}
+
+            <div title={`Patente: ${patenteConfig.titulo}`} className="flex items-center justify-center">
+                <PatenteIcon size={12} className={patenteColor} />
+            </div>
         </div>
     );
 };
@@ -167,10 +257,11 @@ export default function DetalhesEventoPage() {
   const { user, isAdmin } = useAuth(); 
   const { addToast } = useToast();
   
-  const [evento, setEvento] = useState<any>(null);
-  const [rsvps, setRsvps] = useState<any[]>([]);
-  const [comentarios, setComentarios] = useState<any[]>([]);
-  const [enquetes, setEnquetes] = useState<any[]>([]);
+  const [evento, setEvento] = useState<Evento | null>(null);
+  const [rsvps, setRsvps] = useState<Rsvp[]>([]);
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [enquetes, setEnquetes] = useState<Enquete[]>([]);
+  const [patentesConfig, setPatentesConfig] = useState<any[]>(DEFAULT_PATENTES);
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
   
@@ -178,61 +269,88 @@ export default function DetalhesEventoPage() {
   const [newComment, setNewComment] = useState("");
   const [newPollOption, setNewPollOption] = useState("");
   
-  // 🦈 ESTADO PARA CARROSSEL DE ENQUETES
   const [currentPollIndex, setCurrentPollIndex] = useState(0);
 
-  // 1. CARREGAMENTO REAL DO FIREBASE
+  // --- SINC INICIAL ---
   useEffect(() => {
       if (!params.id) return;
       const eventId = params.id as string;
 
+      // 1. Evento
       const unsubEvent = onSnapshot(doc(db, "eventos", eventId), (docSnap) => {
-          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() });
+          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() } as Evento);
           else setEvento(null);
           setLoading(false);
       });
 
+      // 2. RSVPs
       const unsubRsvp = onSnapshot(collection(db, "eventos", eventId, "rsvps"), (snap) => {
-          const lista = snap.docs.map(d => d.data());
+          const lista = snap.docs.map(d => d.data() as Rsvp);
           setRsvps(lista);
           if (user) {
-              const me = lista.find((p: any) => p.userId === user.uid);
+              const me = lista.find((p) => p.userId === user.uid);
               setUserRsvp(me ? me.status : null);
           }
       });
 
+      // 3. Comentários
       const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
       const unsubCom = onSnapshot(qCom, (snap) => {
-          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()})));
+          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()} as Comentario)));
       });
 
+      // 4. Enquetes
       const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
-          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()})));
+          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()} as Enquete)));
       });
 
-      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); };
+      // 5. Patentes (Global Config)
+      const unsubPatentes = onSnapshot(query(collection(db, "patentes_config"), orderBy("minXp", "asc")), (snap) => {
+          const data = snap.docs.map(d => d.data());
+          if (data.length > 0) {
+              setPatentesConfig(data);
+          }
+      });
+
+      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); unsubPatentes(); };
   }, [params.id, user]);
 
   // --- ACTIONS ---
 
   const handleRSVP = async (status: "going" | "maybe") => {
-      if (!user) return addToast("Faça login para confirmar!", "error");
+      if (!user || !evento) return addToast("Faça login para confirmar!", "error");
       try {
           await runTransaction(db, async (t) => {
               const ref = doc(db, "eventos", evento.id, "rsvps", user.uid);
+              const eventRef = doc(db, "eventos", evento.id);
+              
               const docSnap = await t.get(ref);
-              const old = docSnap.exists() ? docSnap.data().status : null;
+              const old = docSnap.exists() ? (docSnap.data() as Rsvp).status : null;
 
               if (old === status) {
+                  // Remover RSVP
                   t.delete(ref);
-                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  t.update(eventRef, { 
+                      [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1),
+                      // 🦈 REMOVE DO ARRAY PARA O PERFIL SABER
+                      interessados: arrayRemove(user.uid) 
+                  });
               } else {
-                  if (old) t.update(doc(db, "eventos", evento.id), { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  // Adicionar ou Trocar
+                  if (old) {
+                      t.update(eventRef, { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
+                  }
+                  
                   t.set(ref, {
                       userId: user.uid, status, userName: user.nome || "Anônimo", 
                       userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
-                  t.update(doc(db, "eventos", evento.id), { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1) });
+                  
+                  t.update(eventRef, { 
+                      [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1),
+                      // 🦈 ADICIONA NO ARRAY PARA O PERFIL SABER
+                      interessados: arrayUnion(user.uid) 
+                  });
               }
           });
           addToast("Lista atualizada!", "success");
@@ -240,18 +358,18 @@ export default function DetalhesEventoPage() {
   };
 
   const handleSendComment = async () => {
-      if (!newComment.trim() || !user) return;
+      if (!newComment.trim() || !user || !evento) return;
       
       const newCommentData = {
           text: newComment, 
           userId: user.uid, 
           userName: user.nome || "Anônimo",
           userAvatar: user.foto || "", 
-          userTurma: user.turma || "",
+          userTurma: user.turma || "Geral",
           
           userPlanoCor: user.plano_cor || "zinc",
           userPlanoIcon: user.plano_icon || "ghost",
-          userPatente: user.patente || "Novato",
+          userPatente: user.patente || "Plâncton", 
           role: user.role || 'user',
 
           createdAt: serverTimestamp(), 
@@ -272,7 +390,7 @@ export default function DetalhesEventoPage() {
   };
 
   const handleLikeComment = async (comId: string, currentLikes: string[], authorId: string) => {
-      if (!user) return;
+      if (!user || !evento) return;
       const ref = doc(db, "eventos", evento.id, "comentarios", comId);
       const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
       const hasLiked = safeLikes.includes(user.uid);
@@ -293,7 +411,7 @@ export default function DetalhesEventoPage() {
   };
 
   const handleDeleteComment = async (comId: string) => {
-      if (!confirm("Apagar este comentário?")) return;
+      if (!evento || !confirm("Apagar este comentário?")) return;
       try {
           await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
           addToast("Comentário apagado.", "info");
@@ -301,19 +419,19 @@ export default function DetalhesEventoPage() {
   };
 
   const handleReportComment = async (comId: string) => {
-      if (!user) return;
+      if (!user || !evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { reports: arrayUnion(user.uid) });
       addToast("Comentário denunciado.", "info");
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
-     await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
-     addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
+      if(!evento) return;
+      await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
+      addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
   };
 
-  // ENQUETES (Múltipla Escolha e Respostas Dinâmicas)
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
-      if (!user) return addToast("Login necessário.", "error");
+      if (!user || !evento) return addToast("Login necessário.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       
       try {
@@ -321,36 +439,48 @@ export default function DetalhesEventoPage() {
             const pollDoc = await t.get(pollRef);
             if (!pollDoc.exists()) throw "Enquete não existe";
             
-            const data = pollDoc.data();
-            
+            const data = pollDoc.data() as Enquete;
             const newOptions = [...data.options];
-            newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
-            
-            const userTurma = user.turma || "Geral";
-            if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
-            newOptions[optionIndex].votesByTurma[userTurma] = (newOptions[optionIndex].votesByTurma[userTurma] || 0) + 1;
+            const userVotes = data.userVotes || {}; 
+            const myVotes = userVotes[user.uid] || [];
 
-            t.update(pollRef, {
-                options: newOptions,
-                voters: arrayUnion(user.uid)
-            });
+            if (myVotes.includes(optionIndex)) {
+                newOptions[optionIndex].votes = Math.max(0, (newOptions[optionIndex].votes || 0) - 1);
+                const userTurma = user.turma || "Geral";
+                if(newOptions[optionIndex].votesByTurma && newOptions[optionIndex].votesByTurma![userTurma] > 0) {
+                     newOptions[optionIndex].votesByTurma![userTurma]--;
+                }
+                const newMyVotes = myVotes.filter(v => v !== optionIndex);
+                userVotes[user.uid] = newMyVotes;
+
+                t.update(pollRef, { options: newOptions, userVotes: userVotes });
+            } else {
+                if (myVotes.length >= 3) {
+                    throw "Você já escolheu 3 opções!";
+                }
+                newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
+                const userTurma = user.turma || "Geral";
+                if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
+                newOptions[optionIndex].votesByTurma![userTurma] = (newOptions[optionIndex].votesByTurma![userTurma] || 0) + 1;
+                userVotes[user.uid] = [...myVotes, optionIndex];
+
+                t.update(pollRef, { options: newOptions, userVotes: userVotes, voters: arrayUnion(user.uid) });
+            }
         });
-        addToast("Voto computado!", "success");
       } catch (e: any) {
         addToast(typeof e === 'string' ? e : "Erro ao votar.", "error");
       }
   };
 
-  // 🦈 ID 640: Adicionando info do criador na opção
   const handleCreatePollOption = async (pollId: string) => {
-      if(!newPollOption || !user) return;
+      if(!newPollOption || !user || !evento) return;
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ 
               text: newPollOption, 
               votes: 0, 
               creatorId: user.uid,
-              creatorName: user.nome?.split(" ")[0] || "Anônimo", // Primeiro nome
+              creatorName: user.nome?.split(" ")[0] || "Anônimo", 
               creatorAvatar: user.foto || "",
               votesByTurma: {} 
           })
@@ -364,22 +494,19 @@ export default function DetalhesEventoPage() {
       addToast("Enquete reportada à moderação.", "info");
   };
 
-  // 🦈 ID 640: Reportar Opção Específica
   const handleReportOption = async (pollId: string, optionText: string) => {
       if(!user) return;
       addToast(`Opção "${optionText}" denunciada.`, "info");
   };
 
-  // 🦈 CARROSSEL LÓGICA
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
   const currentPoll = enquetes[currentPollIndex];
 
-  // 🦈 LÓGICA TOP 3 TURMAS
   const topTurmasPoll = useMemo(() => {
       if (!currentPoll) return [];
       const counts: Record<string, number> = {};
-      currentPoll.options?.forEach((opt: any) => {
+      currentPoll.options?.forEach((opt) => {
           if (opt.votesByTurma) {
               Object.entries(opt.votesByTurma).forEach(([turma, count]) => {
                   counts[turma] = (counts[turma] || 0) + (count as number);
@@ -390,7 +517,7 @@ export default function DetalhesEventoPage() {
   }, [currentPoll]);
 
   const handleShare = () => {
-      if (typeof navigator !== 'undefined' && navigator.share) {
+      if (evento && typeof navigator !== 'undefined' && navigator.share) {
           navigator.share({ title: evento.titulo, url: window.location.href });
       } else {
           navigator.clipboard.writeText(window.location.href);
@@ -532,7 +659,6 @@ export default function DetalhesEventoPage() {
                         <button onClick={() => handleReportPoll(currentPoll.id)} className="text-zinc-600 hover:text-yellow-500"><ShieldAlert size={14}/></button>
                     </div>
                     
-                    {/* 🦈 TOP 3 TURMAS GANHANDO */}
                     {topTurmasPoll.length > 0 && (
                         <div className="flex gap-2 mb-2 items-center bg-black/20 p-2 rounded-lg border border-white/5">
                             {topTurmasPoll.map(turma => (
@@ -547,29 +673,35 @@ export default function DetalhesEventoPage() {
                     )}
 
                     <div className="space-y-2">
-                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: any, idx: number) => {
-                            const totalVotes = currentPoll.options.reduce((acc:number, o:any) => acc + (o.votes || 0), 0);
+                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
+                            const totalVotes = currentPoll.options.reduce((acc, o) => acc + (o.votes || 0), 0);
                             const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
+                            const userVotedHere = currentPoll.userVotes?.[user?.uid || ""]?.includes(idx);
+
                             return (
                                 <div key={idx} className="relative group">
-                                    <button onClick={() => handleVotePoll(currentPoll.id, idx)} className="w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition" title={`${opt.votes} votos`}>
-                                        <div className="absolute left-0 top-0 h-full bg-purple-500/20 transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                    <button 
+                                        onClick={() => handleVotePoll(currentPoll.id, idx)} 
+                                        className={`w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition ${userVotedHere ? 'border border-purple-500/50' : ''}`}
+                                        title={`${opt.votes} votos`}
+                                    >
+                                        <div className={`absolute left-0 top-0 h-full transition-all duration-500 ${userVotedHere ? 'bg-purple-500/40' : 'bg-purple-500/20'}`} style={{ width: `${percent}%` }}></div>
                                         
                                         <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
-                                            {/* 🦈 AVATAR DO CRIADOR */}
                                             {opt.creatorAvatar && (
                                                 <img src={opt.creatorAvatar} className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
                                             )}
-                                            <span className="truncate text-left">{opt.text}</span>
+                                            <span className="truncate text-left flex items-center gap-1">
+                                                {opt.text}
+                                                {userVotedHere && <CheckCircle size={10} className="text-purple-400"/>}
+                                            </span>
                                         </div>
                                         
-                                        {/* 🦈 ID 654: QTD VOTOS (NÃO %) */}
                                         <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400 flex items-center gap-1">
                                             {opt.votes} <span className="text-[8px] font-normal uppercase">Votos</span>
                                         </span>
                                     </button>
                                     
-                                    {/* 🦈 ID 640: BOTÃO REPORTAR OPÇÃO */}
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleReportOption(currentPoll.id, opt.text); }}
                                         className="absolute right-[-20px] top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
@@ -592,6 +724,7 @@ export default function DetalhesEventoPage() {
                         />
                         <button onClick={() => handleCreatePollOption(currentPoll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
                     </div>
+                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">* Máximo 3 escolhas por usuário.</p>
                 </div>
             ) : (
                 <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
@@ -634,14 +767,22 @@ export default function DetalhesEventoPage() {
                                             <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
                                                 {c.userName}
                                             </p>
-                                            <UserBadges data={c} />
+                                            {/* ID 651: Nova Lógica de Badge baseada na Config Global */}
+                                            <UserBadges data={c} patentesConfig={patentesConfig} />
                                         </div>
-                                        <span className="text-[9px] text-zinc-600 font-mono mt-0.5">{c.userTurma || "Visitante"}</span>
+                                        {/* ID 653: Foto da Turma + Nome */}
+                                        <div className="flex items-center gap-1 mt-0.5 opacity-60">
+                                            <img 
+                                                src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
+                                                className="w-3 h-3 rounded-full object-cover border border-zinc-800"
+                                            />
+                                            <span className="text-[9px] text-zinc-300 font-mono">{c.userTurma || "Visitante"}</span>
+                                        </div>
                                     </div>
 
                                     <div className="flex gap-2 text-zinc-500">
-                                        <button onClick={() => handleLikeComment(c.id, c.likes || [], c.userId)} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid) ? 'text-red-500' : ''}`}>
-                                            <Heart size={12} className={likesArray.includes(user?.uid) ? "fill-current" : ""}/> 
+                                        <button onClick={() => handleLikeComment(c.id, c.likes || [], c.userId)} className={`flex items-center gap-1 hover:text-red-500 ${likesArray.includes(user?.uid || "") ? 'text-red-500' : ''}`}>
+                                            <Heart size={12} className={likesArray.includes(user?.uid || "") ? "fill-current" : ""}/> 
                                             <span className="text-[9px]">{likesArray.length || 0}</span>
                                         </button>
                                         

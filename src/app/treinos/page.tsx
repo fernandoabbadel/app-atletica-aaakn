@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "../../lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -41,7 +41,7 @@ const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
 function TreinoCard({ treino }: { treino: any }) {
     const { user } = useAuth();
     const { addToast } = useToast();
-    const router = useRouter(); // Para navegação manual se precisar
+    const router = useRouter(); 
     
     const [userRsvp, setUserRsvp] = useState<"going" | null>(null);
     const [stats, setStats] = useState({ confirmados: 0, avatares: [] as string[], turmas: [] as any[] });
@@ -78,7 +78,7 @@ function TreinoCard({ treino }: { treino: any }) {
     }, [treino.id, user]);
 
     const handleRSVP = async (e: React.MouseEvent, status: "going" | "not_going") => {
-        e.preventDefault(); // 🦈 IMPEDE DE ENTRAR NA PÁGINA AO CLICAR NO BOTÃO
+        e.preventDefault(); 
         e.stopPropagation();
 
         if (!user) return addToast("Faça login!", "error");
@@ -88,9 +88,12 @@ function TreinoCard({ treino }: { treino: any }) {
         try {
             await runTransaction(db, async (t) => {
                 const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
+                const treinoRef = doc(db, "treinos", treino.id); // Referência ao documento do treino
                 
                 if (status === "not_going") {
                     t.delete(rsvpRef);
+                    // 🦈 ATUALIZAÇÃO CRÍTICA: Remove do array global para o Perfil saber
+                    t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
                 } else {
                     t.set(rsvpRef, {
                         userId: user.uid,
@@ -100,10 +103,21 @@ function TreinoCard({ treino }: { treino: any }) {
                         status: 'going',
                         timestamp: serverTimestamp()
                     });
+                    // 🦈 ATUALIZAÇÃO CRÍTICA: Adiciona ao array global para o Perfil saber
+                    t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
                 }
             });
-        } catch (e) { console.error(e); addToast("Erro ao atualizar.", "error"); }
-        finally { setLoadingAction(false); }
+            if (status === 'going') {
+                 addToast("Bora treinar! 💪", "success");
+            } else {
+                 addToast("Inscrição cancelada.", "info");
+            }
+        } catch (e) { 
+            console.error(e); 
+            addToast("Erro ao atualizar.", "error"); 
+        } finally { 
+            setLoadingAction(false); 
+        }
     };
 
     const getColors = () => {

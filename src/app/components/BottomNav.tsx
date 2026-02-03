@@ -8,7 +8,8 @@ import {
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
   Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout, Camera,
-  Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem
+  Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem,
+  Skull, Rocket, Heart, ThumbsUp, LayoutGrid, UserPlus
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
@@ -23,10 +24,15 @@ interface UserData {
     tier?: 'bicho' | 'atleta' | 'lenda' | 'standard'; 
     level?: number;
     role?: 'admin_geral' | 'admin_gestor' | 'master' | 'user';
-    // Novos campos dinâmicos
+    
+    // Novos campos dinâmicos (Visual)
     plano?: string;
     plano_cor?: string;
     plano_icon?: string;
+    
+    patente?: string;
+    patente_icon?: string;
+    patente_cor?: string;
 }
 
 interface Notification {
@@ -55,45 +61,85 @@ const TURMA_IMAGENS: Record<string, string> = {
     "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
 };
 
-// 🦈 MAPA DE ÍCONES (Igual ao Admin/Carteirinha)
-const ICONS_MAP: any = {
-    ghost: Ghost,
-    star: Star,
-    crown: Crown,
-    shopping: ShoppingBag,
-    zap: Zap,
-    gem: Gem,
-    trophy: Trophy,
-    fish: Fish
+// 🦈 CONSTANTE DE CORES (Igual Comunidade)
+const PLAN_COLORS: Record<string, string> = {
+    yellow: "text-yellow-400",
+    emerald: "text-emerald-400",
+    purple: "text-purple-400",
+    blue: "text-blue-400",
+    red: "text-red-500",
+    zinc: "text-zinc-400"
 };
 
-// Ícone de Nível (Gamification)
-const LevelIcon = ({ level }: { level: number }) => {
-    if (level === 1) return <Fish className="text-orange-400" size={14} />; 
-    if (level === 2) return <Swords className="text-blue-400" size={14} />;
-    if (level >= 5) return <Crown className="text-yellow-400" size={14} />;
-    return <Fish className="text-zinc-500" size={14} />;
-};
-
-// 🦈 ÍCONE DO PLANO (Lógica Dinâmica)
-const PlanBadge = ({ icon, color }: { icon?: string, color?: string }) => {
-    // 1. Resolve o Ícone
-    const IconComponent = ICONS_MAP[icon || 'ghost'] || Ghost;
+// 🦈 COMPONENTE VISUAL INTELIGENTE (Igual Comunidade)
+const UserBadges = ({ userData }: { userData: UserData }) => {
+    // Verifica Admin
+    const isAdmin = userData?.role === 'master' || userData?.role === 'admin_geral' || userData?.role === 'admin_gestor';
     
-    // 2. Resolve a Cor (Tailwind Classes)
-    const colorClass = {
-        yellow: "text-yellow-500",
-        emerald: "text-emerald-400",
-        purple: "text-purple-400",
-        blue: "text-blue-400",
-        red: "text-red-500",
-        zinc: "text-zinc-400"
-    }[color || 'zinc'] || "text-zinc-400";
+    // 1. Tratamento do Ícone do PLANO
+    const rawPlanIcon = userData?.plano_icon || 'user';
+    const planIconName = String(rawPlanIcon).toLowerCase().trim();
 
-    return <IconComponent size={16} className={colorClass}/>;
+    // 2. Tratamento do Ícone da PATENTE
+    const rawPatentIcon = userData?.patente_icon || 'fish';
+    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
+    
+    // 3. Tratamento das Cores (SEPARADAS)
+    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
+    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
+
+    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
+    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
+
+    // Mapa Visual Completo
+    const icons: any = { 
+        ghost: Ghost, star: Star, crown: Crown, fish: Fish, 
+        trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
+        skull: Skull, rocket: Rocket, medal: Medal, heart: Heart,
+        thumbsup: ThumbsUp, layoutgrid: LayoutGrid, userplus: UserPlus, 
+        target: Target, user: User 
+    };
+    
+    const PlanIcon = icons[planIconName] || User;
+    const PatentIcon = icons[patentIconName] || Fish;
+
+    // Tooltip
+    const tooltipText = `${userData?.patente || 'Novato'} • ${userData?.plano || 'Visitante'}`;
+
+    return (
+        <div className="flex items-center gap-1.5" title={tooltipText}>
+            
+            {/* 1. Ícone de Admin */}
+            {isAdmin && (
+                <span className="flex items-center bg-red-500/10 p-0.5 rounded border border-red-500/20">
+                    <ShieldCheck size={12} className="text-red-500" />
+                </span>
+            )}
+
+            {/* 2. Ícone do Plano */}
+            <span className={`flex items-center opacity-80 ${planColorClass}`}>
+                <PlanIcon size={14} />
+            </span>
+
+            {/* 3. Ícone da Patente (Sem duplicar se for igual) */}
+            {planIconName !== patentIconName && (
+                <span className={`flex items-center ${patentColorClass}`}>
+                    <PatentIcon size={16} className="drop-shadow-sm" />
+                </span>
+            )}
+        </div>
+    );
 };
 
-// Banner Dourado (Mantém lógica visual, mas verifica tier para exibir)
+// Ícone de Nível (Gamification) - Mantido para mostrar nível numérico
+const LevelIcon = ({ level }: { level: number }) => {
+    if (level === 1) return <Fish className="text-orange-400" size={12} />; 
+    if (level === 2) return <Swords className="text-blue-400" size={12} />;
+    if (level >= 5) return <Crown className="text-yellow-400" size={12} />;
+    return <Fish className="text-zinc-500" size={12} />;
+};
+
+// Banner Dourado
 const SocioGrowthBanner = ({ tier, closeMenu, router }: any) => {
     if (tier === 'lenda') return null;
     return (
@@ -303,8 +349,8 @@ export default function BottomNavbar() {
                                     <span className="text-[9px] font-mono text-zinc-400">Nv.{currentUser.level || 1}</span>
                                 </div>
                                 {/* 🦈 Badge Dinâmica Aqui */}
-                                <div className="w-5 h-5 flex items-center justify-center bg-black/40 rounded border border-white/5" title={currentUser.plano || currentUser.tier || 'Bicho Solto'}>
-                                    <PlanBadge icon={currentUser.plano_icon} color={currentUser.plano_cor} />
+                                <div className="flex items-center h-5 bg-black/40 rounded border border-white/5 px-1.5">
+                                    <UserBadges userData={currentUser} />
                                 </div>
                             </div>
                         </div>

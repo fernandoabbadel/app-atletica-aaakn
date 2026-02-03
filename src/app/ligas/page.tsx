@@ -84,6 +84,8 @@ interface LigaData {
     perguntas: PerguntaLiga[]; 
     membros?: Member[]; 
     eventos?: LeagueEvent[];
+    // Novo campo auxiliar para busca
+    membrosIds?: string[];
 }
 
 // --- HELPER PARA BASE64 ---
@@ -333,17 +335,23 @@ export default function LigasAdminPage() {
       } catch (e) { addToast("Erro.", "error"); }
   };
 
-  // --- SALVAR TUDO ---
+  // --- SALVAR TUDO (AQUI ESTÁ O PULO DO GATO 🦈) ---
   const handleSaveAll = async () => {
       if (!ligaData) return;
       if (ligaData.perguntas.length < 10) return addToast("Mínimo 10 perguntas necessárias.", "error");
       
       setLoading(true);
       try {
-          // 1. Atualiza Config Liga
-          await updateDoc(doc(db, "ligas_config", ligaData.id), { ...ligaData });
+          // 1. Cria array auxiliar de IDs para busca
+          const membrosIds = ligaData.membros?.map(m => m.id) || [];
 
-          // 2. Sincroniza Eventos (Cria/Atualiza no Global)
+          // 2. Atualiza Config Liga (COM membrosIds)
+          await updateDoc(doc(db, "ligas_config", ligaData.id), { 
+              ...ligaData,
+              membrosIds: membrosIds // <--- O CAMPO MÁGICO
+          });
+
+          // 3. Sincroniza Eventos (Cria/Atualiza no Global)
           if (ligaData.eventos && ligaData.eventos.length > 0) {
               const batchPromises = ligaData.eventos.map(async (ev) => {
                   const eventId = ev.globalEventId || doc(collection(db, "eventos")).id;
@@ -368,10 +376,7 @@ export default function LigasAdminPage() {
                       createdAt: serverTimestamp() 
                   }, { merge: true });
 
-                  // Se tiver pergunta inicial e for novo, cria
                   if (ev.pollQuestion) {
-                      // Verifica se já existe pra não duplicar (simples)
-                      // Idealmente, verificaria collection, mas aqui vamos confiar no fluxo
                       await addDoc(collection(db, "eventos", eventId, "enquetes"), {
                           question: ev.pollQuestion,
                           options: [],
@@ -380,16 +385,16 @@ export default function LigasAdminPage() {
                           creatorId: ligaData.id,
                           isOfficial: true
                       });
-                      // Limpa para não recriar na próxima
                       ev.pollQuestion = ""; 
                   }
               });
               
               await Promise.all(batchPromises);
+              // Salva de novo a liga para garantir IDs de eventos atualizados
               await updateDoc(doc(db, "ligas_config", ligaData.id), { eventos: ligaData.eventos });
           }
 
-          // 3. Notificação Bizu
+          // 4. Notificação Bizu
           if (sendNotification && ligaData.bizu) {
               await addDoc(collection(db, "notifications"), {
                   title: `Novo Bizu da ${ligaData.sigla}! 🦈`,
@@ -423,6 +428,7 @@ export default function LigasAdminPage() {
       setLigaData({ ...ligaData, perguntas: novas });
   };
 
+  // --- RENDERIZAÇÃO ---
   if (!isLoggedIn) return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4 font-sans text-white">
           <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl space-y-4">
@@ -478,8 +484,6 @@ export default function LigasAdminPage() {
           {/* 1. VISUAL */}
           {activeTab === 'visual' && ligaData && (
               <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-6">
-                  {/* ... Campos de Visual (Sigla, Nome, Logo, Descrição, Bizu) ... */}
-                  {/* (Mantive igual para economizar linhas, o foco é Eventos) */}
                   <div className="grid grid-cols-2 gap-4">
                       <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Sigla</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-sm outline-none focus:border-emerald-500 font-bold uppercase" value={ligaData.sigla} onChange={e => setLigaData({...ligaData, sigla: e.target.value})} maxLength={6}/></div>
                       <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-sm outline-none focus:border-emerald-500" value={ligaData.nome} onChange={e => setLigaData({...ligaData, nome: e.target.value})}/></div>
@@ -512,8 +516,6 @@ export default function LigasAdminPage() {
           {/* 2. MEMBROS */}
           {activeTab === 'members' && ligaData && (
               <div className="space-y-6">
-                  {/* ... Lista de Membros e Modal de Busca ... */}
-                  {/* (Código igual, foco é Eventos) */}
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                       <div><h3 className="text-sm font-bold uppercase text-white">Diretoria</h3><p className="text-[10px] text-zinc-500">Adicione os membros oficiais.</p></div>
                       <button onClick={() => setSearchUserModal(true)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition"><UserPlus size={14}/> Adicionar Aluno</button>
@@ -569,7 +571,6 @@ export default function LigasAdminPage() {
           {/* 4. SHARK ROUND */}
           {activeTab === 'shark' && ligaData && (
               <div className="space-y-6">
-                  {/* ... Código do Shark Round (Mantido igual) ... */}
                   <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                       <div><h3 className="text-sm font-bold uppercase text-white flex items-center gap-2">Banco de Questões <span className={`text-[10px] px-2 py-0.5 rounded border ${ligaData.perguntas.length >= 10 ? 'border-emerald-500 text-emerald-500' : 'border-red-500 text-red-500'}`}>{ligaData.perguntas.length}/10 Mínimo</span></h3></div>
                       <button onClick={addQuestion} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Plus size={14}/> Nova Pergunta</button>
@@ -706,13 +707,11 @@ export default function LigasAdminPage() {
                       </div>
                       <input type="text" placeholder="Local" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={currentEvent.local || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, local: e.target.value })} />
                       
-                      {/* 🔥 DESCRIÇÃO DO EVENTO */}
                       <div>
                           <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Descrição do Evento</label>
                           <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" placeholder="Detalhes, regras, atrações..." value={currentEvent.descricao || ""} onChange={(e) => setCurrentEvent({ ...currentEvent, descricao: e.target.value })} />
                       </div>
 
-                      {/* 🦈 ENQUETE INICIAL */}
                       <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl">
                           <label className="text-[10px] text-purple-400 font-bold uppercase mb-2 flex items-center gap-2"><MessageCircle size={12}/> Pergunta da Enquete (Opcional)</label>
                           <input 
@@ -724,7 +723,6 @@ export default function LigasAdminPage() {
                           />
                       </div>
 
-                      {/* Gestão de Lotes */}
                       <div className="bg-black/40 border border-zinc-800 rounded-xl p-4">
                           <label className="text-xs text-zinc-500 font-bold uppercase mb-2 block">Lotes de Ingressos</label>
                           <div className="grid grid-cols-3 gap-2 mb-2">

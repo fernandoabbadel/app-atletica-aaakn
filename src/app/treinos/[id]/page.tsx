@@ -10,12 +10,17 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { doc, onSnapshot, collection, runTransaction, serverTimestamp } from "firebase/firestore";
+import { 
+  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
+  arrayUnion, arrayRemove 
+} from "firebase/firestore";
 
 // Mapa de Imagens das Turmas
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg",
+    "Geral": "https://github.com/shadcn.png"
 };
 
 export default function TreinoDetalhesPage() {
@@ -26,7 +31,7 @@ export default function TreinoDetalhesPage() {
 
   const [treino, setTreino] = useState<any>(null);
   const [rsvps, setRsvps] = useState<any[]>([]);
-  const [chamadaAdmin, setChamadaAdmin] = useState<any[]>([]); // 🦈 Nova lista: Oficial do Admin
+  const [chamadaAdmin, setChamadaAdmin] = useState<any[]>([]); 
   
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
@@ -70,7 +75,7 @@ export default function TreinoDetalhesPage() {
   const listaFinal = useMemo(() => {
       const map = new Map();
 
-      // Passo 1: Adiciona quem marcou "Eu Vou" (Estado Inicial)
+      // Passo 1: Adiciona quem marcou "Eu Vou"
       rsvps.forEach(r => {
           if (r.status === 'going') {
               map.set(r.userId, { 
@@ -78,32 +83,29 @@ export default function TreinoDetalhesPage() {
                   nome: r.userName, 
                   turma: r.userTurma, 
                   avatar: r.userAvatar,
-                  statusVisual: 'confirmado' // Padrão: Confirmado pelo usuário
+                  statusVisual: 'confirmado' 
               });
           }
       });
 
-      // Passo 2: Sobrescreve/Adiciona com a Lista Oficial do Admin
+      // Passo 2: Sobrescreve com a Lista Oficial do Admin
       chamadaAdmin.forEach(c => {
           const existing = map.get(c.userId) || {};
-          // Se o admin marcou, isso prevalece sobre o RSVP
           map.set(c.userId, {
-              ...existing, // Mantém dados existentes se houver
-              ...c,        // Atualiza com dados do admin (pode ser mais atualizado)
-              userId: c.userId, // Garante ID
-              statusVisual: c.status // 'presente' (Verde) ou 'falta' (Vermelho)
+              ...existing, 
+              ...c,        
+              userId: c.userId, 
+              statusVisual: c.status // 'presente' ou 'falta'
           });
       });
 
-      // Retorna array ordenado por nome (Fica mais fácil de achar)
       return Array.from(map.values()).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
   }, [rsvps, chamadaAdmin]);
 
-  // 3. CÁLCULO DO RANKING DE TURMAS (Baseado na lista final)
+  // 3. CÁLCULO DO RANKING DE TURMAS
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
       listaFinal.forEach(aluno => {
-          // Contamos quem confirmou ou quem o admin deu presença (ignoramos faltas no ranking de força)
           if (aluno.statusVisual !== 'falta' && aluno.turma) {
               const t = aluno.turma.toUpperCase();
               counts[t] = (counts[t] || 0) + 1;
@@ -112,10 +114,10 @@ export default function TreinoDetalhesPage() {
       return Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
-          .map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] }));
+          .map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"] }));
   }, [listaFinal]);
 
-  // 4. AÇÃO DE RSVP
+  // 🦈 4. AÇÃO DE RSVP CORRIGIDA PARA ATUALIZAR PERFIL 🦈
   const handleRSVP = async (status: "going" | "not_going") => {
       if (!user) return addToast("Faça login para confirmar!", "error");
       if (loadingAction) return;
@@ -124,8 +126,12 @@ export default function TreinoDetalhesPage() {
       try {
           await runTransaction(db, async (t) => {
               const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
+              const treinoRef = doc(db, "treinos", treino.id);
+
               if (status === 'not_going') {
                   t.delete(rsvpRef);
+                  // 🦈 Remove do array global para o perfil saber
+                  t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
               } else {
                   t.set(rsvpRef, {
                       userId: user.uid,
@@ -135,6 +141,8 @@ export default function TreinoDetalhesPage() {
                       status: 'going',
                       timestamp: serverTimestamp()
                   });
+                  // 🦈 Adiciona ao array global para o perfil saber
+                  t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
               }
           });
           addToast(status === 'going' ? "Presença confirmada! 💪" : "Inscrição removida.", "success");
@@ -154,7 +162,6 @@ export default function TreinoDetalhesPage() {
       return { text: "text-emerald-400", badge: "bg-emerald-600 border-emerald-500 text-white", gradient: "from-emerald-900/40" };
   };
 
-  // Helper para link do Google Maps
   const getMapsLink = () => {
       if (!treino?.local) return "#";
       return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(treino.local)}`;
@@ -164,7 +171,6 @@ export default function TreinoDetalhesPage() {
   if (!treino) return null;
 
   const theme = getTheme();
-  // Contagem para exibição (Exclui quem levou falta)
   const confirmadosCount = listaFinal.filter(a => a.statusVisual !== 'falta').length;
 
   return (
@@ -172,13 +178,11 @@ export default function TreinoDetalhesPage() {
       
       {/* --- HERO SECTION --- */}
       <div className="relative h-[65vh] w-full">
-        {/* Imagem de Fundo */}
         <div className="absolute inset-0 bg-black">
             <img src={treino.imagem || "https://placehold.co/800x600/111/333?text=AAAKN"} className="w-full h-full object-cover opacity-60" alt={treino.modalidade} />
             <div className={`absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-transparent z-10`}></div>
         </div>
 
-        {/* Botões Topo */}
         <Link href="/treinos" className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 hover:bg-white hover:text-black transition">
             <ArrowLeft size={24} />
         </Link>
@@ -233,13 +237,13 @@ export default function TreinoDetalhesPage() {
         {/* 1. BOTÕES DE DECISÃO */}
         <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 p-2 rounded-2xl shadow-inner flex gap-2">
             <button 
-                onClick={() => handleRSVP('not_going')}
+                onClick={(e) => handleRSVP('not_going')}
                 className="flex-1 py-4 rounded-xl border border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 font-bold text-xs uppercase transition-all"
             >
                 <span className="flex flex-col items-center gap-1"><XCircle size={20}/> Não Vou</span>
             </button>
             <button 
-                onClick={() => handleRSVP('going')}
+                onClick={(e) => handleRSVP('going')}
                 disabled={loadingAction}
                 className={`flex-[2] py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${userRsvp === 'going' ? 'bg-emerald-500 text-black shadow-emerald-500/30' : 'bg-white text-black hover:bg-zinc-200'}`}
             >
@@ -268,7 +272,6 @@ export default function TreinoDetalhesPage() {
                             <p className="text-white font-bold text-sm">{treino.local}</p>
                         </div>
                     </div>
-                    {/* 🦈 BOTÃO MAPS */}
                     <a href={getMapsLink()} target="_blank" rel="noopener noreferrer" className="bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-bold uppercase px-3 py-2 rounded-xl flex items-center gap-2 transition">
                         Abrir <Navigation size={12}/>
                     </a>
@@ -300,15 +303,14 @@ export default function TreinoDetalhesPage() {
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {listaFinal.map((pessoa, idx) => {
-                    // Lógica de Cores baseada no status Oficial do Admin
-                    let statusColor = "border-zinc-800/50 bg-zinc-900/50"; // Neutro (Confirmado App)
+                    let statusColor = "border-zinc-800/50 bg-zinc-900/50"; 
                     let icon = null;
 
                     if (pessoa.statusVisual === 'presente') {
-                        statusColor = "border-emerald-500/20 bg-emerald-900/10"; // Verde (Presente Admin)
+                        statusColor = "border-emerald-500/20 bg-emerald-900/10"; 
                         icon = <CheckCircle size={14} className="text-emerald-500"/>;
                     } else if (pessoa.statusVisual === 'falta') {
-                        statusColor = "border-red-500/20 bg-red-900/10 opacity-60"; // Vermelho (Falta Admin)
+                        statusColor = "border-red-500/20 bg-red-900/10 opacity-60"; 
                         icon = <UserX size={14} className="text-red-500"/>;
                     }
 
@@ -324,7 +326,6 @@ export default function TreinoDetalhesPage() {
                                         </p>
                                     </div>
                                 </div>
-                                {/* Badge de Status */}
                                 <div className="flex flex-col items-end">
                                     {icon}
                                     <span className={`text-[8px] uppercase font-black tracking-widest mt-1 ${
