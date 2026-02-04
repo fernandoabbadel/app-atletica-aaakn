@@ -281,8 +281,8 @@ function RankingSection({ title, data, metricKey, metricLabel, color, icon }: an
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-bold text-sm text-white truncate max-w-[120px] md:max-w-xs">{h.nome}</span>
-                                            {/* 🦈 LINK PARA O ADMIN USER */}
-                                            <Link href={`/admin/users/${h.userId}`} className="text-[10px] text-zinc-500 hover:text-emerald-500 flex items-center gap-1 uppercase font-bold mt-0.5">
+                                            {/* 🦈 LINK CORRIGIDO PARA O ADMIN USUARIOS */}
+                                            <Link href={`/admin/usuarios/${h.userId || h.id}`} className="text-[10px] text-zinc-500 hover:text-emerald-500 flex items-center gap-1 uppercase font-bold mt-0.5">
                                                 <LinkIcon size={10}/> Ver Perfil
                                             </Link>
                                         </div>

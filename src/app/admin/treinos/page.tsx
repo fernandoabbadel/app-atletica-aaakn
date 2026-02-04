@@ -605,7 +605,7 @@ export default function AdminTreinosPage() {
                                                                                     <p className="text-xs font-bold text-white">{aluno.nome}</p>
                                                                                     {/* 🦈 LINK DE PERFIL COM STOP PROPAGATION */}
                                                                                     <Link 
-                                                                                        href={`/admin/users/${aluno.userId}`} 
+                                                                                        href={`/admin/usuarios/${aluno.userId}`} 
                                                                                         onClick={(e) => e.stopPropagation()} 
                                                                                         className="text-zinc-500 hover:text-emerald-400 transition p-1"
                                                                                         title="Ver Perfil"

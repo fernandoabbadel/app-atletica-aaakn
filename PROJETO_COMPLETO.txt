@@ -4440,7 +4440,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, Search, 
   Shield, Key, Users, UploadCloud, Eye, EyeOff, 
-  Loader2, Calendar, MessageCircle, Lightbulb, Bell, UserPlus 
+  Loader2, Calendar, MessageCircle, Lightbulb, Bell, UserPlus, 
+  CheckCircle, MonitorPlay
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -4500,23 +4501,14 @@ interface Liga {
   descricao: string;
   senha: string;
   foto: string; // URL da logo
-  logoBase64?: string; // Para compatibilidade com o front
+  logoBase64?: string; // Para compatibilidade
+  visivel?: boolean; // Controle de visibilidade no Dashboard
   membros: Member[];
   eventos: LeagueEvent[];
   perguntas: PerguntaLiga[];
   bizu: string;
   likes: number;
 }
-
-// Helper para Base64 (usado nas perguntas e membros internos se nÃ£o usar uploadImage)
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
 
 export default function AdminLigasPage() {
   const { addToast } = useToast();
@@ -4540,7 +4532,7 @@ export default function AdminLigasPage() {
 
   // Form State Principal
   const [formData, setFormData] = useState<Partial<Liga>>({
-    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", 
+    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
     membros: [], eventos: [], perguntas: [], bizu: "", likes: 0
   });
 
@@ -4549,13 +4541,15 @@ export default function AdminLigasPage() {
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
 
-  // 1. BUSCAR LIGAS EM TEMPO REAL
+  // 1. BUSCAR LIGAS (CORRIGIDO: COLEÃ‡ÃƒO "ligas")
   useEffect(() => {
-    const q = query(collection(db, "ligas_config"), orderBy("nome", "asc"));
+    // ATENÃ‡ÃƒO: Mudado de "ligas_config" para "ligas" para puxar as ligas reais (LAAS, LAMEI, etc)
+    const q = query(collection(db, "ligas"), orderBy("nome", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
+        visivel: doc.data().visivel || false,
         membros: doc.data().membros || [],
         eventos: doc.data().eventos || [],
         perguntas: doc.data().perguntas || []
@@ -4566,7 +4560,7 @@ export default function AdminLigasPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. BUSCAR USUÃRIOS (Para adicionar membros)
+  // 2. BUSCAR USUÃRIOS
   useEffect(() => {
       const fetchUsers = async () => {
           const snap = await getDocs(collection(db, "users"));
@@ -4579,7 +4573,7 @@ export default function AdminLigasPage() {
 
   const handleOpenCreate = () => {
     setFormData({ 
-        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", 
+        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
         membros: [], eventos: [], perguntas: [], bizu: "", likes: 0 
     });
     setIsEditing(false);
@@ -4598,11 +4592,22 @@ export default function AdminLigasPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta Liga?")) return;
     try {
-      await deleteDoc(doc(db, "ligas_config", id));
+      await deleteDoc(doc(db, "ligas", id)); // CORRIGIDO PARA "ligas"
       addToast("Liga removida com sucesso.", "success");
     } catch (e) {
       addToast("Erro ao remover.", "error");
     }
+  };
+
+  // --- FUNÃ‡ÃƒO: TOGGLE VISIBILIDADE DASHBOARD ---
+  const toggleVisibility = async (liga: Liga) => {
+      const novoStatus = !liga.visivel;
+      try {
+          await updateDoc(doc(db, "ligas", liga.id), { visivel: novoStatus }); // CORRIGIDO PARA "ligas"
+          addToast(novoStatus ? "Liga visÃ­vel no Dashboard! ðŸ“±" : "Liga ocultada do Dashboard.", novoStatus ? "success" : "info");
+      } catch (e) {
+          addToast("Erro ao atualizar visibilidade.", "error");
+      }
   };
 
   const handleSave = async () => {
@@ -4610,10 +4615,10 @@ export default function AdminLigasPage() {
 
     try {
       if (isEditing && editingId) {
-        await updateDoc(doc(db, "ligas_config", editingId), formData);
+        await updateDoc(doc(db, "ligas", editingId), formData); // CORRIGIDO PARA "ligas"
         addToast("Liga atualizada!", "success");
       } else {
-        await addDoc(collection(db, "ligas_config"), formData);
+        await addDoc(collection(db, "ligas"), formData); // CORRIGIDO PARA "ligas"
         addToast("Liga criada!", "success");
       }
       setShowModal(false);
@@ -4627,7 +4632,7 @@ export default function AdminLigasPage() {
     if (file) {
       setUploading(true);
       const { url } = await uploadImage(file, "ligas");
-      if (url) setFormData(prev => ({ ...prev, foto: url, logoBase64: url })); // Salva em ambos para compatibilidade
+      if (url) setFormData(prev => ({ ...prev, foto: url, logoBase64: url })); 
       setUploading(false);
     }
   };
@@ -4709,7 +4714,7 @@ export default function AdminLigasPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
       {/* HEADER */}
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex items-center justify-between">
+      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition">
             <ArrowLeft size={20} className="text-zinc-400" />
@@ -4727,47 +4732,63 @@ export default function AdminLigasPage() {
         {/* LISTA DE LIGAS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {ligas.map(liga => (
-            <div key={liga.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 group hover:border-emerald-500/30 transition">
+            <div key={liga.id} className={`bg-zinc-900 border rounded-2xl p-5 flex flex-col gap-4 group transition relative overflow-hidden ${liga.visivel ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'border-zinc-800 opacity-90'}`}>
               
-              <div className="flex items-start justify-between">
+              {/* Badge de Visibilidade */}
+              {liga.visivel && (
+                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] font-bold px-2 py-1 rounded-bl-xl uppercase flex items-center gap-1">
+                      <MonitorPlay size={10}/> No Dashboard
+                  </div>
+              )}
+
+              <div className="flex items-start justify-between mt-2">
                 <div className="flex items-center gap-3">
                   <img 
                     src={liga.foto || "https://github.com/shadcn.png"} 
-                    className="w-12 h-12 rounded-full object-cover border-2 border-zinc-800"
+                    className={`w-12 h-12 rounded-full object-cover border-2 ${liga.visivel ? 'border-emerald-500' : 'border-zinc-800'}`}
                   />
                   <div>
-                    <h3 className="font-bold text-white uppercase">{liga.nome}</h3>
-                    <p className="text-xs text-zinc-500 font-bold">{liga.sigla} â€¢ {liga.presidente}</p>
+                    <h3 className="font-bold text-white uppercase text-sm truncate w-32" title={liga.nome}>{liga.nome}</h3>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase">{liga.sigla}</p>
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => handleOpenEdit(liga)} className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"><Edit size={16}/></button>
-                  <button onClick={() => handleDelete(liga.id)} className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"><Trash2 size={16}/></button>
                 </div>
               </div>
 
-              {/* VISUALIZADOR DE SENHA */}
-              <div className="bg-black/40 p-3 rounded-xl border border-zinc-800 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <Key size={14} className="text-emerald-500"/>
-                    <span className="font-mono">
-                        {showPassword[liga.id] ? liga.senha : "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"}
+              {/* BotÃµes de AÃ§Ã£o */}
+              <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-1">
+                  {/* BotÃ£o de Visibilidade */}
+                  <button 
+                    onClick={() => toggleVisibility(liga)} 
+                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition ${liga.visivel ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' : 'bg-zinc-800 text-zinc-500 hover:text-white hover:bg-zinc-700'}`}
+                    title={liga.visivel ? "Ocultar do Dashboard" : "Mostrar no Dashboard"}
+                  >
+                      {liga.visivel ? <Eye size={16}/> : <EyeOff size={16}/>}
+                      <span className="text-[10px] font-bold uppercase">{liga.visivel ? "VisÃ­vel" : "Oculto"}</span>
+                  </button>
+
+                  <button onClick={() => handleOpenEdit(liga)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"><Edit size={16}/></button>
+                  <button onClick={() => handleDelete(liga.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"><Trash2 size={16}/></button>
+              </div>
+
+              {/* Senha */}
+              <div className="flex justify-between items-center bg-black/30 p-2 rounded-lg border border-zinc-800/50">
+                <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                    <Key size={10}/>
+                    <span className="font-mono tracking-wider">
+                        {showPassword[liga.id] ? liga.senha : "â€¢â€¢â€¢â€¢â€¢â€¢"}
                     </span>
                 </div>
-                <button onClick={() => togglePasswordVisibility(liga.id)} className="text-zinc-500 hover:text-white">
-                    {showPassword[liga.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
+                <button onClick={() => togglePasswordVisibility(liga.id)} className="text-zinc-600 hover:text-zinc-300">
+                    {showPassword[liga.id] ? <EyeOff size={12}/> : <Eye size={12}/>}
                 </button>
               </div>
 
-              <div className="text-[10px] text-zinc-500 line-clamp-2">
-                  {liga.descricao}
-              </div>
             </div>
           ))}
         </div>
       </main>
 
-      {/* MODAL CRIAR/EDITAR (COM ABAS) */}
+      {/* MODAL (Visibilidade tambÃ©m no modal) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-zinc-950 w-full max-w-2xl rounded-2xl border border-zinc-800 p-6 space-y-4 animate-in zoom-in-95 my-10">
@@ -4776,7 +4797,6 @@ export default function AdminLigasPage() {
                 <button onClick={() => setShowModal(false)}><X size={20} className="text-zinc-500 hover:text-white"/></button>
             </div>
 
-            {/* ABAS DO MODAL */}
             <div className="flex border-b border-zinc-800 mb-4 overflow-x-auto">
                 {['info', 'membros', 'eventos', 'shark'].map(tab => (
                     <button 
@@ -4790,7 +4810,6 @@ export default function AdminLigasPage() {
             </div>
 
             <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
-                {/* 1. ABA INFO */}
                 {activeTab === 'info' && (
                     <div className="space-y-3">
                         <div className="flex justify-center mb-4">
@@ -4804,6 +4823,21 @@ export default function AdminLigasPage() {
                             <input type="text" placeholder="Nome da Liga" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none" value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})}/>
                             <input type="text" placeholder="Sigla" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none uppercase" value={formData.sigla} onChange={e => setFormData({...formData, sigla: e.target.value})}/>
                         </div>
+                        
+                        {/* CHECKBOX VISIBILIDADE */}
+                        <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-xl border border-zinc-800">
+                            <input 
+                                type="checkbox" 
+                                id="visivelDash" 
+                                checked={formData.visivel} 
+                                onChange={e => setFormData({...formData, visivel: e.target.checked})}
+                                className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                            />
+                            <label htmlFor="visivelDash" className="text-sm text-white cursor-pointer select-none font-bold flex items-center gap-2">
+                                <MonitorPlay size={14} className="text-emerald-500"/> Mostrar no Dashboard (Carrossel)
+                            </label>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-3">
                             <input type="text" placeholder="Presidente" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none" value={formData.presidente} onChange={e => setFormData({...formData, presidente: e.target.value})}/>
                             <input type="text" placeholder="Senha de Acesso" className="w-full bg-zinc-900 border border-emerald-500/30 p-3 rounded-xl text-sm text-white outline-none" value={formData.senha} onChange={e => setFormData({...formData, senha: e.target.value})}/>
@@ -4813,7 +4847,7 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 2. ABA MEMBROS */}
+                {/* (Outras abas membros, eventos, shark mantidas iguais...) */}
                 {activeTab === 'membros' && (
                     <div className="space-y-3">
                         <button onClick={() => setSearchUserModal(true)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><UserPlus size={16}/> Adicionar Membro</button>
@@ -4830,7 +4864,6 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 3. ABA EVENTOS */}
                 {activeTab === 'eventos' && (
                     <div className="space-y-3">
                         <button onClick={() => handleOpenEventModal(null)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><Calendar size={16}/> Adicionar Evento</button>
@@ -4846,7 +4879,6 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* 4. ABA SHARK ROUND */}
                 {activeTab === 'shark' && (
                     <div className="space-y-3">
                         <div className="flex justify-between items-center"><h3 className="text-xs font-bold text-zinc-500 uppercase">Banco de QuestÃµes ({formData.perguntas?.length}/10)</h3><button onClick={addQuestion} className="text-emerald-500 text-xs font-bold hover:underline">+ Adicionar</button></div>
@@ -4874,7 +4906,7 @@ export default function AdminLigasPage() {
         </div>
       )}
 
-      {/* MODAL SEARCH USER */}
+      {/* MODAL SEARCH USER (Mantido) */}
       {searchUserModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
             <div className="bg-zinc-900 w-full max-w-md rounded-2xl border border-zinc-800 p-6 shadow-2xl relative animate-in zoom-in-95">
@@ -4896,7 +4928,7 @@ export default function AdminLigasPage() {
         </div>
       )}
 
-      {/* MODAL EVENTO */}
+      {/* MODAL EVENTO (Mantido) */}
       {eventModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
               <div className="bg-zinc-950 w-full max-w-md rounded-2xl border border-zinc-800 p-6 space-y-3 animate-in zoom-in-95">
@@ -6008,8 +6040,9 @@ import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import { logActivity } from "../../../lib/logger"; 
 
-// --- 1. DEFINIÃ‡ÃƒO DE CARGOS COMPLETA (Baseada no AuthContext) ---
+// --- 1. DEFINIÃ‡ÃƒO DE CARGOS (Hierarquia TubarÃ£o) ---
 const ROLES = [
     { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
     
@@ -6028,7 +6061,7 @@ const ROLES = [
     { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' }
 ];
 
-// --- 2. TODAS AS PÃGINAS DO SISTEMA ---
+// --- 2. MAPEAMENTO DE ROTAS ---
 const PAGES = [
     // --- PÃšBLICO / MEMBROS ---
     { path: '/dashboard', label: 'ðŸ  Dashboard' },
@@ -6037,7 +6070,8 @@ const PAGES = [
     { path: '/carrinho', label: 'ðŸ›’ Carrinho' },
     { path: '/eventos', label: 'ðŸŽ‰ Eventos' },
     { path: '/treinos', label: 'ðŸ’ª Treinos' },
-    { path: '/ligas', label: 'ðŸ† Ligas' },
+    { path: '/ligas', label: 'ðŸ† Ligas (Geral)' },
+    { path: '/ligas_unitau', label: 'ðŸŸï¸ Ligas Unitau' },
     { path: '/ranking', label: 'ðŸ“Š Ranking' },
     { path: '/album', label: 'ðŸ“¸ Ãlbum' },
     { path: '/comunidade', label: 'ðŸ’¬ Comunidade' },
@@ -6054,10 +6088,10 @@ const PAGES = [
     { path: '/empresa', label: 'ðŸ’¼ Painel Empresa' },
 
     // --- ADMINISTRAÃ‡ÃƒO (BACKOFFICE) ---
-    { path: '/admin', label: 'ðŸ‘® Admin Geral' },
+    { path: '/admin', label: 'ðŸ‘® Admin Dashboard' },
     { path: '/admin/permissoes', label: 'ðŸ”‘ PermissÃµes (CrÃ­tico)' },
-    { path: '/admin/usuarios', label: 'ðŸ‘¥ UsuÃ¡rios' },
-    { path: '/admin/financeiro', label: 'ðŸ’° Financeiro' },
+    { path: '/admin/usuarios', label: 'ðŸ‘¥ Gerenciar UsuÃ¡rios' },
+    { path: '/admin/scanner', label: 'ðŸ“· Scanner QR' },
     { path: '/admin/album', label: 'ðŸ“· Adm Ãlbum' },
     { path: '/admin/carteirinha', label: 'ðŸªª Adm Carteirinha' },
     { path: '/admin/comunidade', label: 'ðŸ’¬ Adm Comunidade' },
@@ -6070,6 +6104,7 @@ const PAGES = [
     { path: '/admin/guia', label: 'ðŸ“˜ Adm Guia' },
     { path: '/admin/gym', label: 'ðŸ‹ï¸ Adm Gym' },
     { path: '/admin/historico', label: 'ðŸ“œ Adm HistÃ³rico' },
+    { path: '/admin/ligas', label: 'ðŸ† Adm Ligas' },
     { path: '/admin/logs', label: 'ðŸ“ Logs do Sistema' },
     { path: '/admin/loja', label: 'ðŸ‘• Adm Loja' },
     { path: '/admin/parceiros', label: 'ðŸ¤ Adm Parceiros' },
@@ -6090,7 +6125,7 @@ export default function AdminPermissoesPage() {
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [savingMatrix, setSavingMatrix] = useState(false);
 
-  // SeguranÃ§a local
+  // SeguranÃ§a local: Apenas Master pode acessar essa tela
   const isMaster = checkPermission(["master"]);
 
   useEffect(() => {
@@ -6105,13 +6140,14 @@ export default function AdminPermissoesPage() {
               const snapUsers = await getDocs(collection(db, "users"));
               setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() })));
 
-              // 2. Puxa Matriz
+              // 2. Puxa Matriz de PermissÃµes
               const docRef = doc(db, "settings", "permissions");
               const docSnap = await getDoc(docRef);
               
               if (docSnap.exists()) {
                   setPermissionMatrix(docSnap.data() as Record<string, string[]>);
               } else {
+                  // Matriz padrÃ£o se nÃ£o existir
                   const defaultMatrix: Record<string, string[]> = {};
                   PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
                   setPermissionMatrix(defaultMatrix);
@@ -6119,7 +6155,7 @@ export default function AdminPermissoesPage() {
 
           } catch (e) {
               console.error(e);
-              addToast("Erro ao carregar dados.", "error");
+              addToast("Deu ruim ao carregar os dados do cardume!", "error");
           } finally {
               setLoading(false);
           }
@@ -6128,13 +6164,26 @@ export default function AdminPermissoesPage() {
       if (isMaster) fetchData();
   }, [isMaster, loading, router, addToast]);
 
-  const handleUpdateRole = async (userId: string, newRole: string) => {
+  // --- AÃ‡ÃƒO: ATUALIZAR CARGO DE UM USUÃRIO ---
+  const handleUpdateRole = async (targetUserId: string, newRole: string) => {
       try {
-          await updateDoc(doc(db, "users", userId), { role: newRole });
-          setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-          addToast(`Cargo atualizado para ${newRole.toUpperCase()}`, "success");
+          await updateDoc(doc(db, "users", targetUserId), { role: newRole });
+          
+          setUsersList(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
+          
+          // CORREÃ‡ÃƒO: Passando os 5 argumentos obrigatÃ³rios
+          await logActivity(
+            user?.uid || 'sistema',         // 1. userId
+            user?.nome || 'Admin Master',   // 2. userName
+            "UPDATE",                       // 3. action (ActionType)
+            "PermissÃµes - UsuÃ¡rios",        // 4. resource
+            `Alterou cargo do usuÃ¡rio ${targetUserId} para ${newRole}` // 5. details
+          );
+          
+          addToast(`Cargo atualizado para ${newRole.toUpperCase()}! ðŸ¦ˆ`, "success");
       } catch (e) {
-          addToast("Erro ao atualizar cargo.", "error");
+          console.error(e);
+          addToast("Erro ao trocar a patente do peixe.", "error");
       }
   };
 
@@ -6143,6 +6192,7 @@ export default function AdminPermissoesPage() {
       (u.email || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // --- AÃ‡ÃƒO: TOGGLE PERMISSÃƒO NA MATRIZ ---
   const togglePermission = (path: string, roleId: string) => {
       setPermissionMatrix(prev => {
           const currentRoles = prev[path] || [];
@@ -6154,13 +6204,25 @@ export default function AdminPermissoesPage() {
       });
   };
 
+  // --- AÃ‡ÃƒO: SALVAR MATRIZ COMPLETA ---
   const saveMatrix = async () => {
       setSavingMatrix(true);
       try {
           await setDoc(doc(db, "settings", "permissions"), permissionMatrix);
-          addToast("Matriz de acesso salva e aplicada!", "success");
+          
+          // CORREÃ‡ÃƒO: Passando os 5 argumentos obrigatÃ³rios
+          await logActivity(
+            user?.uid || 'sistema',        // 1. userId
+            user?.nome || 'Admin Master',  // 2. userName
+            "UPDATE",                      // 3. action
+            "PermissÃµes - Matriz",         // 4. resource
+            "Atualizou a Matriz de Acesso Global" // 5. details
+          );
+          
+          addToast("As leis do oceano foram atualizadas! ðŸ¦ˆ", "success");
       } catch (e) {
-          addToast("Erro ao salvar matriz.", "error");
+          console.error(e);
+          addToast("Erro ao salvar as regras.", "error");
       } finally {
           setSavingMatrix(false);
       }
@@ -6178,13 +6240,13 @@ export default function AdminPermissoesPage() {
               <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20}/></Link>
               <div>
                   <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-red-600"/> Controle de Acesso</h1>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Acesso Exclusivo Master</p>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Ãrea Restrita do Master</p>
               </div>
           </div>
       </header>
 
       {/* CONTEÃšDO */}
-      <div className="p-6 max-w-[90vw] mx-auto overflow-hidden">
+      <div className="p-6 max-w-[95vw] mx-auto overflow-hidden">
           
           {/* SELETOR DE ABAS */}
           <div className="flex justify-center mb-8">
@@ -6202,20 +6264,20 @@ export default function AdminPermissoesPage() {
                       <div>
                           <h3 className="text-sm font-bold text-yellow-500 uppercase">AtenÃ§Ã£o, Master!</h3>
                           <p className="text-xs text-zinc-400 mt-1">
-                              Novos cargos detectados! Verifique as permissÃµes para <strong>Gestor</strong> e <strong>Adm Treino</strong>.
+                              Esta matriz controla quem pode ver o quÃª. Se vocÃª remover o acesso de 'Admin Geral' em '/admin', eles perderÃ£o acesso a todo o painel.
                           </p>
                       </div>
                   </div>
 
-                  <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-2xl">
+                  <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-2xl bg-[#0a0a0a]">
                       <table className="w-full text-left border-collapse">
                           <thead>
                               <tr className="bg-zinc-900 border-b border-zinc-800">
-                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 bg-zinc-900 z-10 min-w-[200px]">
+                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 bg-zinc-900 z-10 min-w-[220px] shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                       PÃ¡gina / Rota
                                   </th>
                                   {ROLES.map(role => (
-                                      <th key={role.id} className="p-4 min-w-[100px] text-center bg-zinc-900/95 backdrop-blur">
+                                      <th key={role.id} className="p-4 min-w-[90px] text-center bg-zinc-900/95 backdrop-blur border-l border-zinc-800/50">
                                           <div className="flex flex-col items-center gap-1.5">
                                               <div className={`p-2 rounded-full bg-black/50 ${role.color}`}>
                                                   <role.icon size={16}/>
@@ -6229,16 +6291,16 @@ export default function AdminPermissoesPage() {
                           <tbody className="bg-black">
                               {PAGES.map((page, idx) => (
                                   <tr key={page.path} className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''}`}>
-                                      <td className="p-4 text-xs font-bold text-white sticky left-0 bg-black group-hover:bg-zinc-900/30 transition z-10 border-r border-zinc-800/50">
+                                      <td className="p-4 text-xs font-bold text-white sticky left-0 bg-black group-hover:bg-zinc-900/30 transition z-10 border-r border-zinc-800 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                           <div className="flex flex-col">
-                                              <span className="text-sm">{page.label}</span>
+                                              <span className="text-sm flex items-center gap-2">{page.label}</span>
                                               <span className="text-[10px] text-zinc-600 font-mono mt-0.5">{page.path}</span>
                                           </div>
                                       </td>
                                       {ROLES.map(role => {
                                           const isAllowed = (permissionMatrix[page.path] || []).includes(role.id) || role.id === 'master';
                                           return (
-                                              <td key={`${page.path}-${role.id}`} className="p-4 text-center">
+                                              <td key={`${page.path}-${role.id}`} className="p-4 text-center border-l border-zinc-800/30">
                                                   <button 
                                                       onClick={() => togglePermission(page.path, role.id)}
                                                       disabled={role.id === 'master'}
@@ -6275,7 +6337,7 @@ export default function AdminPermissoesPage() {
                       <Search className="text-zinc-500" size={18}/>
                       <input 
                           type="text" 
-                          placeholder="Buscar usuÃ¡rio..." 
+                          placeholder="Buscar usuÃ¡rio por nome ou email..." 
                           className="bg-transparent outline-none text-sm text-white w-full placeholder:text-zinc-600"
                           value={searchTerm}
                           onChange={e => setSearchTerm(e.target.value)}
@@ -6283,10 +6345,11 @@ export default function AdminPermissoesPage() {
                   </div>
 
                   <div className="grid gap-3 pb-20">
-                      {filteredUsers.map(u => (
+                      {filteredUsers.length > 0 ? (
+                        filteredUsers.map(u => (
                           <div key={u.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 group hover:border-zinc-700 transition">
                               <div className="flex items-center gap-4 w-full md:w-auto">
-                                  <img src={u.foto || "https://github.com/shadcn.png"} className="w-12 h-12 rounded-full bg-zinc-800 object-cover border-2 border-zinc-800"/>
+                                  <img src={u.foto || "https://github.com/shadcn.png"} alt="User" className="w-12 h-12 rounded-full bg-zinc-800 object-cover border-2 border-zinc-800"/>
                                   <div>
                                       <p className="font-bold text-sm text-white flex items-center gap-2">
                                           {u.nome || "Sem Nome"}
@@ -6310,7 +6373,13 @@ export default function AdminPermissoesPage() {
                                   </select>
                               </div>
                           </div>
-                      ))}
+                        ))
+                      ) : (
+                          <div className="text-center py-12 text-zinc-500">
+                              <Ghost size={40} className="mx-auto mb-3 opacity-20"/>
+                              <p className="text-sm">Nenhum tubarÃ£o encontrado.</p>
+                          </div>
+                      )}
                   </div>
               </div>
           )}
@@ -6972,22 +7041,13 @@ export default function ScannerPage() {
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Save, LayoutGrid, Users, Power, Key, Plus, Trash2, Loader2, ArrowLeft, 
-  AlertTriangle, CheckCircle2, Copy, RefreshCw, Settings
+  LayoutGrid, Users, Power, Key, Plus, Trash2, Loader2, ArrowLeft, 
+  CheckCircle2, Copy, RefreshCw, Settings, HelpCircle, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase"; 
-import { doc, setDoc, collection, getDocs, deleteDoc, updateDoc } from "firebase/firestore";
-
-// Lista Base para popular se o banco estiver vazio
-const LIGAS_PADRAO = [
-    "Endocrinologia e Metabologia", "Ginecologia e ObstetrÃ­cia", "Medicina Legal", "Anatomia e SaÃºde",
-    "ClÃ­nica MÃ©dica", "Cirurgia Geral", "Psiquiatria", "Ortopedia e Med. Esportiva",
-    "Oncologia", "Humanidades e SaÃºde", "Dermatologia", "Neonatologia e Pediatria",
-    "Urologia", "EmergÃªncia", "Neurologia e Neurocirurgia", "Oftalmologia",
-    "Cardiologia", "SaÃºde da FamÃ­lia", "Otorrinolaringologia"
-];
+import { doc, collection, deleteDoc, updateDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 
 interface LigaConfig {
     id: string;
@@ -6995,7 +7055,7 @@ interface LigaConfig {
     senha: string;
     ativa: boolean;
     perguntas: any[];
-    logoBase64?: string;
+    foto?: string;
     sigla?: string;
 }
 
@@ -7005,42 +7065,15 @@ export default function AdminSharkRound() {
   const [ligas, setLigas] = useState<LigaConfig[]>([]);
   const [stats, setStats] = useState({ ativas: 0, total: 0 });
 
-  // 1. CARREGAR DADOS
-  const fetchLigas = async () => {
-    setLoading(true);
-    try {
-      const snap = await getDocs(collection(db, "ligas_config"));
-      
-      if (snap.empty) {
-          // Popula inicial se vazio
-          const init = LIGAS_PADRAO.map(nome => ({
-              id: nome.toLowerCase().replace(/ /g, '_').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
-              nome,
-              senha: Math.random().toString(36).slice(-6).toUpperCase(),
-              ativa: false,
-              perguntas: []
-          }));
-          // Salva no banco um por um
-          const promises = init.map(l => setDoc(doc(db, "ligas_config", l.id), l));
-          await Promise.all(promises);
-          setLigas(init);
-          addToast("Banco de ligas inicializado!", "success");
-      } else {
-          const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() } as LigaConfig));
-          // Ordenar: Ativas primeiro, depois alfabÃ©tica
-          loaded.sort((a, b) => (a.ativa === b.ativa ? a.nome.localeCompare(b.nome) : a.ativa ? -1 : 1));
-          setLigas(loaded);
-      }
-    } catch (e) { 
-        console.error(e); 
-        addToast("Erro ao carregar dados.", "error"); 
-    } finally { 
-        setLoading(false); 
-    }
-  };
-
+  // UNIFICAÃ‡ÃƒO: Usando a coleÃ§Ã£o "ligas"
   useEffect(() => {
-    fetchLigas();
+    const q = query(collection(db, "ligas"), orderBy("nome", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loaded = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LigaConfig));
+        setLigas(loaded);
+        setLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -7048,57 +7081,20 @@ export default function AdminSharkRound() {
       setStats({ ativas, total: ligas.length });
   }, [ligas]);
 
-  // ID 27: Adicionar Nova Liga
-  const addLiga = async () => {
-      const nome = prompt("Nome da Nova Liga:");
-      if (!nome) return;
-      
-      const id = nome.toLowerCase().replace(/ /g, '_').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const novaLiga: LigaConfig = {
-          id,
-          nome,
-          senha: Math.random().toString(36).slice(-6).toUpperCase(),
-          ativa: false,
-          perguntas: []
-      };
-
-      try {
-          await setDoc(doc(db, "ligas_config", id), novaLiga);
-          setLigas([...ligas, novaLiga]);
-          addToast("Liga criada com sucesso!", "success");
-      } catch (e) {
-          addToast("Erro ao criar liga.", "error");
-      }
-  };
-
-  // ID 30 & 26: Alternar Status (Ativar/Desativar)
-  const toggleLiga = async (idx: number) => {
-      const liga = ligas[idx];
+  const toggleLiga = async (liga: LigaConfig) => {
       const novoStatus = !liga.ativa;
+      const qCount = liga.perguntas?.length || 0;
 
-      // ValidaÃ§Ã£o ID 30
-      if (novoStatus && (liga.perguntas?.length || 0) < 10) {
-          return addToast(`Bloqueado! A liga precisa de 10 perguntas (Atual: ${liga.perguntas?.length || 0})`, "error");
+      if (novoStatus && qCount < 10) {
+          return addToast(`Bloqueado! A liga precisa de 10 perguntas (Atual: ${qCount})`, "error");
       }
 
       try {
-          await updateDoc(doc(db, "ligas_config", liga.id), { ativa: novoStatus });
-          const novas = [...ligas];
-          novas[idx].ativa = novoStatus;
-          setLigas(novas);
-          addToast(novoStatus ? "Liga Ativada no Jogo!" : "Liga Removida do Jogo.", novoStatus ? "success" : "info");
+          await updateDoc(doc(db, "ligas", liga.id), { ativa: novoStatus });
+          addToast(novoStatus ? "Liga ATIVADA no SharkRound!" : "Liga removida do tabuleiro.", "success");
       } catch (e) {
           addToast("Erro ao atualizar status.", "error");
       }
-  };
-
-  const deleteLiga = async (id: string) => {
-      if (!confirm("Tem certeza? Isso apagarÃ¡ todas as perguntas e dados dessa liga.")) return;
-      try {
-          await deleteDoc(doc(db, "ligas_config", id));
-          setLigas(ligas.filter(l => l.id !== id));
-          addToast("Liga excluÃ­da.", "success");
-      } catch(e) { addToast("Erro ao excluir.", "error"); }
   };
 
   const copyToClipboard = (text: string) => {
@@ -7106,112 +7102,71 @@ export default function AdminSharkRound() {
       addToast("Senha copiada!", "success");
   };
 
-  if (loading) return <div className="h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+  if (loading) return <div className="h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-12 h-12"/></div>;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6 font-sans pb-20">
-      
-      {/* HEADER */}
-      <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 border-b border-zinc-800 pb-6">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <Link href="/menu" className="p-3 bg-zinc-900 rounded-full hover:bg-zinc-800 border border-zinc-700 transition"><ArrowLeft size={20}/></Link>
+    <div className="min-h-screen bg-zinc-950 text-white p-6 pb-20">
+      <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 border-b border-zinc-800 pb-6 sticky top-0 bg-zinc-950/95 backdrop-blur z-20 pt-4">
+          <div className="flex items-center gap-4">
+            <Link href="/admin" className="p-3 bg-zinc-900 rounded-full hover:bg-zinc-800 border border-zinc-700 transition"><ArrowLeft size={20}/></Link>
             <div>
-                <h1 className="text-2xl font-black uppercase text-white flex items-center gap-2">Admin SharkRound <span className="text-xs bg-emerald-600 px-2 py-0.5 rounded text-black">V5.0</span></h1>
-                <p className="text-xs text-zinc-500">GestÃ£o de Ligas e ConfiguraÃ§Ãµes do Tabuleiro</p>
+                <h1 className="text-2xl font-black uppercase flex items-center gap-2 text-white">Admin SharkRound</h1>
+                <p className="text-xs text-zinc-500">Controle quais ligas estÃ£o ativas no tabuleiro do jogo.</p>
             </div>
           </div>
           
-          {/* ID 40: Painel de Controle de Tamanho */}
-          <div className="flex gap-4 items-center bg-zinc-900 p-3 rounded-xl border border-zinc-800">
+          <div className="flex gap-4 items-center bg-zinc-900 p-3 rounded-xl border border-zinc-800 shadow-lg">
               <div className="text-right">
                   <p className="text-[10px] text-zinc-500 uppercase font-bold">Ligas Ativas</p>
-                  <p className="text-lg font-black text-emerald-500 leading-none">{stats.ativas} <span className="text-xs text-zinc-600">/ {stats.total}</span></p>
+                  <p className="text-lg font-black text-emerald-500 leading-none">{stats.ativas}</p>
               </div>
               <div className="h-8 w-[1px] bg-zinc-700"></div>
               <div className="text-right">
-                  <p className="text-[10px] text-zinc-500 uppercase font-bold">Casas no Jogo</p>
-                  <p className="text-lg font-black text-white leading-none">{stats.ativas > 0 ? (stats.ativas * 2) + 4 : "40 (PadrÃ£o)"}</p>
+                  <p className="text-[10px] text-zinc-500 uppercase font-bold">Casas</p>
+                  <p className="text-lg font-black text-white leading-none">{(stats.ativas * 2) + 4}</p>
               </div>
-          </div>
-
-          <div className="flex gap-2">
-              <button onClick={fetchLigas} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white p-3 rounded-xl transition"><RefreshCw size={18}/></button>
-              <button onClick={addLiga} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/20 transition hover:scale-105"><Plus size={16}/> NOVA LIGA (ID 27)</button>
           </div>
       </header>
 
-      {/* LISTA DE LIGAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {ligas.map((liga, idx) => {
+          {ligas.map((liga) => {
               const qCount = liga.perguntas?.length || 0;
               const canActivate = qCount >= 10;
 
               return (
-                  <div key={liga.id} className={`relative p-5 rounded-2xl border transition-all duration-300 ${liga.ativa ? 'bg-zinc-900 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-zinc-950 border-zinc-800 opacity-80 hover:opacity-100 hover:border-zinc-700'}`}>
-                      
-                      {/* Topo do Card */}
+                  <div key={liga.id} className={`p-5 rounded-2xl border transition-all ${liga.ativa ? 'bg-zinc-900 border-emerald-500/50 shadow-lg' : 'bg-zinc-950 border-zinc-800 opacity-80'}`}>
                       <div className="flex justify-between items-start mb-4">
-                          <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-full bg-black border-2 border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
-                                  {/* ID 11: Mostra logo se tiver */}
-                                  {liga.logoBase64 ? <img src={liga.logoBase64} className="w-full h-full object-cover"/> : <Users size={20} className="text-zinc-600"/>}
-                              </div>
+                          <div className="flex items-center gap-3 overflow-hidden">
+                              <img src={liga.foto || "https://github.com/shadcn.png"} className="w-12 h-12 rounded-full object-cover border-2 border-zinc-800 bg-black"/>
                               <div className="min-w-0">
-                                  <h3 className="font-bold text-sm text-white truncate pr-2" title={liga.nome}>{liga.nome}</h3>
-                                  <div className="flex items-center gap-2 mt-1">
-                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${canActivate ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                          {qCount}/10
-                                      </span>
-                                      {liga.sigla && <span className="text-[10px] text-zinc-500 border border-zinc-800 px-1 rounded">{liga.sigla}</span>}
-                                  </div>
+                                  <h3 className="font-bold text-sm text-white truncate">{liga.nome}</h3>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${canActivate ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                      {qCount}/10 QuestÃµes
+                                  </span>
                               </div>
                           </div>
-                          
-                          {/* ID 26/30: Toggle Power */}
                           <button 
-                            onClick={() => toggleLiga(idx)}
+                            onClick={() => toggleLiga(liga)}
                             disabled={!canActivate && !liga.ativa}
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${liga.ativa ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/40 hover:scale-105' : canActivate ? 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700' : 'bg-zinc-900 text-zinc-700 cursor-not-allowed'}`}
-                            title={!canActivate ? "MÃ­nimo 10 perguntas exigido" : liga.ativa ? "Desativar" : "Ativar"}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${liga.ativa ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}
                           >
                               <Power size={18} strokeWidth={3}/>
                           </button>
                       </div>
-                      
-                      {/* Senha e AÃ§Ãµes */}
-                      <div className="bg-black/50 p-3 rounded-xl border border-zinc-800/50 flex items-center justify-between mb-3 group-hover:border-zinc-700 transition">
-                          <div className="flex items-center gap-2">
-                              <Key size={12} className="text-zinc-500"/>
-                              <span className="text-xs font-mono text-zinc-300 tracking-wider">{liga.senha}</span>
-                          </div>
+                      <div className="bg-black/50 p-3 rounded-xl border border-zinc-800/50 flex items-center justify-between mb-3">
+                          <span className="text-xs font-mono text-zinc-300">{liga.senha}</span>
                           <button onClick={() => copyToClipboard(liga.senha)} className="text-zinc-500 hover:text-white transition"><Copy size={14}/></button>
                       </div>
-
-                      {/* Footer do Card */}
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-zinc-800/50">
-                          <span className={`text-[10px] font-bold uppercase ${liga.ativa ? 'text-emerald-500 flex items-center gap-1' : 'text-zinc-600'}`}>
-                              {liga.ativa ? <><CheckCircle2 size={10}/> Ativa no Jogo</> : "Inativa"}
+                      <div className="flex justify-between items-center text-[10px] font-bold uppercase pt-2 border-t border-zinc-800">
+                          <span className={liga.ativa ? 'text-emerald-500' : 'text-zinc-600'}>
+                              {liga.ativa ? 'No Tabuleiro' : 'Inativa'}
                           </span>
-                          <button onClick={() => deleteLiga(liga.id)} className="text-zinc-600 hover:text-red-500 transition p-1"><Trash2 size={14}/></button>
+                          {!canActivate && !liga.ativa && <span className="text-red-500 animate-pulse">Incompleta</span>}
                       </div>
-
-                      {/* Aviso de erro se tentar ativar sem perguntas */}
-                      {!canActivate && !liga.ativa && (
-                          <div className="absolute top-2 right-14 bg-red-500/10 border border-red-500/20 text-red-500 text-[9px] px-2 py-1 rounded font-bold animate-pulse">
-                              Incompleta
-                          </div>
-                      )}
                   </div>
               )
           })}
       </div>
-
-      {ligas.length === 0 && !loading && (
-          <div className="text-center py-20 opacity-50">
-              <LayoutGrid size={48} className="mx-auto mb-4"/>
-              <p>Nenhuma liga encontrada.</p>
-          </div>
-      )}
     </div>
   );
 }
@@ -8847,237 +8802,248 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 "use client";
 
-import React from "react";
-// Import icons
+import React, { useEffect, useState, useMemo } from "react";
 import {
-  Users,
-  Calendar,
-  ShoppingBag,
-  ShieldAlert,
-  Settings,
-  Activity,
-  Dumbbell,
-  Trophy,
-  History,
-  Lock,
-  UserPlus,
-  BarChart3,
-  Megaphone,
-  Gamepad2,
-  Star,
-  Crown,
-  BookOpen,
-  Medal,
-  TrendingUp,
-  DollarSign,
-  UserCheck,
-  ArrowRight,
-  CheckCircle,
-  ListChecks,
-  Plus,
-  Globe,
-  MousePointerClick,
-  Eye,
-  Smartphone
+  Users, Calendar, ShoppingBag, ShieldAlert, Settings, Activity,
+  Dumbbell, Trophy, History, Lock, UserPlus, BarChart3, Megaphone,
+  Gamepad2, Star, Crown, BookOpen, Medal, Package, ListChecks, 
+  ArrowRight
 } from "lucide-react";
-// Import charts
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  FunnelChart,
-  Funnel,
-  LabelList,
+  AreaChart, Area, XAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
+import { db } from "../../lib/firebase";
+import { collection, query, onSnapshot, orderBy, Timestamp } from "firebase/firestore";
 
-// --- MOCK DATA ORIGINAL ---
-const dataArea = [
-  { name: "Jan", uv: 4000, pv: 2400 },
-  { name: "Fev", uv: 3000, pv: 1398 },
-  { name: "Mar", uv: 2000, pv: 9800 },
-  { name: "Abr", uv: 2780, pv: 3908 },
-  { name: "Mai", uv: 1890, pv: 4800 },
-  { name: "Jun", uv: 2390, pv: 3800 },
-  { name: "Jul", uv: 3490, pv: 4300 },
-  { name: "Ago", uv: 4000, pv: 2400 },
-  { name: "Set", uv: 3000, pv: 1398 },
-  { name: "Out", uv: 2000, pv: 9800 },
-];
+// --- INTERFACES ESTRITAS ---
 
-const dataBar = [
-  { name: "S", value: 20 },
-  { name: "T", value: 50 },
-  { name: "Q", value: 40 },
-  { name: "Q", value: 70 },
-  { name: "S", value: 30 },
-  { name: "S", value: 60 },
-  { name: "D", value: 35 },
-];
+interface Order {
+  id: string;
+  price: number;
+  status: 'approved' | 'pending' | 'rejected';
+  createdAt: Timestamp; 
+  productName: string;
+}
 
-const dataFunnel = [
-  { value: 100, name: "QualificaÃ§Ã£o", fill: "#dbeafe" },
-  { value: 80, name: "AnÃ¡lise", fill: "#93c5fd" },
-  { value: 50, name: "Proposta", fill: "#3b82f6" },
-  { value: 20, name: "NegociaÃ§Ã£o", fill: "#1d4ed8" },
-];
+interface UserData {
+  id: string;
+  nome: string;
+  role: string;
+  xp: number;
+  foto?: string;
+  plano_status?: string;
+  tier?: string;
+}
 
-const dataPie = [
-  { name: "Novos", value: 400 },
-  { name: "Qualif.", value: 300 },
-  { name: "AnÃ¡lise", value: 300 },
-  { name: "Fechados", value: 200 },
-];
-const COLORS = ["#34d399", "#60a5fa", "#fbbf24", "#f87171"];
+interface DashboardStats {
+  revenueTotal: number;
+  activeMembers: number;
+  pendingOrders: number;
+  totalUsers: number;
+}
 
-// --- NOVOS DADOS (RANKINGS E ACESSOS) ---
-const topPages = [
-    { name: "Gym Rats (Treino)", path: "/gym", views: 12540, growth: "+12%" },
-    { name: "Carteirinha Digital", path: "/carteirinha", views: 9850, growth: "+5%" },
-    { name: "Loja Oficial", path: "/loja", views: 8400, growth: "+22%" },
-    { name: "CalendÃ¡rio Eventos", path: "/eventos", views: 6200, growth: "-2%" },
-    { name: "Ranking Geral", path: "/ranking", views: 4100, growth: "+8%" },
-];
+// CORREÃ‡ÃƒO: Adicionado [key: string]: any para compatibilidade com Recharts
+interface ChartDataPoint {
+  name: string;
+  value: number;
+  [key: string]: any; 
+}
 
-const topProfiles = [
-    { name: "Duda Med", role: "SÃ³cio Lenda", views: 1204, foto: "https://i.pravatar.cc/150?u=a042581f4e29026024d" },
-    { name: "JoÃ£o Engenharia", role: "SÃ³cio Atleta", views: 980, foto: "https://i.pravatar.cc/150?u=a042581f4e29026704d" },
-    { name: "Ana Direito", role: "Diretoria", views: 850, foto: "https://i.pravatar.cc/150?u=a04258114e29026302d" },
-    { name: "Pedro Bixo", role: "SÃ³cio Bicho", views: 620, foto: "https://i.pravatar.cc/150?u=a04258a2462d826712d" },
-];
+interface ProductRank {
+  name: string;
+  count: number;
+}
+
+// CORREÃ‡ÃƒO: Adicionado [key: string]: any para compatibilidade com Recharts
+interface PieDataPoint {
+  name: string;
+  value: number;
+  [key: string]: any;
+}
+
+// Tipagem especÃ­fica para o formatador do Tooltip do Recharts
+type RechartsValue = number | string | Array<number | string> | undefined;
+
+const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444"]; // Emerald, Blue, Amber, Red
 
 export default function AdminDashboard() {
   const { checkPermission } = useAuth();
-
+  const [loading, setLoading] = useState(true);
+  
+  // Estados de Dados Reais
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [users, setUsers] = useState<UserData[]>([]);
+  
   // Permissions
-  const canManageEvents = checkPermission([
-    "admin_geral",
-    "admin_gestor",
-    "master",
-  ]);
+  const canManageEvents = checkPermission(["admin_geral", "admin_gestor", "master"]);
   const canManageTrainings = checkPermission(["admin_treino", "master"]);
   const canManageAdmins = checkPermission(["admin_gestor", "master"]);
 
+  // --- ðŸ¦ˆ FETCH DATA (REALTIME) ---
+  useEffect(() => {
+    // 1. Buscar Pedidos
+    const qOrders = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+    const unsubOrders = onSnapshot(qOrders, (snap) => {
+      const data = snap.docs.map(d => {
+          const docData = d.data();
+          return { 
+            id: d.id, 
+            price: docData.price || 0,
+            status: docData.status,
+            createdAt: docData.createdAt,
+            productName: docData.productName || 'Produto'
+          } as Order;
+      });
+      setOrders(data);
+    });
+
+    // 2. Buscar UsuÃ¡rios
+    const qUsers = query(collection(db, "users"), orderBy("xp", "desc")); 
+    const unsubUsers = onSnapshot(qUsers, (snap) => {
+      const data = snap.docs.map(d => {
+        const docData = d.data();
+        return { 
+            id: d.id, 
+            nome: docData.nome || 'Sem Nome',
+            role: docData.role || 'guest',
+            xp: docData.xp || 0,
+            foto: docData.foto,
+            plano_status: docData.plano_status,
+            tier: docData.tier
+        } as UserData;
+      });
+      setUsers(data);
+      setLoading(false);
+    });
+
+    return () => { unsubOrders(); unsubUsers(); };
+  }, []);
+
+  // --- ðŸ¦ˆ CÃLCULOS (MEMOIZED) ---
+  
+  const stats = useMemo((): DashboardStats => {
+    return {
+      revenueTotal: orders.filter(o => o.status === 'approved').reduce((acc, curr) => acc + (curr.price || 0), 0),
+      activeMembers: users.filter(u => u.plano_status === 'ativo').length,
+      pendingOrders: orders.filter(o => o.status === 'pending').length,
+      totalUsers: users.length
+    };
+  }, [orders, users]);
+
+  // GrÃ¡fico: Vendas Semanais
+  const salesData = useMemo((): ChartDataPoint[] => {
+    const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "SÃ¡b"];
+    const last7Days = [...Array(7)].map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d;
+    }).reverse();
+
+    return last7Days.map(date => {
+      const dayName = days[date.getDay()];
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dailyTotal = orders
+        .filter(o => {
+            if (o.status !== 'approved' || !o.createdAt) return false;
+            try {
+                return o.createdAt.toDate().toISOString().split('T')[0] === dateStr;
+            } catch {
+                return false;
+            }
+        })
+        .reduce((acc, curr) => acc + (curr.price || 0), 0);
+
+      return { name: dayName, value: dailyTotal };
+    });
+  }, [orders]);
+
+  // Top Produtos
+  const topProducts = useMemo((): ProductRank[] => {
+    const counts: Record<string, number> = {};
+    orders.forEach(o => {
+      if(o.status === 'approved' && o.productName) {
+        counts[o.productName] = (counts[o.productName] || 0) + 1;
+      }
+    });
+    return Object.entries(counts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+  }, [orders]);
+
+  // Members Pie Chart Data
+  const pieData = useMemo((): PieDataPoint[] => [
+    { name: "Ativos", value: stats.activeMembers },
+    { name: "Pendentes/Inativos", value: stats.totalUsers - stats.activeMembers },
+  ], [stats]);
+
+
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500 font-bold animate-pulse">Carregando dados do cardume... ðŸ¦ˆ</div>;
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       {/* Header */}
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic">
-            Dashboard
+          <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
+            Dashboard <span className="text-emerald-500 text-sm not-italic font-normal bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">Ao Vivo</span>
           </h1>
           <p className="text-zinc-400 text-sm">
-            VisÃ£o geral do desempenho da AtlÃ©tica.
+            VisÃ£o geral do desempenho da AtlÃ©tica em tempo real.
           </p>
         </div>
-        <div className="flex gap-2">
-          {/* Timeframe buttons - non-functional mock */}
-          <button className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-400 font-bold hover:text-white transition">
-            7 Dias
-          </button>
-          <button className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white font-bold shadow-lg shadow-emerald-500/10">
-            30 Dias
-          </button>
-          <button className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-400 font-bold hover:text-white transition">
-            3 Meses
-          </button>
+        
+        {/* KPI Cards RÃ¡pidos */}
+        <div className="flex gap-4">
+           <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl min-w-[120px]">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase">Receita Total</p>
+              <p className="text-emerald-400 font-black text-lg">R$ {stats.revenueTotal.toLocaleString('pt-BR')}</p>
+           </div>
+           <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl min-w-[120px]">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase">SÃ³cios Ativos</p>
+              <p className="text-blue-400 font-black text-lg">{stats.activeMembers} <span className="text-xs text-zinc-600">/ {stats.totalUsers}</span></p>
+           </div>
         </div>
       </div>
 
       {/* --- CHARTS & KPIs SECTION --- */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* MAIN CHART (Engagement & Sales) */}
+        
+        {/* MAIN CHART (Vendas Semanais) */}
         <div className="lg:col-span-2 bg-zinc-900/80 backdrop-blur-md p-6 rounded-3xl border border-zinc-800 relative overflow-hidden group">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <Activity size={18} className="text-emerald-500" /> Performance
-                Geral
+                <Activity size={18} className="text-emerald-500" /> Fluxo de Caixa
               </h3>
               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                Comparativo Acessos vs Vendas
+                Vendas aprovadas (Ãšltimos 7 dias)
               </p>
             </div>
-            {/* Legend */}
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]"></span>
-                <span className="text-[10px] text-zinc-300 font-bold">
-                  Acessos
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6]"></span>
-                <span className="text-[10px] text-zinc-300 font-bold">
-                  Vendas
-                </span>
-              </div>
-            </div>
+            <Link href="/admin/financeiro" className="text-xs text-emerald-500 hover:underline">Ver Detalhes</Link>
           </div>
 
-          {/* Area Chart using Recharts */}
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={dataArea}
-                margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
-              >
+              <AreaChart data={salesData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="colorPv" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#27272a"
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#71717a" }} dy={10} />
+                <Tooltip 
+                    formatter={(value: RechartsValue) => [`R$ ${Number(value || 0).toFixed(2)}`, "Vendas"]}
+                    contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", fontSize: "12px" }} 
+                    itemStyle={{ color: "#fff" }} 
                 />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: "#71717a" }}
-                  dy={10}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    borderColor: "#27272a",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  itemStyle={{ color: "#fff" }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="uv"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorUv)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="pv"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorPv)"
-                />
+                <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorVal)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -9085,198 +9051,115 @@ export default function AdminDashboard() {
 
         {/* SIDE COLUMN KPIs */}
         <div className="space-y-6">
-          {/* Sales Funnel (Event Revenue) */}
-          <div className="bg-zinc-900 p-5 rounded-3xl border border-zinc-800 relative overflow-hidden flex flex-col">
-            <div className="flex justify-between items-start mb-1">
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
-                Receita Evento (Funil)
-              </p>
-              <span className="bg-emerald-500/10 text-emerald-500 text-[10px] px-2 py-0.5 rounded font-bold border border-emerald-500/20">
-                +15%
-              </span>
-            </div>
-            {/* Funnel Chart */}
-            <div className="flex-1 min-h-[150px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      borderColor: "#27272a",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Funnel dataKey="value" data={dataFunnel} isAnimationActive>
-                    <LabelList
-                      position="right"
-                      fill="#fff"
-                      stroke="none"
-                      dataKey="name"
-                      fontSize={10}
-                    />
-                  </Funnel>
-                </FunnelChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
+          
           {/* Members by Plan (Pie Chart) */}
-          <div className="bg-zinc-900 p-5 rounded-3xl border border-zinc-800 flex items-center gap-5">
+          <div className="bg-zinc-900 p-5 rounded-3xl border border-zinc-800 flex items-center gap-5 relative overflow-hidden">
+             {/* Efeito visual de fundo */}
+             <div className="absolute -right-5 -top-5 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl"></div>
+
             <div className="relative w-24 h-24 shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={dataPie}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={25}
-                    outerRadius={40}
-                    paddingAngle={2}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {dataPie.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={45} paddingAngle={5} dataKey="value" stroke="none">
+                    {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={index === 0 ? '#3b82f6' : '#27272a'} />)}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      borderColor: "#27272a",
-                      borderRadius: "8px",
-                      fontSize: "10px",
-                    }}
-                  />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <span className="text-[10px] font-bold text-white">1.2k</span>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
+                <span className="text-lg font-black text-white">{stats.totalUsers > 0 ? ((stats.activeMembers / stats.totalUsers) * 100).toFixed(0) : 0}%</span>
               </div>
             </div>
 
-            <div className="flex-1 space-y-2">
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">
-                SÃ³cios Ativos
-              </p>
-              {dataPie.slice(0, 2).map((entry, index) => (
-                <div
-                  key={index}
-                  className="flex justify-between items-center text-xs"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: COLORS[index] }}
-                    ></div>
-                    <span className="text-zinc-300">{entry.name}</span>
-                  </div>
-                  <span className="font-bold text-white">{entry.value}</span>
-                </div>
-              ))}
+            <div className="flex-1 space-y-1">
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">AdesÃ£o SÃ³cios</p>
+              <div className="flex justify-between text-xs"><span className="text-zinc-300">Ativos</span><span className="font-bold text-white">{stats.activeMembers}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-zinc-500">Total Base</span><span className="font-bold text-zinc-500">{stats.totalUsers}</span></div>
             </div>
           </div>
 
-          {/* Top Products (Bar Chart) */}
-          <div className="bg-zinc-900 p-5 rounded-3xl border border-zinc-800">
-            <div className="flex justify-between items-center mb-2">
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
-                Vendas Semanais
-              </p>
-            </div>
-            <div className="h-32 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataBar}>
-                  <Bar
-                    dataKey="value"
-                    fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                    barSize={20}
-                  />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#71717a" }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#27272a" }}
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      borderColor: "#27272a",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Pending Orders Alert */}
+          <div className="bg-zinc-900 p-5 rounded-3xl border border-zinc-800 relative group hover:border-yellow-500/50 transition cursor-pointer">
+             <Link href="/admin/loja">
+                <div className="flex justify-between items-center mb-2">
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Pedidos Pendentes</p>
+                    <ShoppingBag size={14} className="text-yellow-500"/>
+                </div>
+                <div className="flex items-end gap-2">
+                    <span className="text-3xl font-black text-white">{stats.pendingOrders}</span>
+                    <span className="text-xs text-zinc-500 mb-1">aguardando aprovaÃ§Ã£o</span>
+                </div>
+                {stats.pendingOrders > 0 && (
+                    <div className="mt-3 w-full bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 text-center text-xs font-bold text-yellow-500 animate-pulse">
+                        Resolver Agora
+                    </div>
+                )}
+             </Link>
           </div>
+
         </div>
       </section>
 
-      {/* --- NOVA SEÃ‡ÃƒO: INTELIGÃŠNCIA & RANKINGS (ADICIONADA AQUI) --- */}
+      {/* --- SECTION: RANKINGS & TOP PRODUTOS --- */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* RANKING DE PÃGINAS MAIS ACESSADAS */}
+          {/* TOP PRODUTOS */}
           <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800 relative overflow-hidden">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                      <Globe size={18} className="text-blue-500" /> Top PÃ¡ginas
+                      <Package size={18} className="text-blue-500" /> Mais Vendidos
                   </h3>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase bg-zinc-800 px-2 py-1 rounded">Hoje</p>
+                  <p className="text-[10px] text-zinc-500 font-black uppercase bg-zinc-800 px-2 py-1 rounded">Geral</p>
               </div>
               
-              <div className="space-y-5">
-                  {topPages.map((page, i) => (
+              <div className="space-y-4">
+                  {topProducts.length > 0 ? topProducts.map((prod, i) => (
                       <div key={i} className="group relative">
-                          <div className="flex justify-between items-end mb-1 relative z-10">
+                          <div className="flex justify-between items-center mb-1 relative z-10">
                               <span className="text-xs font-bold text-white flex items-center gap-3">
                                   <span className={`w-5 h-5 flex items-center justify-center rounded bg-zinc-800 text-[10px] ${i === 0 ? 'text-yellow-500' : 'text-zinc-500'}`}>#{i+1}</span> 
-                                  {page.name}
+                                  {prod.name}
                               </span>
-                              <div className="text-right flex items-center gap-2">
-                                  <span className={`text-[10px] font-bold ${page.growth.includes('+') ? 'text-emerald-500' : 'text-red-500'}`}>{page.growth}</span>
-                                  <span className="text-[10px] font-mono text-zinc-400 block">{page.views.toLocaleString()}</span>
-                              </div>
+                              <span className="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">{prod.count} un</span>
                           </div>
-                          {/* Barra de Progresso */}
-                          <div className="w-full bg-black h-2 rounded-full overflow-hidden relative">
-                              <div 
-                                  className={`h-full rounded-full transition-all duration-1000 ${i === 0 ? 'bg-gradient-to-r from-blue-600 to-blue-400' : 'bg-zinc-700'}`} 
-                                  style={{ width: `${(page.views / 15000) * 100}%` }}
-                              ></div>
+                          {/* Barra Visual */}
+                          <div className="w-full bg-black h-1.5 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${i === 0 ? 'bg-blue-500' : 'bg-zinc-700'}`} style={{ width: `${(prod.count / (topProducts[0].count || 1)) * 100}%` }}></div>
                           </div>
                       </div>
-                  ))}
+                  )) : (
+                    <div className="text-center py-10 text-zinc-600 text-xs">Sem vendas registradas ainda.</div>
+                  )}
               </div>
           </div>
 
-          {/* PERFIS MAIS ACESSADOS (STALKERS) */}
+          {/* TOP PERFIS */}
           <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                      <MousePointerClick size={18} className="text-purple-500" /> Perfis Popstars
+                      <Crown size={18} className="text-purple-500" /> TubarÃµes do Rank
                   </h3>
+                  <Link href="/ranking" className="text-xs text-purple-500 hover:underline">Ver Todos</Link>
               </div>
               <div className="space-y-3">
-                  {topProfiles.map((profile, i) => (
-                      <div key={i} className="flex items-center gap-4 p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-purple-500/30 hover:bg-purple-900/10 transition group">
+                  {users.slice(0, 5).map((u, i) => (
+                      <div key={u.id} className="flex items-center gap-4 p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-purple-500/30 hover:bg-purple-900/10 transition group">
                           <div className="relative">
-                              <img src={profile.foto} className="w-12 h-12 rounded-full border-2 border-zinc-800 group-hover:border-purple-500 transition"/>
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-900 rounded-full flex items-center justify-center text-[10px] font-bold text-white border border-zinc-700">#{i+1}</div>
+                              <img src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} className="w-10 h-10 rounded-full border-2 border-zinc-800 group-hover:border-purple-500 transition object-cover"/>
+                              <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white border border-zinc-700 ${i === 0 ? 'bg-yellow-500 text-black' : 'bg-zinc-900'}`}>
+                                {i + 1}
+                              </div>
                           </div>
                           <div className="flex-1">
-                              <h4 className="text-sm font-bold text-white group-hover:text-purple-400 transition">{profile.name}</h4>
-                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wide">{profile.role}</p>
+                              <h4 className="text-sm font-bold text-white group-hover:text-purple-400 transition flex items-center gap-2">
+                                {u.nome}
+                                {u.tier && <span className="text-[9px] bg-zinc-800 px-1.5 rounded text-zinc-400 uppercase">{u.tier}</span>}
+                              </h4>
+                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wide">{u.role === 'admin' ? 'Administrador' : 'Membro'}</p>
                           </div>
                           <div className="text-right bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-800">
                               <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                                  <Eye size={12} className="text-purple-500"/> 
-                                  {profile.views}
+                                  <Star size={12} className="text-purple-500 fill-purple-500"/> 
+                                  {u.xp || 0} XP
                               </span>
                           </div>
                       </div>
@@ -9286,7 +9169,7 @@ export default function AdminDashboard() {
 
       </section>
 
-      {/* COACH DASHBOARD (ADMIN 3) */}
+      {/* COACH DASHBOARD */}
       {canManageTrainings && (
         <section>
           <Link
@@ -9304,15 +9187,9 @@ export default function AdminDashboard() {
                   Dashboard do Treinador
                 </h2>
                 <p className="text-emerald-300 font-medium flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1">
-                    <Trophy size={16} /> Rankings
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <ShieldAlert size={16} /> Faltas
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <ListChecks size={16} /> Chamada
-                  </span>
+                  <span className="flex items-center gap-1"><Trophy size={16} /> Rankings</span>
+                  <span className="flex items-center gap-1"><ShieldAlert size={16} /> Faltas</span>
+                  <span className="flex items-center gap-1"><ListChecks size={16} /> Chamada</span>
                 </p>
               </div>
             </div>
@@ -9323,7 +9200,7 @@ export default function AdminDashboard() {
         </section>
       )}
 
-      {/* CONTROL CENTER (BUTTONS) */}
+      {/* CONTROL CENTER */}
       {canManageEvents && (
         <section>
           <h2 className="text-lg font-black text-white uppercase tracking-tighter italic mb-6 flex items-center gap-3">
@@ -9331,125 +9208,26 @@ export default function AdminDashboard() {
           </h2>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {/* Row 1: Core Management */}
-            <AdminCard
-              icon={<Calendar size={24} />}
-              title="Eventos"
-              subtitle="Festas e Jogos"
-              href="/admin/eventos"
-              color="text-blue-400"
-              bgColor="bg-blue-500/10"
-              borderColor="border-blue-500/30"
-            />
-            <AdminCard
-              icon={<ShoppingBag size={24} />}
-              title="Loja"
-              subtitle="Produtos e Estoque"
-              href="/admin/loja"
-              color="text-yellow-400"
-              bgColor="bg-yellow-500/10"
-              borderColor="border-yellow-500/30"
-            />
-            <AdminCard
-              icon={<Users size={24} />}
-              title="UsuÃ¡rios"
-              subtitle="GestÃ£o de SÃ³cios"
-              href="/admin/usuarios"
-            />
-            <AdminCard
-              icon={<ShieldAlert size={24} />}
-              title="DenÃºncias"
-              subtitle="ModeraÃ§Ã£o"
-              href="/admin/denuncias"
-              color="text-red-500"
-              bgColor="bg-red-500/10"
-              borderColor="border-red-500/30"
-            />
+            <AdminCard icon={<Calendar size={24} />} title="Eventos" subtitle="Festas e Jogos" href="/admin/eventos" color="text-blue-400" bgColor="bg-blue-500/10" borderColor="border-blue-500/30" />
+            <AdminCard icon={<ShoppingBag size={24} />} title="Loja" subtitle="Produtos e Estoque" href="/admin/loja" color="text-yellow-400" bgColor="bg-yellow-500/10" borderColor="border-yellow-500/30" />
+            <AdminCard icon={<Users size={24} />} title="UsuÃ¡rios" subtitle="GestÃ£o de SÃ³cios" href="/admin/usuarios" />
+            <AdminCard icon={<ShieldAlert size={24} />} title="DenÃºncias" subtitle="ModeraÃ§Ã£o" href="/admin/denuncias" color="text-red-500" bgColor="bg-red-500/10" borderColor="border-red-500/30" />
 
-            {/* Row 2: Gamification */}
-            <AdminCard
-              icon={<Gamepad2 size={24} />}
-              title="Arena Games"
-              subtitle="Torneios E-Sports"
-              href="/admin/games"
-              color="text-purple-400"
-              bgColor="bg-purple-500/10"
-              borderColor="border-purple-500/30"
-            />
-            <AdminCard
-              icon={<Trophy size={24} />}
-              title="Gym Champ"
-              subtitle="Campeonatos Gym"
-              href="/admin/gym"
-              color="text-orange-400"
-              bgColor="bg-orange-500/10"
-              borderColor="border-orange-500/30"
-            />
-            <AdminCard
-              icon={<Star size={24} />}
-              title="Fidelidade"
-              subtitle="Recompensas XP"
-              href="/admin/fidelidade"
-              color="text-yellow-500"
-              bgColor="bg-yellow-500/10"
-              borderColor="border-yellow-500/30"
-            />
-            <AdminCard
-              icon={<Medal size={24} />}
-              title="Conquistas"
-              subtitle="Medalhas e Badges"
-              href="/admin/conquistas"
-              color="text-yellow-500"
-              bgColor="bg-yellow-500/10"
-              borderColor="border-yellow-500/30"
-            />
+            <AdminCard icon={<Gamepad2 size={24} />} title="Arena Games" subtitle="Torneios E-Sports" href="/admin/games" color="text-purple-400" bgColor="bg-purple-500/10" borderColor="border-purple-500/30" />
+            <AdminCard icon={<Trophy size={24} />} title="Gym Champ" subtitle="Campeonatos Gym" href="/admin/gym" color="text-orange-400" bgColor="bg-orange-500/10" borderColor="border-orange-500/30" />
+            <AdminCard icon={<Star size={24} />} title="Fidelidade" subtitle="Recompensas XP" href="/admin/fidelidade" color="text-yellow-500" bgColor="bg-yellow-500/10" borderColor="border-yellow-500/30" />
+            <AdminCard icon={<Medal size={24} />} title="Conquistas" subtitle="Medalhas e Badges" href="/admin/conquistas" color="text-yellow-500" bgColor="bg-yellow-500/10" borderColor="border-yellow-500/30" />
 
-            {/* Row 3: Institutional & Config (NOVO BOTÃƒO AQUI) */}
-            <AdminCard
-              icon={<Crown size={24} />}
-              title="Planos"
-              subtitle="PreÃ§os e BenefÃ­cios"
-              href="/admin/planos"
-              color="text-emerald-400"
-              bgColor="bg-emerald-500/10"
-              borderColor="border-emerald-500/30"
-            />
-            <AdminCard
-              icon={<Megaphone size={24} />}
-              title="Parceiros"
-              subtitle="Clube de BenefÃ­cios"
-              href="/admin/parceiros"
-              color="text-pink-400"
-              bgColor="bg-pink-500/10"
-              borderColor="border-pink-500/30"
-            />
-            <AdminCard
-              icon={<History size={24} />}
-              title="HistÃ³rico"
-              subtitle="Linha do Tempo"
-              href="/admin/historico"
-            />
-            <AdminCard
-              icon={<BookOpen size={24} />}
-              title="Guia do App"
-              subtitle="Tutoriais de Ajuda"
-              href="/admin/guia"
-            />
-            {/* BOTÃƒO DE CONFIGURAÃ‡Ã•ES ADICIONADO AQUI */}
-            <AdminCard
-              icon={<Settings size={24} />}
-              title="ConfiguraÃ§Ãµes"
-              subtitle="App & Menus"
-              href="/admin/configuracoes"
-              color="text-zinc-300"
-              bgColor="bg-zinc-800"
-              borderColor="border-zinc-700"
-            />
+            <AdminCard icon={<Crown size={24} />} title="Planos" subtitle="PreÃ§os e BenefÃ­cios" href="/admin/planos" color="text-emerald-400" bgColor="bg-emerald-500/10" borderColor="border-emerald-500/30" />
+            <AdminCard icon={<Megaphone size={24} />} title="Parceiros" subtitle="Clube de BenefÃ­cios" href="/admin/parceiros" color="text-pink-400" bgColor="bg-pink-500/10" borderColor="border-pink-500/30" />
+            <AdminCard icon={<History size={24} />} title="HistÃ³rico" subtitle="Linha do Tempo" href="/admin/historico" />
+            <AdminCard icon={<BookOpen size={24} />} title="Guia do App" subtitle="Tutoriais de Ajuda" href="/admin/guia" />
+            <AdminCard icon={<Settings size={24} />} title="ConfiguraÃ§Ãµes" subtitle="App & Menus" href="/admin/configuracoes" color="text-zinc-300" bgColor="bg-zinc-800" borderColor="border-zinc-700" />
           </div>
         </section>
       )}
 
-      {/* PRESIDENCY AREA (ADMIN 2) */}
+      {/* PRESIDENCY AREA */}
       {canManageAdmins && (
         <section className="mt-12 pt-10 border-t border-white/5">
           <h2 className="text-lg font-black text-red-500 uppercase tracking-tighter italic mb-6 flex items-center gap-3">
@@ -9483,44 +9261,34 @@ export default function AdminDashboard() {
 }
 
 // Reusable Card Component
+interface AdminCardProps {
+    icon: React.ReactNode;
+    title: string;
+    subtitle: string;
+    href: string;
+    color?: string;
+    bgColor?: string;
+    borderColor?: string;
+}
+
 function AdminCard({
-  icon,
-  title,
-  subtitle,
-  href,
-  color = "text-zinc-400",
-  bgColor = "bg-zinc-900",
+  icon, title, subtitle, href, 
+  color = "text-zinc-400", 
+  bgColor = "bg-zinc-900", 
   borderColor = "border-zinc-800",
-}: any) {
+}: AdminCardProps) {
   return (
     <Link
       href={href}
       className={`group ${bgColor} p-5 rounded-3xl border ${borderColor} flex flex-col justify-between h-40 relative overflow-hidden hover:scale-[1.02] transition-all hover:shadow-xl`}
     >
-      <div
-        className={`absolute top-0 right-0 p-5 opacity-5 group-hover:opacity-20 transition-opacity scale-150 ${color}`}
-      >
-        {icon}
-      </div>
-
-      <div
-        className={`p-3 rounded-2xl bg-black/50 w-fit mb-4 backdrop-blur-md border border-white/5 ${color} group-hover:bg-white/10 transition-colors`}
-      >
-        {icon}
-      </div>
+      <div className={`absolute top-0 right-0 p-5 opacity-5 group-hover:opacity-20 transition-opacity scale-150 ${color}`}>{icon}</div>
+      <div className={`p-3 rounded-2xl bg-black/50 w-fit mb-4 backdrop-blur-md border border-white/5 ${color} group-hover:bg-white/10 transition-colors`}>{icon}</div>
       <div>
-        <h3 className="font-black text-white text-lg uppercase tracking-tight leading-none mb-1">
-          {title}
-        </h3>
-        <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">
-          {subtitle}
-        </p>
+        <h3 className="font-black text-white text-lg uppercase tracking-tight leading-none mb-1">{title}</h3>
+        <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">{subtitle}</p>
       </div>
-      <div
-        className={`absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0 ${color}`}
-      >
-        <ArrowRight size={20} />
-      </div>
+      <div className={`absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0 ${color}`}><ArrowRight size={20} /></div>
     </Link>
   );
 }
@@ -14235,26 +14003,26 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, Calendar, Loader2, Target, Users, Heart, 
   CheckCircle, ChevronRight, ChevronLeft, ShoppingBag, 
-  Star, Wallet, Dumbbell, Medal, ExternalLink
+  Star, Wallet, Dumbbell, Medal, ExternalLink, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext'; 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { db } from '../../lib/firebase'; 
 import { 
-    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot 
+    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, where 
 } from 'firebase/firestore';
 
-// --- TIPAGEM BASEADA NO SEU PRINT ---
+// --- TIPAGEM ---
 interface Evento {
   id: string;
   titulo: string;
   data: string;
   local: string;
-  imagem: string; // âœ… Corrigido conforme print
+  imagem: string;
   tipo: string;
-  likesList: string[]; // âœ… Corrigido conforme print
-  participantes: string[]; // âœ… Corrigido conforme print
+  likesList: string[];
+  participantes: string[];
   imagePositionY?: number;
 }
 
@@ -14266,7 +14034,13 @@ interface Produto {
     likes: string[];
 }
 
-// --- CARD EVENTO ---
+interface Liga {
+    id: string;
+    nome: string;
+    logo: string;
+}
+
+// --- COMPONENTE: CARD EVENTO ---
 const EventCardItem = ({ evt, userId, onToggleLike }: any) => {
   const isLiked = evt.likesList?.includes(userId);
   const isGoing = evt.participantes?.includes(userId);
@@ -14311,21 +14085,52 @@ const EventCardItem = ({ evt, userId, onToggleLike }: any) => {
   );
 };
 
-// --- CARD PRODUTO ---
-const ProductCard = ({ prod }: any) => (
-    <Link href={`/loja/${prod.id}`} className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col h-[450px] snap-center">
-        <div className="h-64 bg-black relative">
-            <img src={prod.img} className="w-full h-full object-cover" />
-        </div>
-        <div className="p-6 flex justify-between items-center">
-            <div>
-                <h3 className="font-black text-xl uppercase text-white">{prod.nome}</h3>
-                <p className="text-emerald-400 font-black text-lg">R$ {Number(prod.preco).toFixed(2)}</p>
+// --- COMPONENTE: CARD PRODUTO (ID 692 - Likes e Turmas) ---
+const ProductCard = ({ prod, userId, onToggleLike }: any) => {
+    const isLiked = prod.likes?.includes(userId);
+    
+    // Mock visual das turmas que curtiram (Visual solicitado no ID 692)
+    // Em produÃ§Ã£o, isso viria calculado do backend
+    const turmasMock = [1, 5, 8]; 
+
+    return (
+        <div className="bg-zinc-900 min-w-[280px] w-[280px] rounded-3xl overflow-hidden border border-zinc-800 flex flex-col h-[420px] snap-center group relative">
+            <Link href={`/loja/${prod.id}`} className="h-56 bg-black relative block overflow-hidden">
+                <img src={prod.img} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+            </Link>
+            
+            <div className="p-5 flex flex-col justify-between flex-1">
+                <div>
+                    <h3 className="font-black text-lg uppercase text-white leading-tight line-clamp-2">{prod.nome}</h3>
+                    <p className="text-emerald-400 font-black text-xl mt-2">R$ {Number(prod.preco).toFixed(2)}</p>
+                </div>
+                
+                {/* Footer do Card: Like + Lista de Turmas */}
+                <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                    {/* BotÃ£o Like */}
+                    <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleLike(prod.id, isLiked); }} 
+                        className={`p-2 rounded-full border transition ${isLiked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'}`}
+                    >
+                        <Heart size={18} className={isLiked ? 'fill-current' : ''}/>
+                    </button>
+
+                    {/* Lista Visual de Turmas (+5) */}
+                    <div className="flex items-center">
+                        <div className="flex -space-x-2">
+                             {turmasMock.map(t => (
+                                 <div key={t} className="w-6 h-6 rounded-full border border-zinc-900 overflow-hidden bg-zinc-800">
+                                     <img src={`/turma${t}.jpeg`} className="w-full h-full object-cover"/>
+                                 </div>
+                             ))}
+                        </div>
+                        <span className="text-[10px] font-bold text-zinc-500 ml-2">+5</span>
+                    </div>
+                </div>
             </div>
-            <div className="bg-white text-black p-3 rounded-full"><ChevronRight/></div>
         </div>
-    </Link>
-);
+    );
+}
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -14334,48 +14139,69 @@ export default function DashboardPage() {
   const [events, setEvents] = useState<Evento[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
+  const [ligas, setLigas] = useState<Liga[]>([]);
   const [mensagens, setMensagens] = useState<any[]>([]);
   const [treinos, setTreinos] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // Refs para Scroll
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const productsScrollRef = useRef<HTMLDivElement>(null);
+  const ligasScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 1. Eventos (Ordenado por Data)
+    // 1. Eventos
     const unsubEvents = onSnapshot(query(collection(db, "eventos"), orderBy("data", "asc"), limit(5)), (snap) => {
         setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as Evento)));
     });
 
     // 2. Produtos
-    const unsubProds = onSnapshot(query(collection(db, "produtos"), limit(5)), (snap) => {
+    const unsubProds = onSnapshot(query(collection(db, "produtos"), limit(8)), (snap) => {
         setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Produto)));
     });
 
-    // 3. Parceiros (Ativos)
+    // 3. Parceiros (Todos ativos)
     const unsubParceiros = onSnapshot(query(collection(db, "parceiros")), (snap) => {
         setParceiros(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p:any) => p.status === 'active'));
     });
 
-    // 4. Comunidade (Mensagens)
+    // 4. Ligas (ID 693 - Busca Ligas para Carrossel)
+    const unsubLigas = onSnapshot(query(collection(db, "ligas")), (snap) => {
+        setLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Liga)));
+    });
+
+    // 5. Comunidade
     const unsubMsgs = onSnapshot(query(collection(db, "comunidade"), orderBy("timestamp", "desc"), limit(2)), (snap) => {
         setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    // 5. Treinos (Mosaico)
+    // 6. Treinos
     const unsubTreinos = onSnapshot(query(collection(db, "treinos"), limit(4)), (snap) => {
         setTreinos(snap.docs.map(d => d.data().imagem).filter(Boolean));
         setLoadingData(false);
     });
 
-    return () => { unsubEvents(); unsubProds(); unsubParceiros(); unsubMsgs(); unsubTreinos(); };
+    return () => { unsubEvents(); unsubProds(); unsubParceiros(); unsubMsgs(); unsubTreinos(); unsubLigas(); };
   }, []);
 
-  const scroll = (ref: any, dir: 'left' | 'right') => { ref.current?.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' }); };
+  const scroll = (ref: any, dir: 'left' | 'right') => { ref.current?.scrollBy({ left: dir === 'left' ? -280 : 280, behavior: 'smooth' }); };
   
+  // Handlers de Like
   const handleEventLike = async (id: string, state: boolean) => { 
       if(!user) return; 
       await updateDoc(doc(db,"eventos",id), { likesList: state ? arrayRemove(user.uid) : arrayUnion(user.uid) }); 
+  };
+
+  const handleProductLike = async (id: string, state: boolean) => {
+      if(!user) return;
+      // Assume campo 'likes' no produto
+      await updateDoc(doc(db, "produtos", id), { likes: state ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+  };
+
+  const handleMessageLike = async (id: string, currentLikes: string[]) => {
+      if(!user) return;
+      const isLiked = currentLikes?.includes(user.uid);
+      await updateDoc(doc(db, "comunidade", id), { likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
   };
 
   const formatTime = (ts: any) => { 
@@ -14384,6 +14210,10 @@ export default function DashboardPage() {
       const diff = Math.floor((new Date().getTime() - d.getTime()) / 60000); 
       return diff < 60 ? `${diff}min` : `${Math.floor(diff/60)}h`; 
   };
+
+  // SeparaÃ§Ã£o Parceiros Ouro (ID 691)
+  const parceirosOuro = parceiros.filter(p => p.categoria === 'ouro' || p.plano === 'ouro');
+  const parceirosComuns = parceiros.filter(p => p.categoria !== 'ouro' && p.plano !== 'ouro');
 
   if (loading || loadingData) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
 
@@ -14407,7 +14237,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 1. CARTEIRINHA */}
-      <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group">
+      <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group shadow-2xl">
           <img src={`/turma${userData?.turma?.replace('T','') || '1'}.jpeg`} className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-50 transition" />
           <div className="absolute inset-0 bg-gradient-to-r from-black p-6 flex flex-col justify-center">
               <div className="flex items-center gap-2 mb-2">
@@ -14418,6 +14248,28 @@ export default function DashboardPage() {
               <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest mt-1">Turma {userData?.turma || "Geral"}</p>
           </div>
       </Link>
+
+      {/* --- ID 691: PARCEIROS OURO (VISUAL CHAMATIVO NO TOPO) --- */}
+      {parceirosOuro.length > 0 && (
+          <div className="relative overflow-hidden rounded-3xl p-[1px] bg-gradient-to-r from-yellow-600 via-yellow-300 to-yellow-600 animate-shine bg-[length:200%_100%]">
+              <div className="bg-[#1a1500] rounded-[23px] p-5 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 p-3 opacity-20"><Star size={40} className="text-yellow-400 fill-yellow-400 animate-pulse"/></div>
+                 <h2 className="text-xs font-black text-yellow-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                     <Star size={14} className="fill-yellow-500"/> Parceiros Master
+                 </h2>
+                 <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x">
+                     {parceirosOuro.map(p => (
+                         <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[80px] flex flex-col items-center gap-2 snap-start group">
+                             <div className="w-16 h-16 rounded-full bg-black border-2 border-yellow-500/50 p-1 group-hover:scale-110 transition shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+                                 <img src={p.imgLogo} className="w-full h-full rounded-full object-cover"/>
+                             </div>
+                             <span className="text-[10px] font-bold text-yellow-200/80 truncate max-w-[80px]">{p.nome}</span>
+                         </Link>
+                     ))}
+                 </div>
+              </div>
+          </div>
+      )}
 
       {/* 2. SHARK ROUND & TREINOS */}
       <div className="grid grid-cols-2 gap-4">
@@ -14460,14 +14312,17 @@ export default function DashboardPage() {
           </Link>
       </div>
 
-      {/* 4. CARROSSEL EVENTOS */}
+      {/* 4. CARROSSEL EVENTOS (ID 690 - Link "Ver todos") */}
       {events.length > 0 && (
           <div className="relative group/car">
               <div className="flex items-center justify-between mb-4 px-1">
                   <h2 className="text-sm font-black uppercase tracking-widest mb-0 flex items-center gap-2"><Calendar size={16} className="text-emerald-500"/> Eventos</h2>
-                  <div className="flex gap-2">
-                      <button onClick={() => scroll(eventsScrollRef, 'left')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronLeft size={16}/></button>
-                      <button onClick={() => scroll(eventsScrollRef, 'right')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronRight size={16}/></button>
+                  <div className="flex items-center gap-3">
+                      <Link href="/eventos" className="text-[10px] font-bold text-zinc-500 hover:text-emerald-500 uppercase transition">Ver todos</Link>
+                      <div className="flex gap-2">
+                          <button onClick={() => scroll(eventsScrollRef, 'left')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronLeft size={16}/></button>
+                          <button onClick={() => scroll(eventsScrollRef, 'right')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronRight size={16}/></button>
+                      </div>
                   </div>
               </div>
               <div ref={eventsScrollRef} className="flex overflow-x-auto scrollbar-hide snap-x snap-mandatory gap-4">
@@ -14476,72 +14331,118 @@ export default function DashboardPage() {
           </div>
       )}
 
-      {/* 5. PARCEIROS (Carrossel Box) */}
-      {parceiros.length > 0 && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-6 relative overflow-hidden">
-               <div className="flex items-center justify-between mb-5 relative z-10">
-                 <h2 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Users size={16} className="text-blue-500"/> Parceiros</h2>
-                 <Link href="/parceiros" className="text-[10px] text-blue-400 font-bold bg-blue-900/20 px-3 py-1.5 rounded-full hover:bg-blue-900/40 transition">Ver todos</Link>
-               </div>
-               <div className="flex overflow-x-auto gap-4 scrollbar-hide snap-x relative z-10 pb-2">
-                   {parceiros.map((p: any) => (
-                       <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[140px] h-36 bg-black rounded-2xl flex flex-col items-center justify-center gap-3 snap-start group active:scale-95 transition relative overflow-hidden border border-zinc-800">
-                           <div className="absolute inset-0">
-                               <img src={p.imgCapa || "/placeholder.jpg"} className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition"/>
-                               <div className="absolute inset-0 bg-black/40"/>
-                           </div>
-                           <div className="w-14 h-14 bg-black rounded-full border-2 border-zinc-600 flex items-center justify-center overflow-hidden shadow-xl relative z-10">
-                               <img src={p.imgLogo} className="w-full h-full object-cover"/>
-                           </div>
-                           <div className="text-center relative z-10 px-2 w-full">
-                               <h4 className="text-xs font-bold text-white truncate">{p.nome}</h4>
-                           </div>
+      {/* --- ID 693: LIGAS (Carrossel DinÃ¢mico) --- */}
+      <div className="space-y-4">
+           <div className="flex items-center justify-between px-1">
+               <h2 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Users size={16} className="text-blue-500"/> Ligas AcadÃªmicas</h2>
+               <Link href="/ligas_unitau" className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1">Ver todas <ExternalLink size={10}/></Link>
+           </div>
+           
+           {/* Carrossel de Logos das Ligas */}
+           <div className="relative group/ligas">
+               {/* BotÃ£o de scroll manual se tiver muitas ligas */}
+               {ligas.length > 4 && (
+                   <button onClick={() => scroll(ligasScrollRef, 'right')} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-black/80 rounded-full text-white opacity-0 group-hover/ligas:opacity-100 transition"><ChevronRight size={16}/></button>
+               )}
+               
+               <div ref={ligasScrollRef} className="flex gap-4 overflow-x-auto scrollbar-hide snap-x px-1">
+                   {ligas.length > 0 ? ligas.map(liga => (
+                       <Link href={`/ligas/${liga.id}`} key={liga.id} className="min-w-[80px] flex flex-col items-center gap-2 snap-start group cursor-pointer">
+                            <div className="w-20 h-20 rounded-2xl bg-zinc-900 border border-zinc-800 p-2 group-hover:border-blue-500 transition shadow-lg">
+                                <img src={liga.logo || "/placeholder_liga.png"} className="w-full h-full object-contain drop-shadow-md"/>
+                            </div>
                        </Link>
-                   ))}
+                   )) : (
+                       // Skeleton/Placeholder se nÃ£o tiver ligas
+                       <div className="w-full h-24 bg-zinc-900/50 rounded-2xl border border-dashed border-zinc-800 flex items-center justify-center text-zinc-600 text-xs">
+                           Em breve
+                       </div>
+                   )}
                </div>
-          </div>
-      )}
+           </div>
+      </div>
 
-      {/* 6. CARROSSEL LOJA */}
+      {/* 5. LOJA (ID 695 - Carrossel com BotÃµes) */}
       {produtos.length > 0 && (
           <div className="relative group/car">
-              <h2 className="text-sm font-black uppercase tracking-widest mb-4 px-1 flex items-center gap-2"><ShoppingBag size={16} className="text-purple-500"/> Lojinha</h2>
+              <div className="flex items-center justify-between mb-4 px-1">
+                  <h2 className="text-sm font-black uppercase tracking-widest mb-0 flex items-center gap-2"><ShoppingBag size={16} className="text-purple-500"/> Lojinha</h2>
+                  <div className="flex items-center gap-3">
+                      <Link href="/loja" className="text-[10px] font-bold text-zinc-500 hover:text-purple-500 uppercase transition">Ver todos</Link>
+                      <div className="flex gap-2">
+                          <button onClick={() => scroll(productsScrollRef, 'left')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronLeft size={16}/></button>
+                          <button onClick={() => scroll(productsScrollRef, 'right')} className="p-1.5 bg-zinc-900 rounded-full border border-zinc-800 text-zinc-400 hover:text-white"><ChevronRight size={16}/></button>
+                      </div>
+                  </div>
+              </div>
               <div ref={productsScrollRef} className="flex overflow-x-auto scrollbar-hide snap-x snap-mandatory gap-4">
-                  {produtos.map(p => <ProductCard key={p.id} prod={p} />)}
+                  {produtos.map(p => <ProductCard key={p.id} prod={p} userId={userData?.uid} onToggleLike={handleProductLike} />)}
               </div>
           </div>
       )}
 
-      {/* 7. LIGAS UNITAU */}
-      <Link href="/ligas_unitau" className="bg-blue-900/10 border border-blue-500/20 p-5 rounded-2xl flex items-center justify-between active:scale-95 transition hover:bg-blue-900/20 shadow-lg">
-           <div className="flex items-center gap-4">
-               <div className="bg-blue-500 p-3 rounded-xl text-black shadow-[0_0_15px_rgba(59,130,246,0.4)]"><Users size={20}/></div>
-               <div>
-                   <h4 className="text-base font-black text-white uppercase italic">Ligas AcadÃªmicas</h4>
-                   <p className="text-xs text-zinc-400 font-medium">Conecte-se com a UNITAU.</p>
-               </div>
-           </div>
-           <ExternalLink size={20} className="text-blue-500"/>
-      </Link>
+      {/* 6. PARCEIROS COMUNS (Carrossel Box) */}
+      {parceirosComuns.length > 0 && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-6 relative overflow-hidden">
+                <div className="flex items-center justify-between mb-5 relative z-10">
+                  <h2 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Users size={16} className="text-zinc-500"/> Parceiros</h2>
+                  <Link href="/parceiros" className="text-[10px] text-zinc-400 font-bold bg-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-700 transition">Ver todos</Link>
+                </div>
+                <div className="flex overflow-x-auto gap-4 scrollbar-hide snap-x relative z-10 pb-2">
+                    {parceirosComuns.map((p: any) => (
+                        <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[140px] h-36 bg-black rounded-2xl flex flex-col items-center justify-center gap-3 snap-start group active:scale-95 transition relative overflow-hidden border border-zinc-800">
+                            <div className="absolute inset-0">
+                                <img src={p.imgCapa || "/placeholder.jpg"} className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition"/>
+                                <div className="absolute inset-0 bg-black/40"/>
+                            </div>
+                            <div className="w-14 h-14 bg-black rounded-full border-2 border-zinc-600 flex items-center justify-center overflow-hidden shadow-xl relative z-10">
+                                <img src={p.imgLogo} className="w-full h-full object-cover"/>
+                            </div>
+                            <div className="text-center relative z-10 px-2 w-full">
+                                <h4 className="text-xs font-bold text-white truncate">{p.nome}</h4>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+          </div>
+      )}
 
-      {/* 8. COMUNIDADE */}
+      {/* 7. COMUNIDADE (ID 694 - Like Funcional e Link) */}
       <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural da Tuba</h2>
+            <h2 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                <MessageCircle size={14}/> Mural da Tuba
+            </h2>
             <Link href="/comunidade" className="text-[10px] font-bold text-emerald-500 hover:underline">Ver tudo</Link>
           </div>
-          {mensagens.length > 0 ? mensagens.map((msg: any) => (
-              <Link href="/comunidade" key={msg.id} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex gap-4 items-start active:scale-95 transition hover:bg-zinc-800/80">
-                  <img src={msg.avatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-black object-cover border border-zinc-700"/>
-                  <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between w-full gap-2 mb-1">
-                          <span className="text-sm font-bold text-white truncate">{msg.autor}</span>
-                          <span className="text-[10px] text-zinc-500 whitespace-nowrap">{formatTime(msg.timestamp)}</span>
+          {mensagens.length > 0 ? mensagens.map((msg: any) => {
+              const userLikedMsg = msg.likes?.includes(userData?.uid);
+              return (
+              <div key={msg.id} className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden relative group">
+                   <Link href="/comunidade" className="absolute inset-0 z-0"/> {/* Link cobre o card, mas botÃµes ficam em cima (z-10) */}
+                   
+                   <div className="p-4 flex gap-4 items-start relative z-0">
+                      <img src={msg.avatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-black object-cover border border-zinc-700"/>
+                      <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between w-full gap-2 mb-1">
+                              <span className="text-sm font-bold text-white truncate">{msg.autor}</span>
+                              <span className="text-[10px] text-zinc-500 whitespace-nowrap">{formatTime(msg.timestamp)}</span>
+                          </div>
+                          <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{msg.texto}</p>
                       </div>
-                      <p className="text-xs text-zinc-400 leading-relaxed line-clamp-1">{msg.texto}</p>
-                  </div>
-              </Link>
-          )) : (
+                   </div>
+
+                   {/* BotÃ£o de Like Funcional */}
+                   <div className="px-4 pb-3 flex justify-end relative z-10">
+                       <button 
+                          onClick={(e) => { e.preventDefault(); handleMessageLike(msg.id, msg.likes); }}
+                          className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full transition ${userLikedMsg ? 'text-red-500 bg-red-500/10' : 'text-zinc-500 hover:bg-zinc-800'}`}
+                       >
+                           <Heart size={12} className={userLikedMsg ? 'fill-current' : ''}/> {msg.likes?.length || 0}
+                       </button>
+                   </div>
+              </div>
+          )}) : (
               <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl">
                   <p className="text-zinc-600 text-xs italic">Nenhuma mensagem recente.</p>
               </div>
@@ -14553,6 +14454,14 @@ export default function DashboardPage() {
       <style jsx global>{`
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes shine {
+          0% { background-position: 200% center; }
+          100% { background-position: -200% center; }
+        }
+        .animate-shine {
+          animation: shine 4s linear infinite;
+        }
       `}</style>
     </div>
   );

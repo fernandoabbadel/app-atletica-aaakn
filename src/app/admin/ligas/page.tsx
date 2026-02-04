@@ -67,6 +67,7 @@ interface Liga {
   foto: string; // URL da logo
   logoBase64?: string; // Para compatibilidade
   visivel?: boolean; // Controle de visibilidade no Dashboard
+  ativa?: boolean; // Controle de ativação no Jogo (SharkRound)
   membros: Member[];
   eventos: LeagueEvent[];
   perguntas: PerguntaLiga[];
@@ -96,7 +97,7 @@ export default function AdminLigasPage() {
 
   // Form State Principal
   const [formData, setFormData] = useState<Partial<Liga>>({
-    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
+    nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false, ativa: false,
     membros: [], eventos: [], perguntas: [], bizu: "", likes: 0
   });
 
@@ -105,15 +106,16 @@ export default function AdminLigasPage() {
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
 
-  // 1. BUSCAR LIGAS (CORRIGIDO: COLEÇÃO "ligas")
+  // 1. BUSCAR LIGAS (CORRIGIDO PARA ligas_config)
   useEffect(() => {
-    // ATENÇÃO: Mudado de "ligas_config" para "ligas" para puxar as ligas reais (LAAS, LAMEI, etc)
-    const q = query(collection(db, "ligas"), orderBy("nome", "asc"));
+    // Agora aponta para a coleção correta
+    const q = query(collection(db, "ligas_config"), orderBy("nome", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         visivel: doc.data().visivel || false,
+        ativa: doc.data().ativa || false,
         membros: doc.data().membros || [],
         eventos: doc.data().eventos || [],
         perguntas: doc.data().perguntas || []
@@ -137,7 +139,7 @@ export default function AdminLigasPage() {
 
   const handleOpenCreate = () => {
     setFormData({ 
-        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false,
+        nome: "", sigla: "", presidente: "", descricao: "", senha: "", foto: "", visivel: false, ativa: false,
         membros: [], eventos: [], perguntas: [], bizu: "", likes: 0 
     });
     setIsEditing(false);
@@ -156,7 +158,7 @@ export default function AdminLigasPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta Liga?")) return;
     try {
-      await deleteDoc(doc(db, "ligas", id)); // CORRIGIDO PARA "ligas"
+      await deleteDoc(doc(db, "ligas_config", id)); // CORRIGIDO
       addToast("Liga removida com sucesso.", "success");
     } catch (e) {
       addToast("Erro ao remover.", "error");
@@ -167,7 +169,7 @@ export default function AdminLigasPage() {
   const toggleVisibility = async (liga: Liga) => {
       const novoStatus = !liga.visivel;
       try {
-          await updateDoc(doc(db, "ligas", liga.id), { visivel: novoStatus }); // CORRIGIDO PARA "ligas"
+          await updateDoc(doc(db, "ligas_config", liga.id), { visivel: novoStatus }); // CORRIGIDO
           addToast(novoStatus ? "Liga visível no Dashboard! 📱" : "Liga ocultada do Dashboard.", novoStatus ? "success" : "info");
       } catch (e) {
           addToast("Erro ao atualizar visibilidade.", "error");
@@ -178,15 +180,18 @@ export default function AdminLigasPage() {
     if (!formData.nome || !formData.senha) return addToast("Nome e Senha são obrigatórios!", "error");
 
     try {
+      // Se não tiver ID definido manualmente (slug), cria um aleatório com addDoc
+      // OU usa o ID existente se for edição
       if (isEditing && editingId) {
-        await updateDoc(doc(db, "ligas", editingId), formData); // CORRIGIDO PARA "ligas"
+        await updateDoc(doc(db, "ligas_config", editingId), formData); // CORRIGIDO
         addToast("Liga atualizada!", "success");
       } else {
-        await addDoc(collection(db, "ligas"), formData); // CORRIGIDO PARA "ligas"
+        await addDoc(collection(db, "ligas_config"), formData); // CORRIGIDO
         addToast("Liga criada!", "success");
       }
       setShowModal(false);
     } catch (e) {
+      console.error(e);
       addToast("Erro ao salvar.", "error");
     }
   };
@@ -352,7 +357,7 @@ export default function AdminLigasPage() {
         </div>
       </main>
 
-      {/* MODAL (Visibilidade também no modal) */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-zinc-950 w-full max-w-2xl rounded-2xl border border-zinc-800 p-6 space-y-4 animate-in zoom-in-95 my-10">
@@ -388,7 +393,7 @@ export default function AdminLigasPage() {
                             <input type="text" placeholder="Sigla" className="w-full bg-zinc-900 border border-zinc-800 p-3 rounded-xl text-sm text-white outline-none uppercase" value={formData.sigla} onChange={e => setFormData({...formData, sigla: e.target.value})}/>
                         </div>
                         
-                        {/* CHECKBOX VISIBILIDADE */}
+                        {/* CHECKBOX VISIBILIDADE NO DASHBOARD */}
                         <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-xl border border-zinc-800">
                             <input 
                                 type="checkbox" 
@@ -398,7 +403,7 @@ export default function AdminLigasPage() {
                                 className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
                             />
                             <label htmlFor="visivelDash" className="text-sm text-white cursor-pointer select-none font-bold flex items-center gap-2">
-                                <MonitorPlay size={14} className="text-emerald-500"/> Mostrar no Dashboard (Carrossel)
+                                <MonitorPlay size={14} className="text-emerald-500"/> Mostrar no App/Dashboard
                             </label>
                         </div>
 
@@ -411,7 +416,6 @@ export default function AdminLigasPage() {
                     </div>
                 )}
 
-                {/* (Outras abas membros, eventos, shark mantidas iguais...) */}
                 {activeTab === 'membros' && (
                     <div className="space-y-3">
                         <button onClick={() => setSearchUserModal(true)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><UserPlus size={16}/> Adicionar Membro</button>

@@ -5,17 +5,26 @@ import {
   Lock, ArrowRight, Upload, Plus, Trash2, Save, LogOut, 
   Image as ImageIcon, Layout, Edit3, Eye, Bell, 
   Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Tag, 
-  Loader2, Ticket, MessageCircle, ShieldAlert, Flag
+  Loader2, Ticket, MessageCircle, ShieldAlert, Flag, CheckCircle2, HelpCircle, LayoutGrid
 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
-    collection, query, getDocs, updateDoc, doc, 
-    serverTimestamp, setDoc, addDoc, deleteDoc, onSnapshot, arrayUnion, orderBy
+  collection, query, getDocs, updateDoc, doc, 
+  serverTimestamp, setDoc, addDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, orderBy
 } from "firebase/firestore";
+import { logActivity } from "../../lib/logger"; 
 
-// --- TIPAGEM ---
+// --- TIPAGEM ESTRITA (Sem 'any') ---
+
+interface UserSearch {
+    id: string;
+    nome: string;
+    foto?: string;
+    turma?: string;
+}
+
 interface PerguntaLiga { 
     id: string; 
     texto: string; 
@@ -69,7 +78,7 @@ interface LeagueEvent {
     descricao: string; 
     linkEvento?: string; 
     globalEventId?: string;
-    pollQuestion?: string; // Pergunta inicial (criação rápida)
+    pollQuestion?: string; 
 }
 
 interface LigaData {
@@ -81,10 +90,10 @@ interface LigaData {
     likes?: number; 
     senha: string; 
     logoBase64?: string;
+    ativa?: boolean; 
     perguntas: PerguntaLiga[]; 
     membros?: Member[]; 
     eventos?: LeagueEvent[];
-    // Novo campo auxiliar para busca
     membrosIds?: string[];
 }
 
@@ -119,7 +128,7 @@ export default function LigasAdminPage() {
   // --- MODAL DE BUSCA DE USUÁRIOS ---
   const [searchUserModal, setSearchUserModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [allUsers, setAllUsers] = useState<any[]>([]); 
+  const [allUsers, setAllUsers] = useState<UserSearch[]>([]); 
 
   // --- MODAL DE EVENTOS (CRIAR/EDITAR) ---
   const [eventModal, setEventModal] = useState(false);
@@ -130,7 +139,7 @@ export default function LigasAdminPage() {
   const [novoLote, setNovoLote] = useState({ nome: "", preco: "", status: "ativo" as const });
 
   // --- 🦈 MODAL DE GESTÃO DE ENQUETES (NOVO) ---
-  const [pollModal, setPollModal] = useState<string | null>(null); // ID do evento global
+  const [pollModal, setPollModal] = useState<string | null>(null); 
   const [polls, setPolls] = useState<Poll[]>([]);
   const [novaEnquete, setNovaEnquete] = useState({ question: "", allowUserOptions: true });
 
@@ -145,7 +154,12 @@ export default function LigasAdminPage() {
                   setLigasDisponiveis(lista);
               }
               const snapUsers = await getDocs(collection(db, "users"));
-              const usersList = snapUsers.docs.map(d => ({ id: d.id, ...d.data() }));
+              const usersList = snapUsers.docs.map(d => ({ 
+                  id: d.id, 
+                  nome: d.data().nome,
+                  foto: d.data().foto,
+                  turma: d.data().turma
+              } as UserSearch));
               setAllUsers(usersList);
           } catch (e) { 
               console.error(e);
@@ -155,7 +169,7 @@ export default function LigasAdminPage() {
           }
       };
       fetchData();
-  }, []);
+  }, [addToast]);
 
   // 2. LISTENER DE ENQUETES (Quando modal abre)
   useEffect(() => {
@@ -190,6 +204,16 @@ export default function LigasAdminPage() {
               } as LigaData);
               setIsLoggedIn(true);
               addToast("Acesso autorizado!", "success");
+              
+              // LOG CORRIGIDO: ORDEM (ID, NOME, AÇÃO, RECURSO, DETALHES)
+              logActivity(
+                  target.id, 
+                  data.nome,
+                  "LOGIN",
+                  "ligas_config", 
+                  "Acessou o painel de gestão"
+              );
+
           } else { 
               addToast("Senha incorreta.", "error"); 
           }
@@ -240,7 +264,7 @@ export default function LigasAdminPage() {
       ? allUsers.filter(u => (u.nome || "").toLowerCase().includes(searchTerm.toLowerCase())) 
       : [];
 
-  const addMemberFromSearch = (u: any) => {
+  const addMemberFromSearch = (u: UserSearch) => {
       if (!ligaData) return;
       const newMember: Member = { 
           id: u.id, 
@@ -302,7 +326,7 @@ export default function LigasAdminPage() {
   const handleCreatePoll = async () => {
       if (!pollModal || !novaEnquete.question) return;
       try {
-          await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
+          const ref = await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
               question: novaEnquete.question,
               allowUserOptions: novaEnquete.allowUserOptions,
               options: [],
@@ -313,6 +337,16 @@ export default function LigasAdminPage() {
           });
           setNovaEnquete({ question: "", allowUserOptions: true });
           addToast("Enquete criada!", "success");
+          
+          // LOG CORRIGIDO: ORDEM CORRETA
+          await logActivity(
+              ligaData?.id || 'sys', 
+              ligaData?.nome || 'Sistema', 
+              "CREATE", 
+              "events_polls", 
+              `Enquete criada: ${novaEnquete.question}`
+          );
+
       } catch (e) { addToast("Erro ao criar enquete.", "error"); }
   };
 
@@ -322,6 +356,16 @@ export default function LigasAdminPage() {
       try {
           await deleteDoc(doc(db, "eventos", pollModal, "enquetes", pollId));
           addToast("Enquete excluída.", "info");
+          
+          // LOG CORRIGIDO
+          await logActivity(
+              ligaData?.id || 'sys', 
+              ligaData?.nome || 'Sistema', 
+              "DELETE", 
+              "events_polls", 
+              `Enquete ${pollId} excluída`
+          );
+
       } catch (e) { addToast("Erro ao excluir.", "error"); }
   };
 
@@ -408,6 +452,16 @@ export default function LigasAdminPage() {
           }
 
           addToast("Salvo e Sincronizado!", "success");
+          
+          // LOG CORRIGIDO
+          await logActivity(
+              ligaData.id, 
+              ligaData.nome, 
+              "UPDATE", 
+              "ligas_config", 
+              "Atualização de dados da Liga"
+          );
+
       } catch (e) { 
           console.error(e);
           addToast("Erro ao salvar.", "error"); 
@@ -419,11 +473,16 @@ export default function LigasAdminPage() {
   // --- CRUD PERGUNTAS (SHARK ROUND) ---
   const addQuestion = () => setLigaData(prev => prev ? ({...prev, perguntas: [...prev.perguntas, { id: Date.now().toString(), texto: "", alternativas: ["","","",""], correta: 0 }]}) : null);
   const removeQuestion = (idx: number) => setLigaData(prev => prev ? ({...prev, perguntas: prev.perguntas.filter((_, i) => i !== idx)}) : null);
-  const updateQuestion = (idx: number, field: string, val: any) => {
+  
+  // CORREÇÃO: Tipagem do valor
+  const updateQuestion = (idx: number, field: string, val: string | number) => {
       if(!ligaData) return;
       const novas = [...ligaData.perguntas];
-      if(field === 'texto') novas[idx].texto = val; else if(field === 'correta') novas[idx].correta = val; else {
-          const altIdx = parseInt(field.split('-')[1]); novas[idx].alternativas[altIdx] = val;
+      if(field === 'texto') novas[idx].texto = val as string; 
+      else if(field === 'correta') novas[idx].correta = val as number; 
+      else {
+          const altIdx = parseInt(field.split('-')[1]); 
+          novas[idx].alternativas[altIdx] = val as string;
       }
       setLigaData({ ...ligaData, perguntas: novas });
   };
@@ -509,6 +568,14 @@ export default function LigasAdminPage() {
                       </div>
                       <input type="text" className="w-full bg-black border border-yellow-900/50 rounded-lg p-3 text-sm outline-none focus:border-yellow-500" value={ligaData.bizu} onChange={e => setLigaData({...ligaData, bizu: e.target.value})} placeholder="Ex: Na ausculta cardíaca..."/>
                       {sendNotification && <p className="text-[9px] text-emerald-500 mt-2 flex items-center gap-1 animate-pulse"><Bell size={10}/> Uma notificação será enviada para todos ao salvar!</p>}
+                  </div>
+                  {/* Status no Jogo */}
+                  <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 flex justify-between items-center">
+                      <div>
+                          <p className="text-xs text-zinc-500 uppercase font-bold">Status no SharkRound</p>
+                          <p className={`text-sm font-black ${ligaData.ativa ? 'text-emerald-500' : 'text-zinc-600'}`}>{ligaData.ativa ? 'ATIVADA NO TABULEIRO' : 'AGUARDANDO ATIVAÇÃO'}</p>
+                      </div>
+                      <LayoutGrid className={ligaData.ativa ? "text-emerald-500" : "text-zinc-700"} size={24}/>
                   </div>
               </div>
           )}
@@ -639,7 +706,7 @@ export default function LigasAdminPage() {
                               </div>
                               <button onClick={async () => {
                                   if (!novaEnquete.question) return;
-                                  await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
+                                  const ref = await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
                                       question: novaEnquete.question,
                                       allowUserOptions: novaEnquete.allowUserOptions,
                                       options: [],
@@ -650,6 +717,14 @@ export default function LigasAdminPage() {
                                   });
                                   setNovaEnquete({ question: "", allowUserOptions: true });
                                   addToast("Enquete criada!", "success");
+                                  // LOG CORRIGIDO (5 Args)
+                                  await logActivity(
+                                      ligaData?.id || 'sys', 
+                                      ligaData?.nome || 'Sistema', 
+                                      "CREATE", 
+                                      "events_polls", 
+                                      { pollId: ref.id, eventId: pollModal, question: novaEnquete.question }
+                                  );
                               }} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs uppercase">Criar Enquete</button>
                           </div>
 
@@ -662,7 +737,17 @@ export default function LigasAdminPage() {
                                               <p className="text-[10px] text-zinc-500">{poll.options.length} opções • {poll.allowUserOptions ? "Aberta" : "Fechada"}</p>
                                           </div>
                                           <button onClick={async () => {
-                                              if(confirm("Excluir enquete?")) await deleteDoc(doc(db, "eventos", pollModal, "enquetes", poll.id));
+                                              if(confirm("Excluir enquete?")) {
+                                                  await deleteDoc(doc(db, "eventos", pollModal, "enquetes", poll.id));
+                                                  // LOG CORRIGIDO
+                                                  await logActivity(
+                                                      ligaData?.id || 'sys', 
+                                                      ligaData?.nome || 'Sistema', 
+                                                      "DELETE", 
+                                                      "events_polls", 
+                                                      { pollId: poll.id, eventId: pollModal }
+                                                  );
+                                              }
                                           }} className="text-zinc-600 hover:text-red-500 transition"><Trash2 size={16}/></button>
                                       </div>
                                       <div className="space-y-1 bg-black/20 p-2 rounded-lg max-h-40 overflow-y-auto custom-scrollbar">

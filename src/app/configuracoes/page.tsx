@@ -4,17 +4,17 @@ import React, { useState, useEffect } from "react";
 import {
   ArrowLeft, User, Bell, Shield, LogOut, ChevronRight, HelpCircle,
   FileText, Smartphone, Volume2, MessageSquarePlus, Settings,
-  Trash2, Lock, Power, PowerOff
+  Trash2, Lock, Power, PowerOff, AlertTriangle, Loader2 // <--- Loader2 Adicionado
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { db, auth } from "../../lib/firebase";
-import { doc, onSnapshot, deleteDoc, updateDoc } from "firebase/firestore";
-import { deleteUser, signOut } from "firebase/auth";
+import { doc, onSnapshot, updateDoc, deleteField } from "firebase/firestore"; // <--- deleteField Adicionado
+import { deleteUser } from "firebase/auth";
+import { logActivity } from "../../lib/logger";
 
-// Mapeamento de Ícones
 const ICON_MAP: Record<string, any> = { 
     User, Shield, Wallet: Smartphone, Bell, Volume2, 
     MessageSquare: MessageSquarePlus, HelpCircle, FileText, 
@@ -26,12 +26,10 @@ export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { addToast } = useToast();
   
-  // 🦈 ESTADO DINÂMICO
   const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Carregar Menu do Firebase
   useEffect(() => {
       const unsub = onSnapshot(doc(db, "app_config", "menu"), (snap) => {
           if (snap.exists()) {
@@ -42,16 +40,13 @@ export default function SettingsPage() {
       return () => unsub();
   }, []);
 
-  // --- AÇÃO 1: ATIVAR / DESATIVAR CONTA (MODO CONVIDADO) ---
+  // --- AÇÃO 1: DESATIVAR (Pausar) ---
   const handleToggleAccount = async () => {
     if (!user) return;
-    
-    // Verifica se está ativo
     const isActive = user.status === 'ativo';
-    
     const confirmMsg = isActive 
-        ? "Deseja desativar sua conta temporariamente?\n\nVocê entrará no MODO CONVIDADO (acesso limitado) até reativar."
-        : "Deseja reativar sua conta?\n\nSeus acessos e privilégios originais serão restaurados.";
+        ? "⏸️ PAUSAR CONTA?\n\nVocê ficará como 'Convidado'. Seus dados, XP e histórico serão mantidos, mas você perderá acesso a descontos e áreas exclusivas até reativar."
+        : "▶️ REATIVAR CONTA?\n\nSeus privilégios originais serão restaurados imediatamente.";
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -60,25 +55,26 @@ export default function SettingsPage() {
         const userRef = doc(db, "users", user.uid);
         
         if (isActive) {
-            // DESATIVAR -> VIRA GUEST
             await updateDoc(userRef, {
                 status: 'paused',
                 role: 'guest',
-                saved_role: user.role
+                saved_role: user.role, // Salva o cargo para restaurar depois
+                updatedAt: new Date()
             });
+            await logActivity(user.uid, user.nome, "UPDATE", "Configurações", "Pausou a conta");
             addToast("Conta pausada. Modo Convidado ativado. 💤", "info");
         } else {
-            // REATIVAR -> RESTAURA
             const roleToRestore = user.saved_role || 'user';
             await updateDoc(userRef, {
                 status: 'ativo',
                 role: roleToRestore,
-                saved_role: null
+                saved_role: null,
+                updatedAt: new Date()
             });
+            await logActivity(user.uid, user.nome, "UPDATE", "Configurações", "Reativou a conta");
             addToast("Conta reativada! Bem-vindo de volta! 🦈", "success");
         }
     } catch (e) {
-        console.error(e);
         addToast("Erro ao atualizar status.", "error");
     } finally {
         setActionLoading(false);
@@ -87,32 +83,52 @@ export default function SettingsPage() {
 
   // --- AÇÃO 2: LOGOUT ---
   const handleLogout = async () => {
-    if (window.confirm("Tem certeza que deseja sair?") && logout) {
+    if (window.confirm("Sair do aplicativo?")) {
       await logout();
       router.push("/");
     }
   };
 
-  // --- AÇÃO 3: EXCLUIR CONTA ---
+  // --- AÇÃO 3: EXCLUIR CONTA (Soft Delete + Anonimização) ---
   const handleDeleteAccount = async () => {
-    const confirmText = prompt("⚠️ PERIGO: Para excluir sua conta permanentemente, digite DELETAR:");
-    if (confirmText !== "DELETAR") return;
-
+    const confirmText = prompt("🚨 ATENÇÃO: EXCLUSÃO DEFINITIVA\n\nEssa ação é irreversível. Seus dados pessoais serão apagados, mas seus comentários e histórico financeiro permanecerão como 'Usuário Excluído' para auditoria.\n\nPara confirmar, digite DELETAR:");
+    
+    if (confirmText !== "DELETAR") return addToast("Ação cancelada.", "info");
     if (!user || !auth.currentUser) return;
 
     try {
         setActionLoading(true);
-        await deleteDoc(doc(db, "users", user.uid));
+
+        // 1. Soft Delete no Firestore (Anonimização)
+        await updateDoc(doc(db, "users", user.uid), {
+            nome: "Usuário Excluído",
+            email: "excluido@aaakn.com",
+            foto: "https://github.com/shadcn.png", // Avatar padrão
+            status: "deleted",
+            role: "banned",
+            turma: "N/A",
+            deletedAt: new Date(),
+            // Removemos dados sensíveis usando deleteField()
+            cpf: deleteField(), 
+            telefone: deleteField()
+        });
+
+        await logActivity(user.uid, "Ex-Usuário", "DELETE", "Conta", "Excluiu a própria conta (Soft Delete)");
+
+        // 2. Exclusão no Auth (Impede login futuro)
         await deleteUser(auth.currentUser);
-        addToast("Conta excluída. Foi uma honra, tubarão! 🌊", "info");
+
+        addToast("Sua conta foi excluída. Até logo! 👋", "info");
         router.push("/");
+        
     } catch (error: any) {
         if (error.code === 'auth/requires-recent-login') {
             addToast("Por segurança, faça login novamente para excluir.", "error");
             await logout?.();
-            router.push("/");
+            router.push("/login");
         } else {
-            addToast("Erro ao excluir conta.", "error");
+            console.error(error);
+            addToast("Erro ao excluir. Tente novamente.", "error");
         }
     } finally {
         setActionLoading(false);
@@ -178,8 +194,9 @@ export default function SettingsPage() {
             </section>
         ))}
 
-        {/* ZONA DE AÇÕES */}
-        <div className="space-y-3 pt-4">
+        {/* ZONA DE PERIGO */}
+        <div className="space-y-3 pt-4 border-t border-zinc-900 mt-6">
+            <h3 className="text-[10px] font-black text-red-500/50 uppercase tracking-[0.2em] mb-2 px-1 flex items-center gap-2"><AlertTriangle size={10}/> Zona de Risco</h3>
             
             <button 
                 onClick={handleToggleAccount}
@@ -203,12 +220,12 @@ export default function SettingsPage() {
             <button 
                 onClick={handleDeleteAccount} 
                 disabled={actionLoading}
-                className="w-full bg-red-950/20 p-4 rounded-2xl border border-red-900/30 flex items-center justify-center gap-2 text-red-500 font-bold uppercase text-xs tracking-widest hover:bg-red-900/30 transition active:scale-[0.98]"
+                className="w-full bg-red-950/10 p-4 rounded-2xl border border-red-900/20 flex items-center justify-center gap-2 text-red-500/70 font-bold uppercase text-xs tracking-widest hover:bg-red-900/20 hover:text-red-500 transition active:scale-[0.98]"
             >
-                {actionLoading ? "Processando..." : <><Trash2 size={16} /> Excluir Conta</>}
+                {actionLoading ? <Loader2 className="animate-spin" size={16}/> : <><Trash2 size={16} /> Excluir Permanentemente</>}
             </button>
             
-            <p className="text-center text-[10px] text-zinc-600 font-mono">AAAKN App v1.3 • ID: {user?.uid.slice(0,6)}</p>
+            <p className="text-center text-[10px] text-zinc-700 font-mono pt-2">AAAKN App v1.4 • ID: {user?.uid.slice(0,6)}</p>
         </div>
 
       </main>
