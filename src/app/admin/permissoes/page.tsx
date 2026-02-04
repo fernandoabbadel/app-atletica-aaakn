@@ -5,7 +5,7 @@ import {
   ArrowLeft, Search, Shield, User, Briefcase, 
   Dumbbell, Crown, Lock, Save, CheckSquare, 
   LayoutList, Users, DollarSign, Ghost, Loader2,
-  AlertTriangle, Settings, Zap
+  AlertTriangle, Settings, Zap, UserX
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,7 @@ import { db } from "../../../lib/firebase";
 import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { logActivity } from "../../../lib/logger"; 
 
-// --- 1. DEFINIÇÃO DE CARGOS (Hierarquia Tubarão) ---
+// --- 1. DEFINIÇÃO DE CARGOS (Hierarquia Tubarão - ID 005 Verificado) ---
 const ROLES = [
     { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
     
@@ -31,44 +31,20 @@ const ROLES = [
     
     // Base
     { id: 'user', label: 'Membro', icon: User, color: 'text-zinc-400' },
-    { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' }
+    { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' },
+    
+    // 🦈 NOVO PERFIL: INATIVO (Para quem desativou a conta)
+    { id: 'inactive', label: 'Inativo', icon: UserX, color: 'text-zinc-700' }
 ];
 
-// --- 2. MAPEAMENTO DE ROTAS ---
-const PAGES = [
-    // --- PÚBLICO / MEMBROS ---
-    { path: '/dashboard', label: '🏠 Dashboard' },
-    { path: '/carteirinha', label: '🪪 Carteirinha' },
-    { path: '/loja', label: '🛍️ Loja' },
-    { path: '/carrinho', label: '🛒 Carrinho' },
-    { path: '/eventos', label: '🎉 Eventos' },
-    { path: '/treinos', label: '💪 Treinos' },
-    { path: '/ligas', label: '🏆 Ligas (Geral)' },
-    { path: '/ligas_unitau', label: '🏟️ Ligas Unitau' },
-    { path: '/ranking', label: '📊 Ranking' },
-    { path: '/album', label: '📸 Álbum' },
-    { path: '/comunidade', label: '💬 Comunidade' },
-    { path: '/conquistas', label: '🏅 Conquistas' },
-    { path: '/fidelidade', label: '💎 Fidelidade' },
-    { path: '/games', label: '🎮 Games' },
-    { path: '/guia', label: '📘 Guia' },
-    { path: '/gym', label: '🏋️ Gym / Check-in' },
-    { path: '/historico', label: '📜 Histórico' },
-    { path: '/parceiros', label: '🤝 Parceiros' },
-    { path: '/perfil', label: '👤 Perfil' },
-    { path: '/planos', label: '📝 Planos' },
-    { path: '/sharkround', label: '🦈 SharkRound' },
-    { path: '/empresa', label: '💼 Painel Empresa' },
-
+// --- 2. MAPEAMENTO DE ROTAS (ID 002: Ordem Alfabética + ID 001: Configurações Add) ---
+const RAW_PAGES = [
     // --- ADMINISTRAÇÃO (BACKOFFICE) ---
     { path: '/admin', label: '👮 Admin Dashboard' },
-    { path: '/admin/permissoes', label: '🔑 Permissões (Crítico)' },
-    { path: '/admin/usuarios', label: '👥 Gerenciar Usuários' },
-    { path: '/admin/scanner', label: '📷 Scanner QR' },
     { path: '/admin/album', label: '📷 Adm Álbum' },
     { path: '/admin/carteirinha', label: '🪪 Adm Carteirinha' },
     { path: '/admin/comunidade', label: '💬 Adm Comunidade' },
-    { path: '/admin/configuracoes', label: '⚙️ Configurações' },
+    { path: '/admin/configuracoes', label: '⚙️ Configurações (Adm)' },
     { path: '/admin/conquistas', label: '🏅 Adm Conquistas' },
     { path: '/admin/denuncias', label: '🚨 Denúncias' },
     { path: '/admin/eventos', label: '📅 Adm Eventos' },
@@ -81,10 +57,41 @@ const PAGES = [
     { path: '/admin/logs', label: '📝 Logs do Sistema' },
     { path: '/admin/loja', label: '👕 Adm Loja' },
     { path: '/admin/parceiros', label: '🤝 Adm Parceiros' },
+    { path: '/admin/permissoes', label: '🔑 Permissões (Crítico)' },
     { path: '/admin/planos', label: '📝 Adm Planos' },
+    { path: '/admin/scanner', label: '📷 Scanner QR' },
     { path: '/admin/sharkround', label: '🦈 Adm SharkRound' },
     { path: '/admin/treinos', label: '💪 Adm Treinos' },
+    { path: '/admin/usuarios', label: '👥 Gerenciar Usuários' },
+
+    // --- PÚBLICO / MEMBROS ---
+    { path: '/album', label: '📸 Álbum' },
+    { path: '/carrinho', label: '🛒 Carrinho' },
+    { path: '/carteirinha', label: '🪪 Carteirinha' },
+    { path: '/comunidade', label: '💬 Comunidade' },
+    { path: '/configuracoes', label: '⚙️ Ajustes (User)' }, // ID 001: Essencial para Inativos
+    { path: '/conquistas', label: '🏅 Conquistas' },
+    { path: '/dashboard', label: '🏠 Dashboard' },
+    { path: '/empresa', label: '💼 Painel Empresa' },
+    { path: '/eventos', label: '🎉 Eventos' },
+    { path: '/fidelidade', label: '💎 Fidelidade' },
+    { path: '/games', label: '🎮 Games' },
+    { path: '/guia', label: '📘 Guia' },
+    { path: '/gym', label: '🏋️ Gym / Check-in' },
+    { path: '/historico', label: '📜 Histórico' },
+    { path: '/ligas', label: '🏆 Ligas (Geral)' },
+    { path: '/ligas_unitau', label: '🏟️ Ligas Unitau' },
+    { path: '/loja', label: '🛍️ Loja' },
+    { path: '/parceiros', label: '🤝 Parceiros' },
+    { path: '/perfil', label: '👤 Perfil' },
+    { path: '/planos', label: '📝 Planos' },
+    { path: '/ranking', label: '📊 Ranking' },
+    { path: '/sharkround', label: '🦈 SharkRound' },
+    { path: '/treinos', label: '💪 Treinos' },
 ];
+
+// ID 002: Ordenação Alfabética Rigorosa
+const PAGES = RAW_PAGES.sort((a, b) => a.path.localeCompare(b.path));
 
 export default function AdminPermissoesPage() {
   const { user, checkPermission } = useAuth();
@@ -98,7 +105,6 @@ export default function AdminPermissoesPage() {
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [savingMatrix, setSavingMatrix] = useState(false);
 
-  // Segurança local: Apenas Master pode acessar essa tela
   const isMaster = checkPermission(["master"]);
 
   useEffect(() => {
@@ -109,18 +115,15 @@ export default function AdminPermissoesPage() {
 
       const fetchData = async () => {
           try {
-              // 1. Puxa Usuários
               const snapUsers = await getDocs(collection(db, "users"));
               setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() })));
 
-              // 2. Puxa Matriz de Permissões
               const docRef = doc(db, "settings", "permissions");
               const docSnap = await getDoc(docRef);
               
               if (docSnap.exists()) {
                   setPermissionMatrix(docSnap.data() as Record<string, string[]>);
               } else {
-                  // Matriz padrão se não existir
                   const defaultMatrix: Record<string, string[]> = {};
                   PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
                   setPermissionMatrix(defaultMatrix);
@@ -137,20 +140,17 @@ export default function AdminPermissoesPage() {
       if (isMaster) fetchData();
   }, [isMaster, loading, router, addToast]);
 
-  // --- AÇÃO: ATUALIZAR CARGO DE UM USUÁRIO ---
   const handleUpdateRole = async (targetUserId: string, newRole: string) => {
       try {
           await updateDoc(doc(db, "users", targetUserId), { role: newRole });
-          
           setUsersList(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
           
-          // CORREÇÃO: Passando os 5 argumentos obrigatórios
           await logActivity(
-            user?.uid || 'sistema',         // 1. userId
-            user?.nome || 'Admin Master',   // 2. userName
-            "UPDATE",                       // 3. action (ActionType)
-            "Permissões - Usuários",        // 4. resource
-            `Alterou cargo do usuário ${targetUserId} para ${newRole}` // 5. details
+            user?.uid || 'sistema',
+            user?.nome || 'Admin Master',
+            "UPDATE",
+            "Permissões - Usuários",
+            `Alterou cargo do usuário ${targetUserId} para ${newRole}`
           );
           
           addToast(`Cargo atualizado para ${newRole.toUpperCase()}! 🦈`, "success");
@@ -165,7 +165,6 @@ export default function AdminPermissoesPage() {
       (u.email || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- AÇÃO: TOGGLE PERMISSÃO NA MATRIZ ---
   const togglePermission = (path: string, roleId: string) => {
       setPermissionMatrix(prev => {
           const currentRoles = prev[path] || [];
@@ -177,19 +176,17 @@ export default function AdminPermissoesPage() {
       });
   };
 
-  // --- AÇÃO: SALVAR MATRIZ COMPLETA ---
   const saveMatrix = async () => {
       setSavingMatrix(true);
       try {
           await setDoc(doc(db, "settings", "permissions"), permissionMatrix);
           
-          // CORREÇÃO: Passando os 5 argumentos obrigatórios
           await logActivity(
-            user?.uid || 'sistema',        // 1. userId
-            user?.nome || 'Admin Master',  // 2. userName
-            "UPDATE",                      // 3. action
-            "Permissões - Matriz",         // 4. resource
-            "Atualizou a Matriz de Acesso Global" // 5. details
+            user?.uid || 'sistema',
+            user?.nome || 'Admin Master',
+            "UPDATE",
+            "Permissões - Matriz",
+            "Atualizou a Matriz de Acesso Global"
           );
           
           addToast("As leis do oceano foram atualizadas! 🦈", "success");
@@ -207,7 +204,6 @@ export default function AdminPermissoesPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* HEADER */}
       <header className="p-6 border-b border-zinc-800 bg-[#09090b]/95 backdrop-blur sticky top-0 z-30 flex justify-between items-center">
           <div className="flex items-center gap-4">
               <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20}/></Link>
@@ -218,10 +214,8 @@ export default function AdminPermissoesPage() {
           </div>
       </header>
 
-      {/* CONTEÚDO */}
       <div className="p-6 max-w-[95vw] mx-auto overflow-hidden">
           
-          {/* SELETOR DE ABAS */}
           <div className="flex justify-center mb-8">
               <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
                   <button onClick={() => setActiveTab('matrix')} className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase transition ${activeTab === 'matrix' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><LayoutList size={14}/> Matriz de Acesso</button>
@@ -229,7 +223,6 @@ export default function AdminPermissoesPage() {
               </div>
           </div>
 
-          {/* === MATRIZ === */}
           {activeTab === 'matrix' && (
               <div className="space-y-6 animate-in fade-in">
                   <div className="bg-yellow-900/20 border border-yellow-600/30 p-4 rounded-xl flex items-start gap-3">
@@ -237,20 +230,21 @@ export default function AdminPermissoesPage() {
                       <div>
                           <h3 className="text-sm font-bold text-yellow-500 uppercase">Atenção, Master!</h3>
                           <p className="text-xs text-zinc-400 mt-1">
-                              Esta matriz controla quem pode ver o quê. Se você remover o acesso de 'Admin Geral' em '/admin', eles perderão acesso a todo o painel.
+                              Esta matriz controla quem pode ver o quê. <b>Lembre-se de liberar a rota '/configuracoes' para o cargo 'Inativo'!</b>
                           </p>
                       </div>
                   </div>
 
-                  <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-2xl bg-[#0a0a0a]">
+                  {/* ID 004: Tabela com Freeze Header (Sticky Top) e Primeira Coluna Fixa */}
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-zinc-800 shadow-2xl bg-[#0a0a0a] relative">
                       <table className="w-full text-left border-collapse">
-                          <thead>
-                              <tr className="bg-zinc-900 border-b border-zinc-800">
-                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 bg-zinc-900 z-10 min-w-[220px] shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                          <thead className="bg-zinc-900 sticky top-0 z-40 shadow-md">
+                              <tr>
+                                  <th className="p-4 text-xs font-black text-zinc-400 uppercase tracking-wider sticky left-0 top-0 z-50 bg-zinc-900 min-w-[220px] shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-zinc-800">
                                       Página / Rota
                                   </th>
                                   {ROLES.map(role => (
-                                      <th key={role.id} className="p-4 min-w-[90px] text-center bg-zinc-900/95 backdrop-blur border-l border-zinc-800/50">
+                                      <th key={role.id} className="p-4 min-w-[90px] text-center bg-zinc-900/95 backdrop-blur border-l border-zinc-800/50 sticky top-0 z-40 border-b border-zinc-800">
                                           <div className="flex flex-col items-center gap-1.5">
                                               <div className={`p-2 rounded-full bg-black/50 ${role.color}`}>
                                                   <role.icon size={16}/>
@@ -262,30 +256,48 @@ export default function AdminPermissoesPage() {
                               </tr>
                           </thead>
                           <tbody className="bg-black">
-                              {PAGES.map((page, idx) => (
-                                  <tr key={page.path} className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''}`}>
-                                      <td className="p-4 text-xs font-bold text-white sticky left-0 bg-black group-hover:bg-zinc-900/30 transition z-10 border-r border-zinc-800 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                                          <div className="flex flex-col">
-                                              <span className="text-sm flex items-center gap-2">{page.label}</span>
-                                              <span className="text-[10px] text-zinc-600 font-mono mt-0.5">{page.path}</span>
-                                          </div>
-                                      </td>
-                                      {ROLES.map(role => {
-                                          const isAllowed = (permissionMatrix[page.path] || []).includes(role.id) || role.id === 'master';
-                                          return (
-                                              <td key={`${page.path}-${role.id}`} className="p-4 text-center border-l border-zinc-800/30">
-                                                  <button 
-                                                      onClick={() => togglePermission(page.path, role.id)}
-                                                      disabled={role.id === 'master'}
-                                                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all mx-auto ${isAllowed ? 'bg-emerald-500 text-black shadow-lg scale-100' : 'bg-zinc-900 text-zinc-700 border border-zinc-800 scale-90 grayscale'} ${role.id === 'master' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
-                                                  >
-                                                      {isAllowed ? <CheckSquare size={16} strokeWidth={3}/> : <Lock size={14}/>}
-                                                  </button>
+                              {PAGES.map((page, idx) => {
+                                  const isAdmin = page.path.startsWith('/admin');
+                                  const prevPage = idx > 0 ? PAGES[idx - 1] : null;
+                                  const prevIsAdmin = prevPage ? prevPage.path.startsWith('/admin') : isAdmin;
+                                  // Separa visualmente rotas ADMIN das rotas USER
+                                  const showSeparator = prevPage && isAdmin !== prevIsAdmin;
+
+                                  return (
+                                      <React.Fragment key={page.path}>
+                                          {showSeparator && (
+                                              <tr>
+                                                  <td colSpan={ROLES.length + 1} className="h-4 bg-zinc-900/50 border-y border-zinc-800"></td>
+                                              </tr>
+                                          )}
+
+                                          <tr className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''} ${isAdmin ? 'bg-red-950/5 hover:bg-red-900/10' : ''}`}>
+                                              <td className={`p-4 text-xs font-bold text-white sticky left-0 z-30 group-hover:bg-zinc-900 transition border-r border-zinc-800 shadow-[2px_0_5px_rgba(0,0,0,0.5)] ${isAdmin ? 'bg-[#0f0505]' : 'bg-black'}`}>
+                                                  <div className="flex flex-col">
+                                                      <span className={`text-sm flex items-center gap-2 ${isAdmin ? 'text-red-200' : 'text-zinc-200'}`}>
+                                                        {page.label}
+                                                      </span>
+                                                      <span className="text-[10px] text-zinc-600 font-mono mt-0.5">{page.path}</span>
+                                                  </div>
                                               </td>
-                                          );
-                                      })}
-                                  </tr>
-                              ))}
+                                              {ROLES.map(role => {
+                                                  const isAllowed = (permissionMatrix[page.path] || []).includes(role.id) || role.id === 'master';
+                                                  return (
+                                                      <td key={`${page.path}-${role.id}`} className="p-4 text-center border-l border-zinc-800/30">
+                                                          <button 
+                                                              onClick={() => togglePermission(page.path, role.id)}
+                                                              disabled={role.id === 'master'}
+                                                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all mx-auto ${isAllowed ? 'bg-emerald-500 text-black shadow-lg scale-100' : 'bg-zinc-900 text-zinc-700 border border-zinc-800 scale-90 grayscale'} ${role.id === 'master' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
+                                                          >
+                                                              {isAllowed ? <CheckSquare size={16} strokeWidth={3}/> : <Lock size={14}/>}
+                                                          </button>
+                                                      </td>
+                                                  );
+                                              })}
+                                          </tr>
+                                      </React.Fragment>
+                                  );
+                              })}
                           </tbody>
                       </table>
                   </div>
@@ -303,7 +315,6 @@ export default function AdminPermissoesPage() {
               </div>
           )}
 
-          {/* === USUÁRIOS === */}
           {activeTab === 'users' && (
               <div className="space-y-6 animate-in fade-in">
                   <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex items-center gap-2 sticky top-24 z-20 shadow-lg">

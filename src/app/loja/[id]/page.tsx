@@ -5,11 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
     doc, onSnapshot, collection, addDoc, serverTimestamp, 
-    query, where, updateDoc, arrayUnion, arrayRemove, orderBy, getDocs 
+    query, where, updateDoc, arrayUnion, arrayRemove, getDocs 
 } from "firebase/firestore";
 import { 
     ArrowLeft, ShoppingBag, Heart, Star, Clock, 
-    CheckCircle, AlertTriangle, MessageCircle, Send, Loader2 
+    CheckCircle, AlertTriangle, Loader2 
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
@@ -70,38 +70,38 @@ export default function DetalheProdutoPage() {
             else setLoading(false);
         });
 
-        // B. Reviews (SEM orderBy no Firebase para evitar erro de índice)
+        // B. Reviews
         const qReviews = query(collection(db, "reviews"), where("productId", "==", prodId));
         
         const unsubReviews = onSnapshot(qReviews, (snap) => {
             const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Review));
-            
-            // 🦈 O PULO DO GATO: Ordenação manual aqui no código (Do mais novo para o mais velho)
+            // Ordenação manual (Do mais novo para o mais velho)
             lista.sort((a, b) => {
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
                 return dateB - dateA; 
             });
-
             setReviews(lista);
         });
 
-        // C. Verificar Pedido do Usuário (Para liberar avaliação)
+        // C. Verificar Pedido do Usuário (Para liberar avaliação ou bloquear compra)
         let unsubOrder = () => {};
         if (user) {
             const qOrder = query(
                 collection(db, "orders"), 
                 where("userId", "==", user.uid),
-                where("productId", "==", prodId),
-                // where("status", "in", ["pendente", "approved"]) // Firestore limitation, filter locally logic below
+                where("productId", "==", prodId)
             );
             
-            // Pegamos o pedido mais recente
             unsubOrder = onSnapshot(qOrder, (snap) => {
                 if (!snap.empty) {
-                    // Pega o último pedido feito
                     const ordersList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-                    // Ordena manualmente por data se necessário, ou confia na query
+                    // 🦈 FIX ID 10: Ordena para pegar SEMPRE o mais recente
+                    ordersList.sort((a, b) => {
+                        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                        return dateB - dateA;
+                    });
                     setUserOrder(ordersList[0]); 
                 }
             });
@@ -111,11 +111,10 @@ export default function DetalheProdutoPage() {
         return () => { unsubProd(); unsubReviews(); unsubOrder(); };
     }, [params.id, user]);
 
-    // 2. LÓGICA DE PERMISSÃO DE AVALIAÇÃO (5 DIAS)
+    // 2. LÓGICA DE PERMISSÃO DE AVALIAÇÃO (5 DIAS APÓS APROVAÇÃO)
     const canReview = useMemo(() => {
         if (!userOrder || userOrder.status !== 'approved') return false;
         
-        // Data da aprovação (ou criação se não tiver update)
         const dateRef = userOrder.updatedAt || userOrder.createdAt;
         if (!dateRef) return false;
 
@@ -124,17 +123,17 @@ export default function DetalheProdutoPage() {
         const diffTime = Math.abs(now.getTime() - approvalDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        return diffDays <= 5; // Só pode avaliar se faz menos de 5 dias da aprovação
+        return diffDays <= 5; 
     }, [userOrder]);
 
-    // 3. ACTIONS
+    // 🦈 FIX ID 10: Verifica se existe um pedido ATIVO que impede nova compra
+    const isBlockingOrder = userOrder && (userOrder.status === 'pendente' || userOrder.status === 'approved');
 
+    // 3. ACTIONS
     const handleLike = async () => {
         if (!user || !produto) return;
         const isLiked = produto.likes?.includes(user.uid);
         const ref = doc(db, "produtos", produto.id);
-        
-        // Optimistic UI update (opcional, mas o snapshot já cuida)
         await updateDoc(ref, { 
             likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) 
         });
@@ -143,27 +142,27 @@ export default function DetalheProdutoPage() {
     const handleBuy = async () => {
         if (!user || !produto) return router.push("/login");
 
-        const confirm = window.confirm(`Confirmar reserva de ${produto.nome}? O admin irá analisar.`);
+        const confirm = window.confirm(`Confirmar pedido de ${produto.nome}?`);
         if (!confirm) return;
 
         try {
-            // 1. Cria o Pedido (Isso aparece no Admin)
-            const orderRef = await addDoc(collection(db, "orders"), {
+            // Cria o Pedido
+            await addDoc(collection(db, "orders"), {
                 userId: user.uid,
                 userName: user.nome,
                 productId: produto.id,
                 productName: produto.nome,
                 price: produto.preco,
-                status: "pendente", // Admin precisa aprovar
+                status: "pendente", 
                 createdAt: serverTimestamp()
             });
 
-            // 2. Cria Notificação para o Usuário (Sininho)
+            // Notificação
             await addDoc(collection(db, "notifications"), {
                 userId: user.uid,
                 title: "Compra em Análise",
                 message: `Seu pedido de ${produto.nome} foi enviado para aprovação.`,
-                link: `/loja/${produto.id}`, // Link direto como pedido
+                link: `/loja/${produto.id}`,
                 read: false,
                 type: "order",
                 createdAt: serverTimestamp()
@@ -195,7 +194,6 @@ export default function DetalheProdutoPage() {
             setComment("");
             setRating(5);
             addToast("Avaliação enviada! +10XP", "success");
-            // Aqui poderia dar XP ao usuário
         } catch (error) {
             addToast("Erro ao avaliar.", "error");
         } finally {
@@ -203,7 +201,6 @@ export default function DetalheProdutoPage() {
         }
     };
 
-    // RENDER
     if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
     if (!produto) return <div className="h-screen bg-[#050505] flex items-center justify-center text-white">Produto não encontrado.</div>;
 
@@ -212,26 +209,19 @@ export default function DetalheProdutoPage() {
     return (
         <div className="min-h-screen bg-[#050505] text-white pb-10 font-sans selection:bg-emerald-500/30">
             
-            {/* --- IMAGEM HERO --- */}
+            {/* HERO */}
             <div className="relative w-full h-[45vh] bg-black">
                 <img src={produto.img} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent"></div>
-                
-                {/* Botões Flutuantes */}
                 <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:bg-zinc-800 transition border border-white/10"><ArrowLeft size={24}/></button>
-                
-                <button 
-                    onClick={handleLike}
-                    className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:scale-110 transition border border-white/10"
-                >
+                <button onClick={handleLike} className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:scale-110 transition border border-white/10">
                     <Heart size={24} className={isLiked ? "fill-red-500 text-red-500" : "text-white"} />
                 </button>
             </div>
 
-            {/* --- CONTEÚDO PRINCIPAL --- */}
+            {/* CONTEÚDO */}
             <div className="relative z-30 -mt-10 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 p-6 shadow-2xl min-h-[60vh]">
                 
-                {/* CABEÇALHO PRODUTO */}
                 <div className="flex justify-between items-start mb-6">
                     <div>
                         <span className="text-[10px] font-black uppercase text-emerald-500 tracking-widest bg-emerald-900/20 px-2 py-1 rounded border border-emerald-500/20">{produto.categoria}</span>
@@ -246,43 +236,31 @@ export default function DetalheProdutoPage() {
                     </div>
                 </div>
 
-                {/* ABAS */}
                 <div className="flex gap-4 border-b border-zinc-800 mb-6">
-                    <button 
-                        onClick={() => setActiveTab('detalhes')}
-                        className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'detalhes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}
-                    >
-                        Detalhes
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('avaliacoes')}
-                        className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}
-                    >
-                        Avaliações ({reviews.length})
-                    </button>
+                    <button onClick={() => setActiveTab('detalhes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'detalhes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Detalhes</button>
+                    <button onClick={() => setActiveTab('avaliacoes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Avaliações ({reviews.length})</button>
                 </div>
 
-                {/* CONTEÚDO DAS ABAS */}
                 {activeTab === 'detalhes' && (
                     <div className="space-y-6 animate-in fade-in">
                         <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{produto.descricao}</p>
                         
-                        {/* Status do Pedido / Botão de Ação */}
+                        {/* 🦈 STATUS DO PEDIDO OU BOTÃO DE COMPRA */}
                         <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
-                            {userOrder ? (
-                                <div className="text-center">
-                                    {userOrder.status === 'pendente' && (
+                            {isBlockingOrder ? (
+                                <div className="text-center animate-in zoom-in-95">
+                                    {userOrder?.status === 'pendente' && (
                                         <div className="flex flex-col items-center gap-2 text-yellow-500">
                                             <Clock size={32}/>
                                             <h3 className="font-bold uppercase">Aguardando Aprovação</h3>
                                             <p className="text-xs text-zinc-400">O admin está verificando seu pedido.</p>
                                         </div>
                                     )}
-                                    {userOrder.status === 'approved' && (
+                                    {userOrder?.status === 'approved' && (
                                         <div className="flex flex-col items-center gap-2 text-emerald-500">
                                             <CheckCircle size={32}/>
                                             <h3 className="font-bold uppercase">Compra Aprovada!</h3>
-                                            <p className="text-xs text-zinc-400">Você tem 5 dias para avaliar este produto.</p>
+                                            <p className="text-xs text-zinc-400">Retire seu produto ou aguarde a entrega.</p>
                                         </div>
                                     )}
                                 </div>
@@ -291,7 +269,8 @@ export default function DetalheProdutoPage() {
                                     onClick={handleBuy}
                                     className="w-full py-4 bg-emerald-600 rounded-xl font-black uppercase text-sm flex items-center justify-center gap-3 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95 text-white"
                                 >
-                                    <ShoppingBag size={20}/> Comprar Agora
+                                    <ShoppingBag size={20}/> 
+                                    {userOrder?.status === 'delivered' || userOrder?.status === 'rejected' ? "Comprar Novamente" : "Comprar Agora"}
                                 </button>
                             )}
                         </div>
@@ -300,8 +279,6 @@ export default function DetalheProdutoPage() {
 
                 {activeTab === 'avaliacoes' && (
                     <div className="space-y-6 animate-in fade-in">
-                        
-                        {/* FORMULÁRIO DE AVALIAÇÃO (Só aparece se permitido) */}
                         {canReview ? (
                             <form onSubmit={handleSubmitReview} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 mb-6">
                                 <h3 className="text-sm font-bold text-white uppercase mb-3">Deixe sua avaliação</h3>
@@ -325,15 +302,14 @@ export default function DetalheProdutoPage() {
                                 </button>
                             </form>
                         ) : (
-                            userOrder?.status === 'approved' ? (
+                            userOrder?.status === 'approved' && (
                                 <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-center">
                                     <AlertTriangle size={24} className="mx-auto text-red-500 mb-2"/>
-                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliação expirado (5 dias).</p>
+                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliação expirado ou produto ainda não aprovado.</p>
                                 </div>
-                            ) : null
+                            )
                         )}
 
-                        {/* LISTA DE REVIEWS */}
                         <div className="space-y-4">
                             {reviews.length === 0 && <p className="text-zinc-500 text-xs text-center italic">Seja o primeiro a avaliar.</p>}
                             {reviews.map(rev => (
@@ -357,7 +333,6 @@ export default function DetalheProdutoPage() {
                         </div>
                     </div>
                 )}
-
             </div>
         </div>
     );

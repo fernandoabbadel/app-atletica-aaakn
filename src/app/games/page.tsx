@@ -491,7 +491,7 @@ export default function SharkLegendsPage() {
       {/* HEADER DE NÍVEL */}
       <header className="p-4 bg-zinc-900 border-b border-zinc-800 sticky top-0 z-30 shadow-lg">
         <div className="flex justify-between items-center mb-2">
-            <Link href="/menu" className="bg-black p-2 rounded-full border border-zinc-700"><ArrowLeft size={20} /></Link>
+            <Link href="/dashboard" className="bg-black p-2 rounded-full border border-zinc-700"><ArrowLeft size={20} /></Link>
             <div className="text-center">
                 <h1 className="text-emerald-500 font-black uppercase tracking-widest text-lg flex items-center gap-2 justify-center"><Gamepad2 size={20} /> Shark Arena</h1>
                 <p className="text-[9px] text-zinc-500 uppercase font-bold">Nível {myLevel} • {dailyBattles}/5 Lutas</p>

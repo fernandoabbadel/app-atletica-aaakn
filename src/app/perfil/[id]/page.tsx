@@ -1,3 +1,5 @@
+// ARQUIVO: src/app/perfil/[id]/page.tsx
+
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -6,7 +8,7 @@ import {
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
   UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
-  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Dumbbell, Clock, CheckCircle
+  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Dumbbell, Clock, CheckCircle, EyeOff
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
@@ -34,6 +36,7 @@ interface UserProfile {
   telefone?: string;
   esportes?: string[];
   role?: string;
+  status?: string; // 🦈 Adicionado para controle de pausa
   
   plano?: string;        
   plano_cor?: string; 
@@ -122,34 +125,6 @@ const LevelBadge = ({ xp }: { xp: number }) => {
     );
 };
 
-const ProfileBadges = ({ userData }: { userData: UserProfile }) => {
-    const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
-    const rawPlanIcon = userData?.plano_icon || 'user';
-    const planIconName = String(rawPlanIcon).toLowerCase().trim();
-    const rawPatentIcon = userData?.patente_icon || 'fish';
-    const patentIconName = String(rawPatentIcon).toLowerCase().trim();
-    const rawPlanColor = userData?.plano_cor || "text-zinc-400";
-    const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
-    const rawPatentColor = userData?.patente_cor || "text-zinc-400";
-    const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
-    const icons: Record<string, React.ElementType> = { 
-        ghost: Ghost, star: Star, crown: Crown, fish: Fish, trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
-        skull: Ghost, rocket: Star, medal: Medal, heart: Heart, thumbsup: UserCheck, layoutgrid: ShoppingBag, 
-        userplus: UserPlus, target: Trophy, user: Users 
-    };
-    const PlanIcon = icons[planIconName] || Users;
-    const PatentIcon = icons[patentIconName] || Fish;
-
-    return (
-        <div className="flex items-center gap-5 bg-black/40 px-6 py-3 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
-            {isAdmin && <div title="Administrador" className="cursor-help transform hover:scale-110"><ShieldCheck size={24} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" /></div>}
-            <div title={`Plano: ${userData.plano || "Visitante"}`} className={`cursor-help transform hover:scale-110 ${planColorClass}`}><PlanIcon size={24} className="drop-shadow-sm" /></div>
-            {planIconName !== patentIconName && <div className="w-px h-6 bg-zinc-700/50"></div>}
-            {planIconName !== patentIconName && (<div title={`Patente: ${userData.patente || "Novato"}`} className={`cursor-help transform hover:scale-110 ${patentColorClass}`}><PatentIcon size={28} className="drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" /></div>)}
-        </div>
-    );
-};
-
 const PlanBadge = ({ nome, cor, iconName }: { nome?: string, cor?: string, iconName?: string }) => {
     const IconMap: Record<string, React.ElementType> = {
         'ghost': Ghost, 'star': Star, 'crown': Crown, 'fish': Fish,
@@ -184,6 +159,7 @@ export default function PerfilPublicoPage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileHidden, setProfileHidden] = useState(false); // 🦈 Estado para perfil oculto
   
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
@@ -191,7 +167,6 @@ export default function PerfilPublicoPage() {
   const [followersList, setFollowersList] = useState<FollowData[]>([]);
   const [followingList, setFollowingList] = useState<FollowData[]>([]);
   
-  // 🦈 CORREÇÃO DO ERRO: Usar activeModal para controlar qual lista está aberta
   const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
 
@@ -200,6 +175,7 @@ export default function PerfilPublicoPage() {
   const [myTreinos, setMyTreinos] = useState<any[]>([]);
   const [myLigas, setMyLigas] = useState<any[]>([]);
 
+  // Verifica se sou eu mesmo
   const isOwnProfile = user?.uid === params.id;
 
   useEffect(() => {
@@ -213,6 +189,15 @@ export default function PerfilPublicoPage() {
             
             if (docSnap.exists()) {
                 const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+
+                // 🦈 VERIFICAÇÃO DE CONTA DESATIVADA 
+                // Se a conta tá desativada e NÃO sou eu, bloqueia a visualização
+                if ((data.role === 'inactive' || data.status === 'paused') && !isOwnProfile) {
+                    setProfileHidden(true);
+                    setLoading(false);
+                    return; // Para a execução aqui
+                }
+
                 setProfile(data);
                 
                 // Seguidores
@@ -236,7 +221,7 @@ export default function PerfilPublicoPage() {
                     setRecentPosts(list.slice(0, 5));
                 });
 
-                // 2. EVENTOS (Busca onde o USUÁRIO VISITADO está interessado)
+                // 2. EVENTOS
                 const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", uid), limit(20));
                 getDocs(qEvents).then(snap => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
@@ -244,12 +229,11 @@ export default function PerfilPublicoPage() {
                     setMyEvents(list.slice(0, 5));
                 });
 
-                // 3. LIGAS (Busca onde o USUÁRIO VISITADO é membro)
+                // 3. LIGAS
                 const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", uid));
                 getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-                // 4. TREINOS (Busca onde o USUÁRIO VISITADO está confirmado)
-                // 🦈 CORREÇÃO: Query na coleção 'treinos'
+                // 4. TREINOS
                 const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", uid), limit(20));
                 getDocs(qTreinos).then(snap => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
@@ -264,7 +248,7 @@ export default function PerfilPublicoPage() {
         finally { setLoading(false); }
     };
     fetchProfile();
-  }, [params.id, user]);
+  }, [params.id, user, isOwnProfile]);
 
   const handleFollow = async () => {
       if (!user || !profile) return;
@@ -303,6 +287,25 @@ export default function PerfilPublicoPage() {
   };
 
   if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
+
+  // 🦈 TELA DE PERFIL OCULTO (CONTA DESATIVADA)
+  if (profileHidden) {
+      return (
+          <div className="min-h-screen bg-[#050505] text-zinc-500 font-sans flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center mb-6 shadow-2xl shadow-black border border-zinc-800 animate-pulse">
+                  <Ghost size={40} className="text-zinc-700"/>
+              </div>
+              <h1 className="text-2xl font-black text-zinc-400 uppercase tracking-tighter mb-2">Tubarão Adormecido</h1>
+              <p className="text-sm font-medium text-zinc-600 max-w-xs mb-8">
+                  Esta conta foi desativada temporariamente pelo usuário e está inacessível no momento.
+              </p>
+              <button onClick={() => router.back()} className="px-8 py-3 bg-zinc-900 border border-zinc-800 rounded-full text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-white hover:border-zinc-600 transition flex items-center gap-2">
+                  <ArrowLeft size={14}/> Voltar para o Cardume
+              </button>
+          </div>
+      );
+  }
+
   if (!profile) return null;
 
   const getIdade = () => { if (profile.dataNascimento) { const birth = new Date(profile.dataNascimento); const today = new Date(); let age = today.getFullYear() - birth.getFullYear(); if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--; return age; } return null; };
@@ -316,13 +319,41 @@ export default function PerfilPublicoPage() {
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
       {/* CAPA + FOTO */}
       <div className="relative">
-        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative"><div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div><img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/><button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button></div>
+        <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
+            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
+            <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
+        </div>
+        
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
+            
             <div className="relative mb-3 group">
-                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/></div>
+                {/* 🦈 AJUSTE VISUAL: Se pausado, foto em tons de cinza */}
+                <div className={`w-32 h-32 rounded-full p-1 bg-gradient-to-tr shadow-[0_0_40px_rgba(16,185,129,0.3)] ${profile.status === 'paused' ? 'from-zinc-600 via-zinc-800 to-zinc-900 grayscale opacity-80' : 'from-emerald-500 via-zinc-800 to-zinc-900'}`}>
+                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
+                </div>
                 <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden"><img src={turmaImage} className="w-full h-full object-cover"/></div>
             </div>
-            <div className="text-center space-y-1 mb-4"><h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">{profile.apelido || profile.nome.split(" ")[0]}{profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}</h1><p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p><div className="flex items-center justify-center gap-2 mt-2"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>{showAge && getIdade() !== null && (<div className="relative group/age"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">{getIdade()} Anos{!profile.idadePublica && <Lock size={8} className="text-zinc-500"/>}</span></div>)}</div></div>
+
+            <div className="text-center space-y-1 mb-4">
+                <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter flex items-center justify-center gap-2">
+                    {profile.apelido || profile.nome.split(" ")[0]}
+                    {profile.role === 'master' && <ShieldCheck size={18} className="text-red-500" />}
+                </h1>
+                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
+                
+                {/* 🦈 INDICADOR PARA O PRÓPRIO DONO SE A CONTA TÁ PAUSADA */}
+                {profile.status === 'paused' && isOwnProfile && (
+                    <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-red-900/30 border border-red-500/30 rounded-full text-[10px] font-bold text-red-400 uppercase tracking-wide">
+                        <EyeOff size={10} /> Perfil Oculto (Conta Pausada)
+                    </div>
+                )}
+
+                <div className="flex items-center justify-center gap-2 mt-2">
+                    <span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300">{profile.turma || "Sem Turma"}</span>
+                    {showAge && getIdade() !== null && (<div className="relative group/age"><span className="bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1">{getIdade()} Anos{!profile.idadePublica && <Lock size={8} className="text-zinc-500"/>}</span></div>)}
+                </div>
+            </div>
             
             <div className="flex items-center gap-6 mb-6 justify-center w-full">
                 {/* Badge Plano (Isolada) */}

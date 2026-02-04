@@ -2,19 +2,21 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { 
-  ArrowLeft, Search, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
+  ArrowLeft, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
   Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
   Beer, Ticket, BookOpen, DollarSign, HeartHandshake, Heart, Megaphone, 
   ShieldAlert, Crown, Activity, Dumbbell, Flame, Zap, Wallet, Timer, MessageCircle, Gamepad2,
-  ThumbsUp, LayoutGrid, UserPlus, Target, Star, Ghost, Medal
+  ThumbsUp, LayoutGrid, UserPlus, Target, Star, Ghost, Medal,
+  Briefcase, GraduationCap, AlertTriangle, Database, Wrench, Bot
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext"; // Import Toast
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
-// 🦈 ICONMAP ATUALIZADO (Sincronizado com Admin e Comunidade)
+// ICONMAP (Mantido igual)
 const IconMap: any = {
     Fish: <Fish />, Rocket: <Rocket />, Swords: <Swords />, Skull: <Skull />, 
     ShoppingBag: <ShoppingBag />, Gem: <Gem />, PartyPopper: <PartyPopper />, 
@@ -24,10 +26,10 @@ const IconMap: any = {
     Flame: <Flame />, Crown: <Crown />, Zap: <Zap />, Wallet: <Wallet />, 
     Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />,
     ThumbsUp: <ThumbsUp />, LayoutGrid: <LayoutGrid />, CheckCircle2: <CheckCircle2 />,
-    UserPlus: <UserPlus />, Target: <Target />, Star: <Star />, Ghost: <Ghost />, Medal: <Medal />
+    UserPlus: <UserPlus />, Target: <Target />, Star: <Star />, Ghost: <Ghost />, Medal: <Medal />,
+    Briefcase: <Briefcase />, GraduationCap: <GraduationCap />, Beiceps: <Dumbbell />
 };
 
-// Dados padrão de patentes (Fallback enquanto carrega do banco)
 const DEFAULT_BADGES = [
     { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", iconName: "Fish" },
     { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", iconName: "Fish" },
@@ -39,21 +41,21 @@ const DEFAULT_BADGES = [
 
 export default function ConquistasPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [filtro, setFiltro] = useState<AchievementCategory | "Todas">("Todas");
   
-  // 🦈 ESTADOS DINÂMICOS (VEM DO FIREBASE)
   const [catalog, setCatalog] = useState<any[]>(ACHIEVEMENTS_CATALOG);
   const [badgesList, setBadgesList] = useState<any[]>(DEFAULT_BADGES);
+  
+  const [debugMode, setDebugMode] = useState(false);
+  const isAdmin = user?.role === 'master' || user?.role?.includes('admin');
 
-  // 1. OUVIR ATUALIZAÇÕES DO ADMIN (Conquistas e Patentes)
   useEffect(() => {
-      // A. Conquistas
       const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
           const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           if (data.length > 0) setCatalog(data);
       });
 
-      // B. Patentes (Para sincronizar ícones e cores)
       const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
       const unsubPatentes = onSnapshot(qPatentes, (snap) => {
           const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -65,71 +67,81 @@ export default function ConquistasPage() {
 
   const userStats = user?.stats || {}; 
   
-  // Calcula desbloqueios
   const calculatedAchievements = useMemo(() => {
       let unlockedCount = 0;
       let totalXp = 0;
+      let missingKeys: string[] = [];
 
       const processed = catalog.map(ach => {
+          const keyExists = userStats.hasOwnProperty(ach.statKey);
           const userValue = userStats[ach.statKey] || 0;
           const isUnlocked = userValue >= ach.target;
+          
+          if (!keyExists && !missingKeys.includes(ach.statKey)) {
+              missingKeys.push(ach.statKey);
+          }
           
           if (isUnlocked) {
               unlockedCount++;
               totalXp += ach.xp;
           }
 
-          return { ...ach, progress: userValue, isUnlocked };
+          return { ...ach, progress: userValue, isUnlocked, keyExists };
       });
 
       processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
-      return { list: processed, unlockedCount, totalXp };
+      return { list: processed, unlockedCount, totalXp, missingKeys };
   }, [userStats, catalog]);
 
-  // XP do usuário (Usa o maior valor entre o calculado e o salvo)
   const displayXp = Math.max(user?.xp || 0, calculatedAchievements.totalXp);
 
-  // Lógica de Navegação nas Patentes
+  // 🦈 FUNÇÃO GERADORA DE PROMPT IA
+  const generateIAPrompt = () => {
+      const missing = calculatedAchievements.missingKeys;
+      if (missing.length === 0) {
+          addToast("Tudo certo! Nenhuma chave faltando.", "success");
+          return;
+      }
+
+      const promptText = `
+Olá Gemini! Estou debugando meu sistema de Conquistas (Gamification).
+O App detectou que as seguintes chaves ('statKeys') estão faltando no banco de dados do usuário (objeto 'user.stats') ou não estão sendo inicializadas:
+
+${missing.map(k => `- ${k}`).join('\n')}
+
+Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer login, ao postar, ao confirmar treino) e me forneça o código para corrigir/implementar esses incrementos no Firebase.
+      `.trim();
+
+      navigator.clipboard.writeText(promptText);
+      addToast("Prompt copiado! Cole no Gemini. 🤖", "success");
+  };
+
+  // ... (Lógica de Carrossel e Navegação Mantida) ...
   const currentBadgeIndex = badgesList.slice().reverse().findIndex(b => displayXp >= b.minXp);
   const realCurrentIndex = currentBadgeIndex === -1 ? 0 : badgesList.length - 1 - currentBadgeIndex;
-  
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
 
-  // Sincroniza viewIndex quando os dados carregam ou XP muda
-  useEffect(() => { 
-      if (badgesList.length > 0) {
-          setViewIndex(realCurrentIndex); 
-      }
-  }, [realCurrentIndex, badgesList]);
+  useEffect(() => { if (badgesList.length > 0) setViewIndex(realCurrentIndex); }, [realCurrentIndex, badgesList]);
 
   const displayedBadge = badgesList[viewIndex] || DEFAULT_BADGES[0];
-  
   const isCurrent = viewIndex === realCurrentIndex;
   const isLocked = viewIndex > realCurrentIndex;
   const isPast = viewIndex < realCurrentIndex;
 
-  // Barra de Progresso Inteligente
   let progressPercent = 0;
   let xpNeeded = 0;
 
-  if (isPast) {
-      progressPercent = 100; 
-  } else if (isCurrent) {
+  if (isPast) progressPercent = 100; 
+  else if (isCurrent) {
       const nextBadge = badgesList[viewIndex + 1];
       if (nextBadge) {
           const totalRange = nextBadge.minXp - displayedBadge.minXp;
           const currentProgress = displayXp - displayedBadge.minXp;
-          
-          if (totalRange > 0) {
-              progressPercent = Math.min(Math.max((currentProgress / totalRange) * 100, 0), 100);
-          } else {
-              progressPercent = 100;
-          }
-          
+          progressPercent = totalRange > 0 ? Math.min(Math.max((currentProgress / totalRange) * 100, 0), 100) : 100;
           xpNeeded = nextBadge.minXp - displayXp;
       } else {
-          progressPercent = 100; // Nível Máximo
+          progressPercent = 100;
       }
   } else if (isLocked) {
       progressPercent = 0; 
@@ -143,20 +155,16 @@ export default function ConquistasPage() {
     ? calculatedAchievements.list 
     : calculatedAchievements.list.filter(c => c.cat === filtro);
 
-  // Helper para renderizar ícone da patente com tamanho correto
   const renderBadgeIcon = (iconName: string, isLocked: boolean) => {
       const Icon = IconMap[iconName] || <Fish />;
-      return React.cloneElement(Icon, { 
-          size: 64, 
-          className: isLocked ? 'opacity-50 blur-[2px]' : '' 
-      });
+      return React.cloneElement(Icon, { size: 64, className: isLocked ? 'opacity-50 blur-[2px]' : '' });
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-10 selection:bg-emerald-500/30">
       
       <header className="p-4 sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md flex items-center gap-3 border-b border-white/5 shadow-lg">
-        <Link href="/menu" className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900">
+        <Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900">
           <ArrowLeft size={24} />
         </Link>
         <div className="flex-1">
@@ -165,55 +173,72 @@ export default function ConquistasPage() {
                 {calculatedAchievements.unlockedCount} / {catalog.length} Desbloqueadas
             </p>
         </div>
+        
+        {/* 🦈 BOTÕES DE DEBUG (SÓ ADMIN) */}
+        {isAdmin && (
+            <div className="flex gap-2">
+                {debugMode && (
+                    <button 
+                        onClick={generateIAPrompt}
+                        className="p-2 rounded-lg border bg-blue-500/20 border-blue-500 text-blue-400 hover:bg-blue-500/30 transition flex items-center gap-2"
+                        title="Gerar Relatório para IA"
+                    >
+                        <Bot size={18} />
+                        <span className="text-[10px] font-bold uppercase hidden sm:inline">Relatório IA</span>
+                    </button>
+                )}
+                <button 
+                    onClick={() => setDebugMode(!debugMode)}
+                    className={`p-2 rounded-lg border transition ${debugMode ? 'bg-red-500/20 border-red-500 text-red-500 animate-pulse' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
+                >
+                    <Wrench size={18} />
+                </button>
+            </div>
+        )}
       </header>
 
       <main className="p-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
-        {/* CARROSSEL DE NÍVEL */}
+        {/* ALERTA DE DEBUG GLOBAL */}
+        {debugMode && calculatedAchievements.missingKeys.length > 0 && (
+            <div className="bg-red-950/50 border border-red-500/50 p-4 rounded-xl flex items-center gap-3 animate-pulse">
+                <AlertTriangle size={24} className="text-red-500 shrink-0" />
+                <div className="flex-1">
+                    <h3 className="text-sm font-bold text-red-200">Atenção, Tubarão Dev!</h3>
+                    <p className="text-xs text-red-400 mb-2">Existem <b>{calculatedAchievements.missingKeys.length}</b> chaves de banco ausentes.</p>
+                    <button 
+                        onClick={generateIAPrompt}
+                        className="text-[10px] font-bold bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition"
+                    >
+                        Copiar Relatório de Erros
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* CARROSSEL DE NÍVEL (Mantido) */}
         <section className={`relative overflow-hidden rounded-3xl border ${displayedBadge.border || 'border-zinc-800'} ${displayedBadge.bg || 'bg-zinc-900'} p-6 text-center shadow-2xl transition-colors duration-500`}>
-            
+            {/* ... (Código do carrossel identico ao anterior) ... */}
             <button onClick={handlePrev} disabled={viewIndex === 0} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronLeft size={32}/></button>
             <button onClick={handleNext} disabled={viewIndex === badgesList.length - 1} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronRight size={32}/></button>
-
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent pointer-events-none"></div>
-
             <div className="relative z-10 px-6">
                 <div className={`mx-auto mb-4 flex h-28 w-28 items-center justify-center rounded-full bg-zinc-950/80 border-4 ${displayedBadge.border || 'border-zinc-700'} shadow-[0_0_40px_rgba(0,0,0,0.3)] transition-all duration-500`}>
                     <div className={`drop-shadow-lg ${displayedBadge.cor || 'text-zinc-400'} ${isLocked ? 'grayscale' : ''}`}>
                         {isLocked ? <Lock size={48}/> : renderBadgeIcon(displayedBadge.iconName, isLocked)}
                     </div>
                 </div>
-                
-                <h2 className={`text-3xl font-black uppercase italic tracking-tighter ${displayedBadge.cor || 'text-white'} drop-shadow-md transition-all duration-500`}>
-                    {displayedBadge.titulo}
-                </h2>
-                
+                <h2 className={`text-3xl font-black uppercase italic tracking-tighter ${displayedBadge.cor || 'text-white'} drop-shadow-md transition-all duration-500`}>{displayedBadge.titulo}</h2>
                 <div className="mt-2 min-h-[60px] flex flex-col items-center justify-center">
                     {isCurrent && (
                         <div className="w-full animate-in zoom-in duration-300">
                             <span className="text-[10px] font-bold text-white bg-emerald-500/20 px-3 py-1 rounded-full border border-emerald-500/30 uppercase tracking-widest mb-3 inline-block">Patente Atual</span>
-                            <div className="w-full bg-black/40 h-2 rounded-full overflow-hidden border border-white/5">
-                                <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${progressPercent}%` }}></div>
-                            </div>
-                            <p className="text-[10px] text-zinc-400 mt-2 font-mono">
-                                {displayXp.toLocaleString()} / {badgesList[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP
-                            </p>
+                            <div className="w-full bg-black/40 h-2 rounded-full overflow-hidden border border-white/5"><div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${progressPercent}%` }}></div></div>
+                            <p className="text-[10px] text-zinc-400 mt-2 font-mono">{displayXp.toLocaleString()} / {badgesList[viewIndex + 1]?.minXp.toLocaleString() || "MAX"} XP</p>
                         </div>
                     )}
-                    {isPast && (
-                        <div className="animate-in zoom-in duration-300">
-                            <div className="flex items-center gap-2 text-emerald-500 font-bold bg-emerald-950/50 px-4 py-2 rounded-xl border border-emerald-900">
-                                <CheckCircle2 size={16}/> <span>Conquistado</span>
-                            </div>
-                        </div>
-                    )}
-                    {isLocked && (
-                        <div className="animate-in zoom-in duration-300">
-                            <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Bloqueado</p>
-                            <p className="text-sm font-mono text-white">Necessário <span className="text-red-400 font-black">{displayedBadge.minXp.toLocaleString()} XP</span></p>
-                            <p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded.toLocaleString()} XP</p>
-                        </div>
-                    )}
+                    {isPast && (<div className="animate-in zoom-in duration-300"><div className="flex items-center gap-2 text-emerald-500 font-bold bg-emerald-950/50 px-4 py-2 rounded-xl border border-emerald-900"><CheckCircle2 size={16}/> <span>Conquistado</span></div></div>)}
+                    {isLocked && (<div className="animate-in zoom-in duration-300"><p className="text-xs text-zinc-500 font-bold uppercase mb-1">Bloqueado</p><p className="text-sm font-mono text-white">Necessário <span className="text-red-400 font-black">{displayedBadge.minXp.toLocaleString()} XP</span></p><p className="text-[10px] text-zinc-600 mt-1">Faltam {xpNeeded.toLocaleString()} XP</p></div>)}
                 </div>
             </div>
         </section>
@@ -222,9 +247,7 @@ export default function ConquistasPage() {
         <section className="overflow-x-auto pb-2 scrollbar-hide">
             <div className="flex gap-2">
                 {["Todas", "Gym", "Games", "Loja", "Eventos", "Social"].map((cat) => (
-                    <button key={cat} onClick={() => setFiltro(cat as any)} className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase transition border ${filtro === cat ? "bg-emerald-600 border-emerald-500 text-white shadow-lg" : "bg-zinc-900 border-zinc-800 text-zinc-500"}`}>
-                        {cat}
-                    </button>
+                    <button key={cat} onClick={() => setFiltro(cat as any)} className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase transition border ${filtro === cat ? "bg-emerald-600 border-emerald-500 text-white shadow-lg" : "bg-zinc-900 border-zinc-800 text-zinc-500"}`}>{cat}</button>
                 ))}
             </div>
         </section>
@@ -235,9 +258,27 @@ export default function ConquistasPage() {
                 {filteredList.map((item) => {
                     const percent = Math.min((item.progress / item.target) * 100, 100);
                     const IconComponent = IconMap[item.iconName] || <Lock size={20}/>;
+                    
+                    const isError = !item.keyExists && debugMode;
+                    const cardBorder = isError ? "border-red-500 border-2" : item.isUnlocked ? "border-emerald-500/30" : "border-zinc-800/60";
+                    const cardBg = isError ? "bg-red-950/20" : item.isUnlocked ? "bg-zinc-900" : "bg-black opacity-60";
 
                     return (
-                        <div key={item.id} className={`relative overflow-hidden rounded-2xl border p-4 transition-all duration-300 group ${item.isUnlocked ? "bg-zinc-900 border-emerald-500/30 shadow-md" : "bg-black border-zinc-800/60 opacity-60 grayscale"}`}>
+                        <div key={item.id} className={`relative overflow-hidden rounded-2xl border p-4 transition-all duration-300 group ${cardBg} ${cardBorder}`}>
+                            
+                            {/* 🦈 DEBUG INFO OVERLAY */}
+                            {debugMode && (
+                                <div className="absolute top-2 right-2 text-[9px] font-mono text-right z-20">
+                                    <div className={`flex items-center gap-1 ${isError ? 'text-red-400 font-bold' : 'text-zinc-500'}`}>
+                                        <Database size={10} /> {item.statKey}
+                                    </div>
+                                    <div className="text-emerald-500">
+                                        Valor: {item.progress}
+                                    </div>
+                                    {isError && <div className="text-red-500 font-black animate-pulse">CHAVE AUSENTE!</div>}
+                                </div>
+                            )}
+
                             <div className="absolute bottom-0 left-0 h-1 bg-emerald-500/20 transition-all duration-1000" style={{ width: `${percent}%` }}></div>
 
                             <div className="flex items-center gap-4 relative z-10">
@@ -263,7 +304,7 @@ export default function ConquistasPage() {
                                 </div>
                             </div>
                             
-                            <div className="absolute top-3 right-3">
+                            <div className={`absolute top-3 right-3 ${debugMode ? 'opacity-0' : 'opacity-100'}`}>
                                 <span className={`text-[8px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${item.isUnlocked ? "bg-emerald-950/50 text-emerald-400 border-emerald-500/20" : "bg-zinc-900 text-zinc-600 border-zinc-800"}`}>
                                     +{item.xp} XP
                                 </span>

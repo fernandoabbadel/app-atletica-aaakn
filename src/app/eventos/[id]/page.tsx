@@ -1,3 +1,4 @@
+// src/app/eventos/[id]/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -7,14 +8,14 @@ import {
   Loader2, Crown, MessageCircle, AlertTriangle, 
   Heart, Send, Plus, Trash2, ShieldAlert, Star,
   Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords,
-  ChevronLeft, ChevronRight, Flag, Medal, Skull, Rocket
-} from "lucide-react";
+  ChevronLeft, ChevronRight, Flag, Medal, Skull, Rocket, Phone, X
+} from "lucide-react"; // 🦈 CORREÇÃO: Adicionado 'X' aqui
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
   doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs 
+  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs, where 
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
@@ -37,10 +38,24 @@ interface Evento {
     likes?: number;
   };
   lotes?: Array<{
+    id: string | number; 
     nome: string;
     preco: string;
     status: 'ativo' | 'esgotado' | 'em_breve';
   }>;
+  // 🦈 ID 12: Dados financeiros locais do evento
+  pixChave?: string;
+  pixBanco?: string;
+  pixTitular?: string;
+  contatoComprovante?: string;
+}
+
+interface PedidoIngresso {
+    id: string;
+    loteNome: string;
+    quantidade: number;
+    valorTotal: string;
+    status: string;
 }
 
 interface Rsvp {
@@ -87,24 +102,13 @@ interface Enquete {
   createdAt: any;
 }
 
-// --- CONFIGURAÇÃO DE ÍCONES (IGUAL AO ADMIN/CONQUISTAS) ---
+// --- CONFIGURAÇÃO DE ÍCONES ---
 const ICON_COMPONENTS: Record<string, any> = {
-    Fish: Fish,
-    Swords: Swords,
-    Crown: Crown,
-    Skull: Skull,
-    Rocket: Rocket,
-    Star: Star,
-    Zap: Zap,
-    Trophy: Trophy,
-    Medal: Medal,
-    Heart: Heart,
-    Ghost: Ghost,
-    Gem: Gem,
-    ShoppingBag: ShoppingBag
+    Fish: Fish, Swords: Swords, Crown: Crown, Skull: Skull, Rocket: Rocket,
+    Star: Star, Zap: Zap, Trophy: Trophy, Medal: Medal, Heart: Heart,
+    Ghost: Ghost, Gem: Gem, ShoppingBag: ShoppingBag
 };
 
-// DADOS PADRÃO DAS PATENTES (FALLBACK)
 const DEFAULT_PATENTES = [
     { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
     { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
@@ -115,22 +119,16 @@ const DEFAULT_PATENTES = [
 ];
 
 const PLAN_COLORS: Record<string, string> = {
-    yellow: "text-yellow-400",
-    emerald: "text-emerald-400",
-    purple: "text-purple-400",
-    blue: "text-blue-400",
-    red: "text-red-500",
-    zinc: "text-zinc-400"
+    yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
+    blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
 };
 
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg",
-    "Geral": "https://github.com/shadcn.png"
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg", "Geral": "https://github.com/shadcn.png"
 };
 
-// --- HELPER: PARSER DE DATA ---
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
         const now = new Date();
@@ -140,31 +138,6 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
             const [y, m, d] = dateStr.split('-').map(Number);
             return new Date(y, m - 1, d, hours || 0, mins || 0);
-        }
-
-        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            const [d, m, y] = dateStr.split('/').map(Number);
-            return new Date(y, m - 1, d, hours || 0, mins || 0);
-        }
-
-        const months: Record<string, number> = {
-            'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
-            'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
-        };
-        const cleanDate = dateStr.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const parts = cleanDate.split(' '); 
-        
-        if (parts.length >= 2) {
-            const day = parseInt(parts[0]);
-            const monthKey = Object.keys(months).find(m => parts[1].includes(m));
-            
-            if (monthKey !== undefined && !isNaN(day)) {
-                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
-                if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
-                    eventDate.setFullYear(currentYear + 1);
-                }
-                return eventDate;
-            }
         }
         return null;
     } catch (e) {
@@ -221,33 +194,18 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
 // --- BADGES DO USUÁRIO ---
 const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: any[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
-    
-    // Plano Badge
     const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
     const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
-
-    // Patente Badge
     const patenteName = data.userPatente || "Plâncton";
     const patenteConfig = patentesConfig.find(p => p.titulo === patenteName) || patentesConfig[0] || DEFAULT_PATENTES[0];
-    
     const PatenteIcon = ICON_COMPONENTS[patenteConfig.iconName] || Fish;
     const patenteColor = patenteConfig.cor || "text-zinc-400";
 
     return (
         <div className="flex items-center gap-1.5 ml-1">
-            {isAdminUser && (
-                <span title="Admin">
-                    <ShieldAlert size={12} className="text-red-500 fill-red-500/20" />
-                </span>
-            )}
-            
-            {data.userPlanoIcon && data.userPlanoIcon !== 'ghost' && (
-                 <PlanIcon size={12} className={planColor} title="Plano VIP" />
-            )}
-
-            <div title={`Patente: ${patenteConfig.titulo}`} className="flex items-center justify-center">
-                <PatenteIcon size={12} className={patenteColor} />
-            </div>
+            {isAdminUser && <span title="Admin"><ShieldAlert size={12} className="text-red-500 fill-red-500/20" /></span>}
+            {data.userPlanoIcon && data.userPlanoIcon !== 'ghost' && <PlanIcon size={12} className={planColor} title="Plano VIP" />}
+            <div title={`Patente: ${patenteConfig.titulo}`} className="flex items-center justify-center"><PatenteIcon size={12} className={patenteColor} /></div>
         </div>
     );
 };
@@ -270,6 +228,10 @@ export default function DetalhesEventoPage() {
   const [newPollOption, setNewPollOption] = useState("");
   
   const [currentPollIndex, setCurrentPollIndex] = useState(0);
+
+  // 🦈 NOVOS ESTADOS PARA PEDIDOS
+  const [meusPedidos, setMeusPedidos] = useState<PedidoIngresso[]>([]);
+  const [globalFinanceiro, setGlobalFinanceiro] = useState<any>(null);
 
   // --- SINC INICIAL ---
   useEffect(() => {
@@ -307,15 +269,46 @@ export default function DetalhesEventoPage() {
       // 5. Patentes (Global Config)
       const unsubPatentes = onSnapshot(query(collection(db, "patentes_config"), orderBy("minXp", "asc")), (snap) => {
           const data = snap.docs.map(d => d.data());
-          if (data.length > 0) {
-              setPatentesConfig(data);
-          }
+          if (data.length > 0) setPatentesConfig(data);
+      });
+
+      // 6. Config Financeira Global (Backup)
+      getDocs(collection(db, "app_config")).then(snap => {
+          snap.docs.forEach(d => {
+              if (d.id === "financeiro") setGlobalFinanceiro(d.data());
+          });
       });
 
       return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); unsubPatentes(); };
   }, [params.id, user]);
 
+  // 🦈 LISTENER DE PEDIDOS DO USUÁRIO
+  useEffect(() => {
+      if (!user || !params.id) return;
+      
+      const qPedidos = query(
+          collection(db, "solicitacoes_ingressos"), 
+          where("userId", "==", user.uid),
+          where("eventoId", "==", params.id)
+      );
+      const unsubPedidos = onSnapshot(qPedidos, (snap) => {
+          setMeusPedidos(snap.docs.map(d => ({ id: d.id, ...d.data() } as PedidoIngresso)));
+      });
+
+      return () => unsubPedidos();
+  }, [user, params.id]);
+
   // --- ACTIONS ---
+
+  const handleCancelOrder = async (pedidoId: string) => {
+      if (!confirm("Tem certeza que deseja cancelar este pedido?")) return;
+      try {
+          await deleteDoc(doc(db, "solicitacoes_ingressos", pedidoId));
+          addToast("Pedido cancelado.", "info");
+      } catch (e) {
+          addToast("Erro ao cancelar.", "error");
+      }
+  };
 
   const handleRSVP = async (status: "going" | "maybe") => {
       if (!user || !evento) return addToast("Faça login para confirmar!", "error");
@@ -328,27 +321,21 @@ export default function DetalhesEventoPage() {
               const old = docSnap.exists() ? (docSnap.data() as Rsvp).status : null;
 
               if (old === status) {
-                  // Remover RSVP
                   t.delete(ref);
                   t.update(eventRef, { 
                       [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1),
-                      // 🦈 REMOVE DO ARRAY PARA O PERFIL SABER
                       interessados: arrayRemove(user.uid) 
                   });
               } else {
-                  // Adicionar ou Trocar
                   if (old) {
                       t.update(eventRef, { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
                   }
-                  
                   t.set(ref, {
                       userId: user.uid, status, userName: user.nome || "Anônimo", 
                       userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
-                  
                   t.update(eventRef, { 
                       [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1),
-                      // 🦈 ADICIONA NO ARRAY PARA O PERFIL SABER
                       interessados: arrayUnion(user.uid) 
                   });
               }
@@ -357,36 +344,22 @@ export default function DetalhesEventoPage() {
       } catch (e) { addToast("Erro ao atualizar.", "error"); }
   };
 
+  // ... (Funções handleSendComment, handleLikeComment, etc. mantidas iguais)
   const handleSendComment = async () => {
       if (!newComment.trim() || !user || !evento) return;
-      
       const newCommentData = {
-          text: newComment, 
-          userId: user.uid, 
-          userName: user.nome || "Anônimo",
-          userAvatar: user.foto || "", 
-          userTurma: user.turma || "Geral",
-          
-          userPlanoCor: user.plano_cor || "zinc",
-          userPlanoIcon: user.plano_icon || "ghost",
-          userPatente: user.patente || "Plâncton", 
-          role: user.role || 'user',
-
-          createdAt: serverTimestamp(), 
-          likes: [], 
-          reports: [], 
-          hidden: false
+          text: newComment, userId: user.uid, userName: user.nome || "Anônimo",
+          userAvatar: user.foto || "", userTurma: user.turma || "Geral",
+          userPlanoCor: user.plano_cor || "zinc", userPlanoIcon: user.plano_icon || "ghost",
+          userPatente: user.patente || "Plâncton", role: user.role || 'user',
+          createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
       };
-
       try {
           await addDoc(collection(db, "eventos", evento.id, "comentarios"), newCommentData);
           await updateDoc(doc(db, "users", user.uid), { "stats.commentsCount": increment(1) });
           setNewComment("");
           addToast("Comentário enviado!", "success");
-      } catch (e) {
-          console.error(e);
-          addToast("Erro ao comentar.", "error");
-      }
+      } catch (e) { addToast("Erro ao comentar.", "error"); }
   };
 
   const handleLikeComment = async (comId: string, currentLikes: string[], authorId: string) => {
@@ -394,14 +367,9 @@ export default function DetalhesEventoPage() {
       const ref = doc(db, "eventos", evento.id, "comentarios", comId);
       const safeLikes = Array.isArray(currentLikes) ? currentLikes : [];
       const hasLiked = safeLikes.includes(user.uid);
-      
       try {
-          if (hasLiked) {
-              await updateDoc(ref, { likes: arrayRemove(user.uid) });
-          } else {
-              await updateDoc(ref, { likes: arrayUnion(user.uid) });
-          }
-
+          if (hasLiked) { await updateDoc(ref, { likes: arrayRemove(user.uid) }); } 
+          else { await updateDoc(ref, { likes: arrayUnion(user.uid) }); }
           if (user.uid !== authorId) {
               const incrementVal = hasLiked ? -1 : 1;
               await updateDoc(doc(db, "users", authorId), { "stats.likesReceived": increment(incrementVal) });
@@ -412,10 +380,7 @@ export default function DetalhesEventoPage() {
 
   const handleDeleteComment = async (comId: string) => {
       if (!evento || !confirm("Apagar este comentário?")) return;
-      try {
-          await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
-          addToast("Comentário apagado.", "info");
-      } catch (error) { addToast("Erro ao apagar.", "error"); }
+      try { await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId)); addToast("Comentário apagado.", "info"); } catch (error) { addToast("Erro ao apagar.", "error"); }
   };
 
   const handleReportComment = async (comId: string) => {
@@ -433,43 +398,32 @@ export default function DetalhesEventoPage() {
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
       if (!user || !evento) return addToast("Login necessário.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
-      
       try {
         await runTransaction(db, async (t) => {
             const pollDoc = await t.get(pollRef);
             if (!pollDoc.exists()) throw "Enquete não existe";
-            
             const data = pollDoc.data() as Enquete;
             const newOptions = [...data.options];
             const userVotes = data.userVotes || {}; 
             const myVotes = userVotes[user.uid] || [];
-
             if (myVotes.includes(optionIndex)) {
                 newOptions[optionIndex].votes = Math.max(0, (newOptions[optionIndex].votes || 0) - 1);
                 const userTurma = user.turma || "Geral";
-                if(newOptions[optionIndex].votesByTurma && newOptions[optionIndex].votesByTurma![userTurma] > 0) {
-                     newOptions[optionIndex].votesByTurma![userTurma]--;
-                }
+                if(newOptions[optionIndex].votesByTurma && newOptions[optionIndex].votesByTurma![userTurma] > 0) { newOptions[optionIndex].votesByTurma![userTurma]--; }
                 const newMyVotes = myVotes.filter(v => v !== optionIndex);
                 userVotes[user.uid] = newMyVotes;
-
                 t.update(pollRef, { options: newOptions, userVotes: userVotes });
             } else {
-                if (myVotes.length >= 3) {
-                    throw "Você já escolheu 3 opções!";
-                }
+                if (myVotes.length >= 3) { throw "Você já escolheu 3 opções!"; }
                 newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
                 const userTurma = user.turma || "Geral";
                 if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
                 newOptions[optionIndex].votesByTurma![userTurma] = (newOptions[optionIndex].votesByTurma![userTurma] || 0) + 1;
                 userVotes[user.uid] = [...myVotes, optionIndex];
-
                 t.update(pollRef, { options: newOptions, userVotes: userVotes, voters: arrayUnion(user.uid) });
             }
         });
-      } catch (e: any) {
-        addToast(typeof e === 'string' ? e : "Erro ao votar.", "error");
-      }
+      } catch (e: any) { addToast(typeof e === 'string' ? e : "Erro ao votar.", "error"); }
   };
 
   const handleCreatePollOption = async (pollId: string) => {
@@ -477,27 +431,15 @@ export default function DetalhesEventoPage() {
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ 
-              text: newPollOption, 
-              votes: 0, 
-              creatorId: user.uid,
-              creatorName: user.nome?.split(" ")[0] || "Anônimo", 
-              creatorAvatar: user.foto || "",
-              votesByTurma: {} 
+              text: newPollOption, votes: 0, creatorId: user.uid, creatorName: user.nome?.split(" ")[0] || "Anônimo", creatorAvatar: user.foto || "", votesByTurma: {} 
           })
       });
       setNewPollOption("");
       addToast("Opção adicionada!", "success");
   };
 
-  const handleReportPoll = async (pollId: string) => {
-      if(!user) return;
-      addToast("Enquete reportada à moderação.", "info");
-  };
-
-  const handleReportOption = async (pollId: string, optionText: string) => {
-      if(!user) return;
-      addToast(`Opção "${optionText}" denunciada.`, "info");
-  };
+  const handleReportPoll = async (pollId: string) => { if(!user) return; addToast("Enquete reportada à moderação.", "info"); };
+  const handleReportOption = async (pollId: string, optionText: string) => { if(!user) return; addToast(`Opção "${optionText}" denunciada.`, "info"); };
 
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
@@ -508,9 +450,7 @@ export default function DetalhesEventoPage() {
       const counts: Record<string, number> = {};
       currentPoll.options?.forEach((opt) => {
           if (opt.votesByTurma) {
-              Object.entries(opt.votesByTurma).forEach(([turma, count]) => {
-                  counts[turma] = (counts[turma] || 0) + (count as number);
-              });
+              Object.entries(opt.votesByTurma).forEach(([turma, count]) => { counts[turma] = (counts[turma] || 0) + (count as number); });
           }
       });
       return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => t);
@@ -582,6 +522,42 @@ export default function DetalhesEventoPage() {
       {/* CONTEÚDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
+        {/* 🦈 NOVO: ÁREA DE STATUS DOS PEDIDOS (Prioridade no topo) */}
+        {meusPedidos.length > 0 && (
+            <div className="space-y-3">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-purple-500"/> Seus Pedidos</h3>
+                {meusPedidos.map(pedido => (
+                    <div key={pedido.id} className={`p-4 rounded-xl border flex flex-col gap-3 ${pedido.status === 'aprovado' ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-yellow-900/10 border-yellow-500/30'}`}>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-sm font-bold text-white">{pedido.quantidade}x {pedido.loteNome}</p>
+                                <p className="text-xs text-zinc-400 font-mono">R$ {pedido.valorTotal}</p>
+                            </div>
+                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 ${pedido.status === 'aprovado' ? 'bg-emerald-500 text-black' : 'bg-yellow-500 text-black'}`}>
+                                {pedido.status === 'aprovado' ? <CheckCircle size={12}/> : <Clock size={12}/>}
+                                {pedido.status === 'aprovado' ? 'Confirmado' : 'Aguardando Aprovação'}
+                            </span>
+                        </div>
+
+                        {pedido.status !== 'aprovado' && (
+                            <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-xs">
+                                <p className="text-zinc-400 mb-1 flex items-center gap-1"><Phone size={12}/> Envie o comprovante para:</p>
+                                <p className="text-white font-mono">
+                                    {evento.contatoComprovante || globalFinanceiro?.telefones || globalFinanceiro?.whatsapp || "(Consulte a diretoria)"}
+                                </p>
+                            </div>
+                        )}
+
+                        {pedido.status !== 'aprovado' && (
+                            <button onClick={() => handleCancelOrder(pedido.id)} className="text-xs text-red-500 hover:text-red-400 font-bold uppercase flex items-center gap-1 self-end">
+                                <X size={12}/> Cancelar Pedido
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
+        )}
+
         {evento.descricao && (
             <div className="space-y-2">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Sobre o Evento</h3>
@@ -599,7 +575,10 @@ export default function DetalhesEventoPage() {
                             <p className="text-zinc-400 text-[10px]">O lote vai virar em breve!</p>
                         </div>
                     </div>
-                    <Link href="/carrinho" className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
+                    {/* 🦈 Link para nova compra */}
+                    {evento.lotes && evento.lotes.length > 0 && evento.lotes[0].status === 'ativo' && (
+                         <Link href={`/eventos/compra?evento=${evento.id}&lote=${evento.lotes[0].id}`} className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
+                    )}
                 </div>
             </div>
         )}
@@ -631,7 +610,13 @@ export default function DetalhesEventoPage() {
                         <p className="text-emerald-400 font-bold">R$ {l.preco}</p>
                     </div>
                     {l.status === 'ativo' ? 
-                        <Link href="/carrinho" className="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-400 transition">Comprar</Link> 
+                        // 🦈 ID 4: Link atualizado para a nova página de compra com query params
+                        <Link 
+                            href={`/eventos/compra?evento=${evento.id}&lote=${l.id}`} 
+                            className="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-400 transition shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                        >
+                            Comprar
+                        </Link> 
                         : <span className="text-[10px] font-bold text-zinc-600 uppercase border border-zinc-800 px-3 py-1 rounded-lg">{l.status}</span>}
                 </div>
             ))}

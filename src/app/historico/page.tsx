@@ -99,7 +99,7 @@ export default function HistoricoPage() {
           </div>
           
           <div className="absolute top-6 left-6 z-30">
-              <Link href="/menu" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10 active:scale-95">
+              <Link href="/dashboard" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10 active:scale-95">
                 <ArrowLeft size={20}/>
               </Link>
           </div>

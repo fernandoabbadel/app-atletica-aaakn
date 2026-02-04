@@ -117,7 +117,7 @@ export default function FidelidadePage() {
       
       {/* HEADER */}
       <header className="p-4 sticky top-0 z-30 flex items-center gap-4 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 shadow-lg">
-        <Link href="/menu" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition">
+        <Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition">
           <ArrowLeft size={24} />
         </Link>
         <div className="flex-1">

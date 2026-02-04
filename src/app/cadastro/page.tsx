@@ -13,6 +13,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { db, storage } from "../../lib/firebase"; 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, updateDoc } from "firebase/firestore"; // Importado para ID 1
 import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
@@ -60,6 +61,18 @@ const PETS_OPTIONS = [
     { id: "nenhum", label: "Sem Pet", icon: "🚫" },
 ];
 
+// 🦈 ID 3: Interfaces para remover 'any'
+interface IBGEUF {
+  id: number;
+  sigla: string;
+  nome: string;
+}
+
+interface IBGECity {
+  id: number;
+  nome: string;
+}
+
 // 🦈 INTERFACE ESTRITA
 interface UserFormData {
     nome: string;
@@ -90,9 +103,13 @@ export default function CadastroPage() {
   const [imageLoading, setImageLoading] = useState(false); 
   const [error, setError] = useState("");
   
-  const [ufs, setUfs] = useState<any[]>([]);
-  const [cidades, setCidades] = useState<any[]>([]);
+  // 🦈 ID 3: Tipagem correta
+  const [ufs, setUfs] = useState<IBGEUF[]>([]);
+  const [cidades, setCidades] = useState<IBGECity[]>([]);
   const [ufSelected, setUfSelected] = useState("");
+  
+  // 🦈 ID 1: Estado para travar localização se já existir
+  const [locationLocked, setLocationLocked] = useState(false);
 
   // 🦈 ESTADO TIPADO
   const [formData, setFormData] = useState<UserFormData>({
@@ -133,7 +150,12 @@ export default function CadastroPage() {
   // 🦈 LOAD DE DADOS COM SANITIZAÇÃO
   useEffect(() => {
     if (user) {
-      if (user.estadoOrigem) {
+      // 🦈 ID 1: Verifica se localização já existe para travar
+      if (user.estadoOrigem && user.cidadeOrigem) {
+          setLocationLocked(true);
+          // Preenche os selects/inputs mesmo travados
+          setUfSelected(String(user.estadoOrigem));
+      } else if (user.estadoOrigem) {
           setUfSelected(String(user.estadoOrigem));
       }
 
@@ -221,14 +243,39 @@ export default function CadastroPage() {
     if (!formData.foto) { setLoading(false); return setError("A foto de perfil é obrigatória!"); }
 
     try {
+      // 1. Atualiza dados do usuário
       await updateUser({
         ...formData,
         instagram: formData.instagram ? `@${formData.instagram.replace("@", "")}` : "",
         role: user?.role === 'guest' ? 'user' : user?.role 
       });
+
+      // 🦈 ID 1: Lógica de Perfil Completo para Gamificação
+      // Verifica se todos os campos obrigatórios estão preenchidos
+      const isProfileComplete = 
+        formData.nome && 
+        user?.email && // Email vem do Auth
+        formData.turma && 
+        formData.instagram && 
+        formData.telefone &&
+        formData.matricula && 
+        formData.apelido && 
+        formData.cidadeOrigem && 
+        formData.estadoOrigem && 
+        formData.foto;
+
+      if (isProfileComplete && user?.uid) {
+        // Define profileComplete = 1 no Firestore (usado para conquistas)
+        await updateDoc(doc(db, "users", user.uid), {
+            "stats.profileComplete": 1 
+        });
+        // Feedback visual extra (opcional, já que o toast de sucesso vem abaixo)
+      }
+
       addToast("Perfil atualizado! Bem-vindo ao cardume. 🦈", "success");
       router.push("/perfil"); 
     } catch (err) {
+      console.error(err);
       setError("Erro ao salvar no QG.");
     } finally {
       setLoading(false);
@@ -351,22 +398,42 @@ export default function CadastroPage() {
                         </div>
                     </div>
 
-                    {/* 🦈 ID 305: Persistência de Localização */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* 🦈 CORREÇÃO RESPONSIVIDADE E ALINHAMENTO */}
-                        {/* Adicionado 'px-4' pois este select não tem ícone, evitando que o texto cole na borda */}
-                        <select className="input-field px-4" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
-                            <option value="">Estado de Origem</option>
-                            {ufs.map(uf => <option key={uf.id} value={uf.sigla}>{uf.nome}</option>)}
-                        </select>
-                        <div className="relative group">
-                            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
-                            <select className="input-field pl-14 appearance-none" value={formData.cidadeOrigem} onChange={e => setFormData({...formData, cidadeOrigem: e.target.value})} disabled={!ufSelected} required>
-                                <option value="">Cidade</option>
-                                {cidades.map(city => <option key={city.id} value={city.nome}>{city.nome}</option>)}
-                            </select>
+                    {/* 🦈 ID 1: LOCALIZAÇÃO - Travar se já existir */}
+                    {locationLocked ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Estado Locked */}
+                            <div className="relative group opacity-60">
+                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                                <input type="text" value={formData.estadoOrigem} className="input-field pl-14 cursor-not-allowed bg-zinc-950" readOnly title="Estado de origem já registrado." />
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600">
+                                    <Lock size={14}/> 
+                                </div>
+                            </div>
+                            {/* Cidade Locked */}
+                            <div className="relative group opacity-60">
+                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                                <input type="text" value={formData.cidadeOrigem} className="input-field pl-14 cursor-not-allowed bg-zinc-950" readOnly title="Cidade de origem já registrada." />
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600">
+                                    <Lock size={14}/> 
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Adicionado 'px-4' pois este select não tem ícone, evitando que o texto cole na borda */}
+                            <select className="input-field px-4" value={ufSelected} onChange={e => setUfSelected(e.target.value)} required>
+                                <option value="">Estado de Origem</option>
+                                {ufs.map(uf => <option key={uf.id} value={uf.sigla}>{uf.nome}</option>)}
+                            </select>
+                            <div className="relative group">
+                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                                <select className="input-field pl-14 appearance-none" value={formData.cidadeOrigem} onChange={e => setFormData({...formData, cidadeOrigem: e.target.value})} disabled={!ufSelected} required>
+                                    <option value="">Cidade</option>
+                                    {cidades.map(city => <option key={city.id} value={city.nome}>{city.nome}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="flex gap-2">
@@ -475,10 +542,6 @@ export default function CadastroPage() {
         </div>
 
         <style jsx>{`
-            /* 🦈 CORREÇÃO CSS:
-               Removido 'padding: 0 1rem;' que causava conflito.
-               Agora usamos apenas padding-right aqui e deixamos o padding-left para o Tailwind (pl-14 ou px-4).
-            */
             .input-field { 
                 width: 100%; 
                 background: #000; 

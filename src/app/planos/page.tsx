@@ -58,7 +58,7 @@ export default function PlanosPage() {
       <div className="relative pt-10 pb-20 px-6 overflow-hidden">
           <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[80%] h-[80%] bg-emerald-600/20 blur-[120px] rounded-full pointer-events-none"></div>
           <div className="relative z-10 max-w-4xl mx-auto text-center">
-              <Link href="/menu" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white mb-6 transition uppercase text-xs font-bold tracking-widest"><ArrowLeft size={16}/> Voltar ao Menu</Link>
+              <Link href="/dashboard" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white mb-6 transition uppercase text-xs font-bold tracking-widest"><ArrowLeft size={16}/> Voltar ao Menu</Link>
               <h1 className="text-4xl md:text-6xl font-black text-white uppercase tracking-tighter mb-4">Seja Sócio <span className="text-emerald-500">Tubarão</span></h1>
               <p className="text-zinc-400 max-w-lg mx-auto text-sm md:text-base">Escolha seu nível de acesso e garanta vantagens exclusivas.</p>
           </div>

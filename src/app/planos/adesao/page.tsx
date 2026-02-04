@@ -133,7 +133,7 @@ export default function AdesaoPage() {
                   <p className="text-zinc-400 text-sm mb-6">
                       Você já tem um pedido pendente. Aguarde o Tesoureiro aprovar ou recusar antes de solicitar outro plano.
                   </p>
-                  <Link href="/menu" className="block w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl uppercase text-xs tracking-wider transition">
+                  <Link href="/planos" className="block w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl uppercase text-xs tracking-wider transition">
                       Voltar ao Menu
                   </Link>
               </div>
@@ -263,7 +263,7 @@ export default function AdesaoPage() {
                         </div>
                     </div>
 
-                    <button onClick={() => router.push('/menu')} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
+                    <button onClick={() => router.push('/planos')} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
                         Voltar ao Menu
                     </button>
                 </div>
