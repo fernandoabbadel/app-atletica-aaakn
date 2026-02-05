@@ -33,3 +33,6 @@
 ## Decisões Recentes
 - 2026-02-05: iniciar correções de lint/TS para fazer `npm run build` passar, mantendo mudanças mínimas.
 - 2026-02-05: mover cálculos de games para `src/lib/games.ts` para evitar exports nomeados em `src/app/**/page.tsx`.
+
+- 2026-02-05: substituir `<img>` por `<Image>` em páginas públicas/admin (ligas, ligas_unitau, menu, not-found, loja, gym, gym/checkin/details, loading) usando `unoptimized` quando a origem é base64/remota.
+- 2026-02-05: pendente aprovação para adicionar domínios de imagens externas em `next.config.ts` (placehold.co, via.placeholder.com, www.svgrepo.com, api.dicebear.com).

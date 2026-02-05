@@ -3,6 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
@@ -12,9 +13,11 @@ export default function NotFound() {
       <div className="relative w-40 h-40 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(239,68,68,0.3)] mb-8 flex items-center justify-center group">
         {/* LOGO */}
         <div className="relative z-20 w-28 h-28 flex items-center justify-center opacity-80 group-hover:scale-110 transition duration-500">
-          <img
+          <Image
             src="/logo.png"
             alt="Logo Atlética"
+            width={112}
+            height={112}
             className="w-full h-full object-contain drop-shadow-2xl grayscale"
           />
         </div>

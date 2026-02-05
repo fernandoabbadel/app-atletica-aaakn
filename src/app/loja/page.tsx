@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ArrowLeft, ShoppingBag, Search, 
   Package, Zap, AlertCircle 
@@ -199,10 +200,13 @@ export default function LojaPage() {
                             {/* IMAGEM */}
                             <div className="relative h-48 bg-black w-full overflow-hidden">
                                 {prod.img ? (
-                                    <img 
-                                        src={prod.img} 
-                                        alt={prod.nome} 
-                                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition duration-500"
+                                    <Image
+                                        src={prod.img}
+                                        alt={prod.nome}
+                                        fill
+                                        sizes="100vw"
+                                        className="object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition duration-500"
+                                        unoptimized
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-zinc-700">

@@ -1,32 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
+
+// Suas frases excelentes (Mantidas!)
+const LOADING_FRASES = [
+  "Afiando o bisturi... e os dentes. 🦈",
+  "Os tubarões estão revisando Anatomia...",
+  "Procurando a veia certa... aguarde.",
+  "Tubarão não dorme, estuda Fisiologia.",
+  "Calibrando a mordida para o Intermed. 🏆",
+  "Mergulhando em um mar de apostilas.",
+  "Oxigenando as brânquias para o plantão. 🫁",
+  "Esperando o R1 passar a visita...",
+  "Consultando o Harrison... um momento. 📚",
+  "Nadando contra a corrente (e o sono).",
+];
 
 export default function Loading() {
   const [frase, setFrase] = useState("Carregando...");
 
-  // Suas frases excelentes (Mantidas!)
-  const frases = [
-    "Afiando o bisturi... e os dentes. 🦈",
-    "Os tubarões estão revisando Anatomia...",
-    "Procurando a veia certa... aguarde.",
-    "Tubarão não dorme, estuda Fisiologia.",
-    "Calibrando a mordida para o Intermed. 🏆",
-    "Mergulhando em um mar de apostilas.",
-    "Oxigenando as brânquias para o plantão. 🫁",
-    "Esperando o R1 passar a visita...",
-    "Consultando o Harrison... um momento. 📚",
-    "Nadando contra a corrente (e o sono).",
-  ];
-
   useEffect(() => {
     // Escolhe frase aleatória e troca a cada 2.5s para não ficar estático se demorar
-    const randomIndex = Math.floor(Math.random() * frases.length);
-    setFrase(frases[randomIndex]);
+    const randomIndex = Math.floor(Math.random() * LOADING_FRASES.length);
+    setFrase(LOADING_FRASES[randomIndex]);
 
     const interval = setInterval(() => {
-      const newIndex = Math.floor(Math.random() * frases.length);
-      setFrase(frases[newIndex]);
+      const newIndex = Math.floor(Math.random() * LOADING_FRASES.length);
+      setFrase(LOADING_FRASES[newIndex]);
     }, 2500);
 
     return () => clearInterval(interval);
@@ -38,10 +39,12 @@ export default function Loading() {
       <div className="relative w-32 h-32 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
         {/* LOGO NO CENTRO (Frente da água) */}
         <div className="relative z-20 w-20 h-20 flex items-center justify-center">
-          <img
+          <Image
             src="/logo.png"
             alt="Loading"
-            className="w-full h-full object-contain drop-shadow-2xl animate-pulse-slow"
+            fill
+            sizes="80px"
+            className="object-contain drop-shadow-2xl animate-pulse-slow"
             onError={(e) => {
               // Fallback para o emoji caso a imagem falhe
               e.currentTarget.style.display = "none";

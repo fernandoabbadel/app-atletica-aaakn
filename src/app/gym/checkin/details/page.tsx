@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { ArrowLeft, CheckCircle2, Tag, Type } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -92,11 +93,14 @@ export default function CheckinDetailsPage() {
 
       <main className="flex-1 p-6 space-y-8 overflow-y-auto">
         <div className="flex flex-col items-center">
-          <div className="w-40 h-40 rounded-3xl overflow-hidden border-2 border-zinc-800 shadow-2xl rotate-3">
-            <img 
+          <div className="w-40 h-40 rounded-3xl overflow-hidden border-2 border-zinc-800 shadow-2xl rotate-3 relative">
+            <Image 
                 src={photo} 
                 alt="Check-in preview" 
-                className="w-full h-full object-cover" 
+                fill
+                sizes="160px"
+                className="object-cover" 
+                unoptimized
             />
           </div>
           <p className="text-[10px] text-zinc-500 mt-2 font-bold uppercase tracking-widest">

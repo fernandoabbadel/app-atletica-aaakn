@@ -96,7 +96,7 @@ export default function ConquistasPage() {
       return () => { unsubAch(); unsubPatentes(); };
   }, []);
 
-  const userStats = user?.stats || {}; 
+  const userStats = useMemo(() => user?.stats ?? {}, [user?.stats]); 
   
   // 🦈 useMemo otimizado e seguro
   const calculatedAchievements = useMemo(() => {
@@ -125,7 +125,7 @@ export default function ConquistasPage() {
       processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
       return { list: processed, unlockedCount, totalXp, missingKeys };
-  }, [catalog, JSON.stringify(userStats)]); // 🦈 Dependência estável via stringify
+  }, [catalog, userStats]);
 
   const displayXp = Math.max(user?.xp || 0, calculatedAchievements.totalXp);
 

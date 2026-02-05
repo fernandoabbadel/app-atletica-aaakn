@@ -7,6 +7,7 @@ import {
   Lightbulb, Trophy, ArrowLeft, Users, Loader2, Brain, CheckCircle2, RotateCcw 
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { collection, onSnapshot, doc, updateDoc, increment, addDoc, serverTimestamp } from "firebase/firestore";
@@ -183,7 +184,14 @@ export default function LigasUnitauPage() {
                     {topMatches.length === 0 ? <p className="text-xs text-zinc-500 italic">Nenhuma liga encontrada com esse perfil.</p> : topMatches.map((l, i) => (
                         <div key={l.id} onClick={() => setSelectedLeague(l)} className="flex items-center gap-4 bg-black/40 p-3 rounded-xl border border-indigo-500/30 cursor-pointer hover:bg-indigo-900/20 transition group">
                             <span className="font-black text-lg text-indigo-800 w-6 text-center group-hover:text-indigo-500">{i+1}</span>
-                            <img src={l.logoBase64 || "https://github.com/shadcn.png"} alt={l.nome} className="w-12 h-12 rounded-full object-cover border border-indigo-500/20"/>
+                            <Image
+                              src={l.logoBase64 || "https://github.com/shadcn.png"}
+                              alt={l.nome}
+                              width={48}
+                              height={48}
+                              className="w-12 h-12 rounded-full object-cover border border-indigo-500/20"
+                              unoptimized
+                            />
                             <div className="flex-1"><h4 className="font-bold text-sm text-white">{l.nome}</h4><div className="w-full bg-zinc-800 h-1.5 rounded-full mt-1 overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{width: `${l.matchPercent}%`}}/></div></div>
                             <span className="text-xs font-black text-indigo-400">{l.matchPercent}%</span>
                         </div>
@@ -196,7 +204,14 @@ export default function LigasUnitauPage() {
         {leagues.map((l, i) => (
             <div key={l.id} onClick={() => setSelectedLeague(l)} className={`relative rounded-3xl p-1 border transition hover:scale-[1.02] cursor-pointer flex flex-col h-[320px] shadow-2xl ${getRankStyle(i)}`}>
                 <div className="h-40 w-full bg-black rounded-t-[20px] overflow-hidden relative shrink-0">
-                    <img src={l.logoBase64 || "https://github.com/shadcn.png"} alt={l.nome} className="w-full h-full object-cover opacity-60 transition duration-500 hover:opacity-80"/>
+                    <Image
+                      src={l.logoBase64 || "https://github.com/shadcn.png"}
+                      alt={l.nome}
+                      fill
+                      sizes="100vw"
+                      className="object-cover opacity-60 transition duration-500 hover:opacity-80"
+                      unoptimized
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent"/>
                     <div className="absolute bottom-2 left-4"><h2 className="text-3xl font-black italic uppercase tracking-tighter text-white drop-shadow-md">{l.sigla}</h2></div>
                 </div>
@@ -220,7 +235,14 @@ export default function LigasUnitauPage() {
                   
                   {/* Banner Modal */}
                   <div className="h-40 bg-zinc-900 relative shrink-0">
-                      <img src={selectedLeague.logoBase64 || "https://github.com/shadcn.png"} alt="Logo" className="w-full h-full object-cover opacity-50"/>
+                      <Image
+                        src={selectedLeague.logoBase64 || "https://github.com/shadcn.png"}
+                        alt="Logo"
+                        fill
+                        sizes="100vw"
+                        className="object-cover opacity-50"
+                        unoptimized
+                      />
                       <div className="absolute bottom-4 left-6">
                           <h1 className="text-4xl font-black italic text-white drop-shadow-lg">{selectedLeague.sigla}</h1>
                           <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest">{selectedLeague.nome}</p>
@@ -247,7 +269,14 @@ export default function LigasUnitauPage() {
                                   {selectedLeague.membros.map((m, i) => (
                                       <Link key={i} href={m.linkPerfil || "#"} className="flex flex-col items-center min-w-[80px] group">
                                           <div className="w-14 h-14 rounded-full border border-zinc-700 overflow-hidden group-hover:border-emerald-500 transition">
-                                              <img src={m.foto || "https://github.com/shadcn.png"} alt={m.nome} className="w-full h-full object-cover"/>
+                                              <Image
+                                                src={m.foto || "https://github.com/shadcn.png"}
+                                                alt={m.nome}
+                                                width={56}
+                                                height={56}
+                                                className="w-full h-full object-cover"
+                                                unoptimized
+                                              />
                                           </div>
                                           <p className="text-[10px] font-bold mt-2 text-center truncate w-full text-zinc-300 group-hover:text-white">{m.nome}</p>
                                           <p className="text-[9px] text-emerald-500 uppercase font-bold">{m.cargo}</p>

@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import {
   ArrowLeft,
   CreditCard,
@@ -60,10 +61,13 @@ export default function MenuPage() {
           <div className="flex items-center gap-4 relative z-10">
             <div className="relative">
               <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-emerald-500 to-emerald-900">
-                <img
+                <Image
                   src={socio.foto}
                   alt={`Foto de perfil de ${socio.nome}`}
+                  width={80}
+                  height={80}
                   className="w-full h-full rounded-full object-cover border-4 border-[#050505]"
+                  unoptimized
                 />
               </div>
               <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full border-4 border-[#050505]">

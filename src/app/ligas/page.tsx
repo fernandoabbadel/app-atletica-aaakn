@@ -8,6 +8,7 @@ import {
   Calendar, UserPlus, Search, X, 
   Loader2, MessageCircle, LayoutGrid
 } from 'lucide-react';
+import Image from "next/image";
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
@@ -496,7 +497,18 @@ export default function LigasAdminPage() {
                       <label className="text-[10px] font-bold text-zinc-500 uppercase">Logo da Liga</label>
                       <div className="flex items-center gap-4 mt-2">
                           <label className="w-20 h-20 bg-black rounded-xl border-2 border-dashed border-zinc-700 flex items-center justify-center cursor-pointer hover:border-emerald-500 overflow-hidden relative group transition-colors">
-                              {ligaData.logoBase64 ? <img src={ligaData.logoBase64} alt="Logo" className="w-full h-full object-cover"/> : <Upload size={20} className="text-zinc-500"/>}
+                              {ligaData.logoBase64 ? (
+                                <Image
+                                  src={ligaData.logoBase64}
+                                  alt="Logo"
+                                  fill
+                                  sizes="80px"
+                                  className="object-cover"
+                                  unoptimized
+                                />
+                              ) : (
+                                <Upload size={20} className="text-zinc-500"/>
+                              )}
                               <input type="file" className="hidden" onChange={(e) => handleImageUpload(e, 'logo')}/>
                           </label>
                           <span className="text-xs text-zinc-500 max-w-[150px]">Clique para alterar a logo.<br/>Recomendado: Quadrado.</span>
@@ -536,7 +548,15 @@ export default function LigasAdminPage() {
                       {ligaData.membros?.map((m, idx) => (
                           <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex items-center gap-4 relative group hover:border-zinc-600 transition">
                               <button onClick={() => removeMember(idx)} className="absolute top-2 right-2 text-zinc-600 hover:text-red-500"><Trash2 size={14}/></button>
-                              <div className="w-12 h-12 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0"><img src={m.foto || "https://github.com/shadcn.png"} alt={m.nome} className="w-full h-full object-cover"/></div>
+                              <div className="w-12 h-12 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0 relative">
+                                <Image
+                                  src={m.foto || "https://github.com/shadcn.png"}
+                                  alt={m.nome}
+                                  fill
+                                  sizes="48px"
+                                  className="object-cover"
+                                />
+                              </div>
                               <div className="flex-1 space-y-1">
                                   <p className="text-sm font-bold text-white">{m.nome}</p>
                                   <input type="text" placeholder="Cargo (Ex: Presidente)" className="w-full bg-transparent border-b border-zinc-700 text-xs text-emerald-500 outline-none focus:border-emerald-500 font-medium" value={m.cargo} onChange={e => updateMemberCargo(idx, e.target.value)}/>
@@ -555,26 +575,40 @@ export default function LigasAdminPage() {
                       <button onClick={() => handleOpenEventModal(null)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition"><Calendar size={14}/> Criar Evento</button>
                   </div>
                   <div className="space-y-3">
-                      {ligaData.eventos?.map((ev, idx) => (
-                          <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 relative flex flex-col md:flex-row gap-4 items-start md:items-center">
-                              <button onClick={() => {const n=[...ligaData.eventos!]; n.splice(idx,1); setLigaData({...ligaData, eventos:n})}} className="absolute top-2 right-2 text-zinc-600 hover:text-red-500"><Trash2 size={14}/></button>
-                              <img src={ev.imagem || ligaData.logoBase64} alt={ev.titulo} className="w-16 h-16 rounded-lg object-cover bg-black"/>
-                              <div className="flex-1">
-                                  <h4 className="font-bold text-white text-sm mb-1">{ev.titulo}</h4>
-                                  <div className="flex gap-3 text-[10px] text-zinc-400 font-bold uppercase">
-                                      <span>{ev.data} - {ev.hora}</span>
-                                      <span>•</span>
-                                      <span>{ev.local}</span>
-                                  </div>
-                                  <div className="flex gap-2 mt-2">
-                                      <button onClick={() => handleOpenEventModal(idx)} className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1"><Edit3 size={10}/> Editar Evento</button>
-                                      {ev.globalEventId && (
-                                          <button onClick={() => setPollModal(ev.globalEventId || null)} className="text-[10px] text-purple-400 hover:underline flex items-center gap-1"><MessageCircle size={10}/> Gerenciar Enquetes</button>
-                                      )}
+                      {ligaData.eventos?.map((ev, idx) => {
+                          const eventImage = ev.imagem || ligaData.logoBase64;
+                          return (
+                              <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 relative flex flex-col md:flex-row gap-4 items-start md:items-center">
+                                  <button onClick={() => {const n=[...ligaData.eventos!]; n.splice(idx,1); setLigaData({...ligaData, eventos:n})}} className="absolute top-2 right-2 text-zinc-600 hover:text-red-500"><Trash2 size={14}/></button>
+                                  {eventImage ? (
+                                      <Image
+                                        src={eventImage}
+                                        alt={ev.titulo}
+                                        width={64}
+                                        height={64}
+                                        className="rounded-lg object-cover bg-black"
+                                        unoptimized
+                                      />
+                                  ) : (
+                                      <div className="w-16 h-16 rounded-lg bg-black" />
+                                  )}
+                                  <div className="flex-1">
+                                      <h4 className="font-bold text-white text-sm mb-1">{ev.titulo}</h4>
+                                      <div className="flex gap-3 text-[10px] text-zinc-400 font-bold uppercase">
+                                          <span>{ev.data} - {ev.hora}</span>
+                                          <span>•</span>
+                                          <span>{ev.local}</span>
+                                      </div>
+                                      <div className="flex gap-2 mt-2">
+                                          <button onClick={() => handleOpenEventModal(idx)} className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1"><Edit3 size={10}/> Editar Evento</button>
+                                          {ev.globalEventId && (
+                                              <button onClick={() => setPollModal(ev.globalEventId || null)} className="text-[10px] text-purple-400 hover:underline flex items-center gap-1"><MessageCircle size={10}/> Gerenciar Enquetes</button>
+                                          )}
+                                      </div>
                                   </div>
                               </div>
-                          </div>
-                      ))}
+                          );
+                      })}
                       {(!ligaData.eventos || ligaData.eventos.length === 0) && <div className="text-center py-8 text-zinc-600 text-xs">Nenhum evento criado.</div>}
                   </div>
               </div>
@@ -621,7 +655,15 @@ export default function LigasAdminPage() {
                           {filteredUsers.map(u => (
                               <div key={u.id} className="flex items-center justify-between p-3 bg-black/50 rounded-lg cursor-pointer hover:bg-zinc-800 transition" onClick={() => addMemberFromSearch(u)}>
                                   <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden"><img src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} className="w-full h-full object-cover"/></div>
+                                      <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden relative">
+                                        <Image
+                                          src={u.foto || "https://github.com/shadcn.png"}
+                                          alt={u.nome}
+                                          fill
+                                          sizes="32px"
+                                          className="object-cover"
+                                        />
+                                      </div>
                                       <div><p className="text-xs font-bold text-white">{u.nome}</p><p className="text-[10px] text-zinc-500">{u.turma || "Sem turma"}</p></div>
                                   </div>
                                   <Plus size={14} className="text-emerald-500"/>
@@ -699,7 +741,17 @@ export default function LigasAdminPage() {
                                           {poll.options.map((opt, idx) => (
                                               <div key={idx} className="flex justify-between items-center text-xs text-zinc-300 p-2 hover:bg-zinc-700/30 rounded group">
                                                   <div className="flex items-center gap-2">
-                                                      {opt.creatorAvatar ? <img src={opt.creatorAvatar} alt="Creator" className="w-5 h-5 rounded-full object-cover border border-zinc-600"/> : <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-bold">ADM</div>}
+                                                      {opt.creatorAvatar ? (
+                                                        <Image
+                                                          src={opt.creatorAvatar}
+                                                          alt="Creator"
+                                                          width={20}
+                                                          height={20}
+                                                          className="rounded-full object-cover border border-zinc-600"
+                                                        />
+                                                      ) : (
+                                                        <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-bold">ADM</div>
+                                                      )}
                                                       <span>{opt.text} <span className="text-zinc-500">({opt.votes})</span></span>
                                                   </div>
                                                   <button onClick={async () => {
@@ -726,7 +778,21 @@ export default function LigasAdminPage() {
                       
                       <div onClick={() => eventFileRef.current?.click()} className="h-32 border-2 border-dashed border-zinc-700 rounded-xl flex items-center justify-center cursor-pointer bg-black/20 relative group overflow-hidden">
                           <input type="file" ref={eventFileRef} className="hidden" onChange={handleEventImageUpload}/>
-                          {uploadingEventImg ? <span className="text-xs text-emerald-500 animate-pulse">Enviando...</span> : currentEvent.imagem ? <img src={currentEvent.imagem} alt="Evento" className="w-full h-full object-cover" style={{ objectPosition: `50% ${currentEvent.imagePositionY || 50}%` }}/> : <div className="text-center text-zinc-500"><ImageIcon/><span className="text-xs">Capa</span></div>}
+                          {uploadingEventImg ? (
+                              <span className="text-xs text-emerald-500 animate-pulse">Enviando...</span>
+                          ) : currentEvent.imagem ? (
+                              <Image
+                                src={currentEvent.imagem}
+                                alt="Evento"
+                                fill
+                                sizes="100vw"
+                                className="object-cover"
+                                style={{ objectPosition: `50% ${currentEvent.imagePositionY || 50}%` }}
+                                unoptimized
+                              />
+                          ) : (
+                              <div className="text-center text-zinc-500"><ImageIcon/><span className="text-xs">Capa</span></div>
+                          )}
                       </div>
                       {currentEvent.imagem && <div className="bg-zinc-900 p-2 rounded-xl"><div className="flex justify-between text-[10px] text-zinc-400 uppercase mb-1"><span>Ajuste Vertical</span><span>{currentEvent.imagePositionY || 50}%</span></div><input type="range" min="0" max="100" value={currentEvent.imagePositionY || 50} onChange={(e) => setCurrentEvent({ ...currentEvent, imagePositionY: Number(e.target.value) })} className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/></div>}
                       
