@@ -2,31 +2,54 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Trophy, LayoutDashboard, Search, X, Gamepad2, Info
+  ArrowLeft, Search, X, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { db } from "../../../lib/firebase";
 import { collection, query, getDocs, limit } from "firebase/firestore";
 // 🦈 Importamos a calculadora oficial para garantir que o Admin vê a mesma coisa que o User
 import { calculateUserStats } from "../../games/page"; 
 
+// 🦈 Interface para tipagem segura
+interface AdminUser {
+    id: string;
+    nome: string;
+    turma: string;
+    foto: string;
+    stats?: Record<string, number>;
+    [key: string]: any; // Flexibilidade para outros campos do Firestore
+}
+
 export default function AdminGamesPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  // 🦈 Estados Tipados
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
       const fetchUsers = async () => {
-          const q = query(collection(db, "users"), limit(50));
-          const snap = await getDocs(q);
-          setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          setLoading(false);
+          try {
+            const q = query(collection(db, "users"), limit(50));
+            const snap = await getDocs(q);
+            // Cast seguro com fallback
+            setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as AdminUser)));
+          } catch (error) {
+            console.error("Erro ao buscar usuários", error);
+          } finally {
+            setLoading(false);
+          }
       };
       fetchUsers();
   }, []);
 
+  // Filtro ativo
   const filteredUsers = users.filter(u => u.nome?.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  if (loading) {
+      return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
@@ -36,40 +59,65 @@ export default function AdminGamesPage() {
        </header>
 
        <main className="p-6">
-          <div className="mb-6 flex gap-2">
-             <Search className="text-zinc-500"/>
-             <input type="text" placeholder="Buscar atleta..." className="bg-transparent border-none outline-none text-white w-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/>
+          <div className="mb-6 flex gap-2 items-center bg-zinc-900 p-3 rounded-xl border border-zinc-800">
+              <Search className="text-zinc-500" size={20}/>
+              <input 
+                type="text" 
+                placeholder="Buscar atleta..." 
+                className="bg-transparent border-none outline-none text-white w-full text-sm" 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)}
+              />
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-             {users.map(u => (
-                 <div key={u.id} onClick={() => setSelectedUser(u)} className="p-4 border-b border-zinc-800 hover:bg-zinc-800 cursor-pointer flex justify-between items-center">
-                     <div className="flex items-center gap-3">
-                         <img src={u.foto} className="w-10 h-10 rounded-full bg-zinc-700"/>
-                         <div><p className="font-bold text-white">{u.nome}</p><p className="text-xs text-zinc-500">{u.turma}</p></div>
-                     </div>
-                     <span className="text-xs font-mono text-emerald-500">Ver Stats &gt;</span>
-                 </div>
-             ))}
+              {filteredUsers.length === 0 && (
+                  <div className="p-8 text-center text-zinc-500 text-sm">Nenhum atleta encontrado.</div>
+              )}
+              
+              {/* 🦈 CORREÇÃO: Usando filteredUsers para renderizar a busca real */}
+              {filteredUsers.map(u => (
+                  <div key={u.id} onClick={() => setSelectedUser(u)} className="p-4 border-b border-zinc-800 hover:bg-zinc-800 cursor-pointer flex justify-between items-center transition">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-zinc-700 overflow-hidden relative">
+                             <Image 
+                                src={u.foto || "https://github.com/shadcn.png"} 
+                                alt={u.nome || "User"} 
+                                fill 
+                                className="object-cover"
+                                unoptimized
+                             />
+                          </div>
+                          <div>
+                              <p className="font-bold text-white text-sm">{u.nome}</p>
+                              <p className="text-xs text-zinc-500">{u.turma}</p>
+                          </div>
+                      </div>
+                      <span className="text-xs font-mono text-emerald-500">Ver Stats &gt;</span>
+                  </div>
+              ))}
           </div>
        </main>
 
        {/* MODAL AUDITORIA */}
        {selectedUser && (
-           <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+           <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-in fade-in">
                <div className="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-800 p-6 relative h-[80vh] overflow-y-auto">
-                   <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4"><X/></button>
+                   <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X/></button>
                    <h2 className="text-xl font-black text-white mb-6 uppercase">{selectedUser.nome}</h2>
                    
                    {/* TABELA DE CÁLCULO */}
                    <div className="space-y-4">
+                       {/* 🦈 Importante: calculateUserStats pode retornar qualquer coisa, garantimos a renderização */}
                        {Object.entries(calculateUserStats(selectedUser)).map(([stat, val]) => (
                            <div key={stat} className="bg-black p-3 rounded-xl border border-zinc-800">
                                <div className="flex justify-between mb-2">
-                                   <span className="font-bold text-white uppercase">{stat}</span>
-                                   <span className="text-emerald-500 font-black text-xl">{val}</span>
+                                   <span className="font-bold text-white uppercase text-sm">{stat}</span>
+                                   <span className="text-emerald-500 font-black text-xl">{String(val)}</span>
                                </div>
-                               <p className="text-[10px] text-zinc-500">Baseado em: {JSON.stringify(selectedUser.stats || {})}</p>
+                               <p className="text-[10px] text-zinc-500 break-all">
+                                   Baseado em: {JSON.stringify(selectedUser.stats || {})}
+                               </p>
                            </div>
                        ))}
                    </div>

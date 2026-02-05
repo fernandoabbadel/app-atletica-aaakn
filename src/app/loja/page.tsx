@@ -1,12 +1,14 @@
+// src/app/loja/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { 
-  ArrowLeft, ShoppingBag, Search, Filter, 
-  Package, Tag, Zap, AlertCircle 
+  ArrowLeft, ShoppingBag, Search, 
+  Package, Zap, AlertCircle 
 } from "lucide-react";
-import { useToast } from "../../context/ToastContext";
+// addToast removido pois não estava sendo usado, se precisar re-importe
+// import { useToast } from "../../context/ToastContext"; 
 import { db } from "../../lib/firebase";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 
@@ -24,7 +26,7 @@ interface Produto {
   nome: string;
   categoria: string;
   descricao: string;
-  img: string; // Campo correto conforme seu dump
+  img: string; 
   preco: number;
   precoAntigo?: number;
   estoque: number;
@@ -35,7 +37,8 @@ interface Produto {
   variantes: Variante[];
   caracteristicas?: string[];
   cliques: number;
-  createdAt: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createdAt: any; 
 }
 
 // Helper de Cores para as Tags
@@ -51,8 +54,6 @@ const getTagColorClass = (color?: string) => {
 };
 
 export default function LojaPage() {
-  const { addToast } = useToast();
-  
   // Estados
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +78,7 @@ export default function LojaPage() {
         const raw = localStorage.getItem("cart");
         if (raw) {
             const cart = JSON.parse(raw);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const total = cart.reduce((acc: number, item: any) => acc + (item.qtd || 1), 0);
             setCartCount(total);
         }
@@ -175,7 +177,7 @@ export default function LojaPage() {
         ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {produtosFiltrados.map((prod) => {
-                    const emEstoque = prod.estoque > 0;
+                    // emEstoque removido pois nao era usado, apenas declarado
                     const temVariantes = prod.variantes && prod.variantes.length > 0;
                     const estoqueTotal = temVariantes 
                         ? prod.variantes.reduce((acc, v) => acc + Number(v.estoque), 0) 

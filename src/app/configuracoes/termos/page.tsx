@@ -9,6 +9,14 @@ import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 // --- TIPAGEM ---
 type DocTipo = "publico" | "interno";
 
+// Interface para dados brutos do Firestore
+interface TermDocData {
+  tipo?: string;
+  titulo?: string;
+  conteudo?: string;
+  iconName?: string;
+}
+
 type TermDoc = {
   id: string;
   title: string;
@@ -23,7 +31,7 @@ const ICONS: Record<string, React.ElementType> = {
 };
 
 // Helpers de segurança para dados
-function safeStr(v: any, fallback = "") {
+function safeStr(v: unknown, fallback = "") {
   return typeof v === "string" ? v : fallback;
 }
 
@@ -55,7 +63,8 @@ export default function TermosLegaisPage() {
 
         const list: TermDoc[] = [];
         snap.forEach((d) => {
-          const data = d.data() as any;
+          // Cast seguro
+          const data = d.data() as TermDocData;
           const tipo = safeStr(data.tipo, "publico") as DocTipo;
           
           // Filtro de segurança (apenas docs públicos neste app)
@@ -90,7 +99,7 @@ export default function TermosLegaisPage() {
              });
         }
 
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Erro ao carregar termos:", error);
         if (!alive) return;
         setDocs([]);

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ArrowLeft, Plus, Edit, Trash2, X, Settings, User, Shield, Wallet,
+  ArrowLeft, Plus, Edit, Trash2, Settings, User, Shield, Wallet,
   Bell, Volume2, MessageSquare, HelpCircle, FileText, CheckCircle,
   Scale, Cookie, Lock, FilePlus, ClipboardList, Siren, Key, Scroll, Smartphone
 } from "lucide-react";
@@ -10,10 +10,9 @@ import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import {
-  addDoc, collection, deleteDoc, doc, limit, onSnapshot,
+  addDoc, collection, deleteDoc, doc, onSnapshot,
   orderBy, query, serverTimestamp, setDoc, updateDoc
 } from "firebase/firestore";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 // --- TIPOS ---
 type ItemType = "link" | "toggle" | "action";
@@ -37,14 +36,14 @@ interface LegalDoc {
   id: string;
   titulo: string;
   conteudo: string;
-  icon: any;
+  icon: React.ElementType; // Tipagem correta para componentes de ícone
   iconName?: string;
   tipo: "publico" | "interno";
 }
 
-// Mapas de Ícones
-const ICON_MAP: Record<string, any> = { User, Shield, Wallet, Bell, Volume2, MessageSquare, HelpCircle, FileText, Settings, Smartphone };
-const LEGAL_ICON_MAP: Record<string, any> = { Lock, Scale, Cookie, ClipboardList, Siren, Key, Scroll, Shield, FileText };
+// Mapas de Ícones com tipagem correta
+const ICON_MAP: Record<string, React.ElementType> = { User, Shield, Wallet, Bell, Volume2, MessageSquare, HelpCircle, FileText, Settings, Smartphone };
+const LEGAL_ICON_MAP: Record<string, React.ElementType> = { Lock, Scale, Cookie, ClipboardList, Siren, Key, Scroll, Shield, FileText };
 
 // Dados Iniciais (Fallback)
 const INITIAL_SECTIONS: ConfigSection[] = [
@@ -103,10 +102,16 @@ export default function AdminConfiguracoesPage() {
             icon: LEGAL_ICON_MAP[d.data().iconName] || FileText
         })) as LegalDoc[];
         setDocuments(docs);
-        if (docs.length > 0 && !selectedDocId) setSelectedDocId(docs[0].id);
     });
     return () => unsub();
   }, []);
+
+  // 🦈 SELEÇÃO AUTOMÁTICA DO PRIMEIRO DOC (Correção do ESLint useEffect dependency)
+  useEffect(() => {
+    if (documents.length > 0 && !selectedDocId) {
+        setSelectedDocId(documents[0].id);
+    }
+  }, [documents, selectedDocId]);
 
   // --- ACTIONS MENU ---
   const handleSaveMenu = async (newSections: ConfigSection[]) => {
@@ -119,7 +124,7 @@ export default function AdminConfiguracoesPage() {
           addToast("Menu do App atualizado para todos! 📲", "success");
           setSections(newSections);
           setIsModalOpen(false);
-      } catch (error) {
+      } catch (_) {
           addToast("Erro ao salvar menu.", "error");
       } finally {
           setSavingMenu(false);
@@ -171,7 +176,7 @@ export default function AdminConfiguracoesPage() {
               updatedAt: serverTimestamp()
           });
           addToast("Documento salvo e publicado! 📜", "success");
-      } catch(e) { addToast("Erro ao salvar.", "error"); }
+      } catch(_) { addToast("Erro ao salvar.", "error"); }
       finally { setSavingDoc(false); }
   };
 
@@ -253,13 +258,16 @@ export default function AdminConfiguracoesPage() {
                 <button onClick={handleCreateDoc} className="text-emerald-500 bg-emerald-500/10 p-1.5 rounded-lg"><Plus size={14} /></button>
               </div>
               <div className="space-y-2 flex-1">
-                {documents.map((docx) => (
-                  <button key={docx.id} onClick={() => setSelectedDocId(docx.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition relative group ${selectedDocId === docx.id ? "bg-zinc-800 text-white border border-emerald-500/30" : "bg-black/40 text-zinc-400 hover:bg-zinc-800"}`}>
-                    <docx.icon size={16} className={docx.tipo === "interno" ? "text-yellow-500" : "text-emerald-500"} />
-                    <div className="flex-1 min-w-0"><span className="text-xs font-bold uppercase block truncate">{docx.titulo}</span></div>
-                    <div onClick={(e) => { e.stopPropagation(); handleDeleteDoc(docx.id); }} className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 text-red-500 rounded"><Trash2 size={12} /></div>
-                  </button>
-                ))}
+                {documents.map((docx) => {
+                  const DocIcon = docx.icon;
+                  return (
+                    <button key={docx.id} onClick={() => setSelectedDocId(docx.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition relative group ${selectedDocId === docx.id ? "bg-zinc-800 text-white border border-emerald-500/30" : "bg-black/40 text-zinc-400 hover:bg-zinc-800"}`}>
+                      <DocIcon size={16} className={docx.tipo === "interno" ? "text-yellow-500" : "text-emerald-500"} />
+                      <div className="flex-1 min-w-0"><span className="text-xs font-bold uppercase block truncate">{docx.titulo}</span></div>
+                      <div onClick={(e) => { e.stopPropagation(); handleDeleteDoc(docx.id); }} className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 text-red-500 rounded"><Trash2 size={12} /></div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -298,7 +306,13 @@ export default function AdminConfiguracoesPage() {
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg text-zinc-400 font-bold text-xs bg-zinc-800">Cancelar</button>
-              <button onClick={handleUpdateItem} className="px-6 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs">Salvar Alterações</button>
+              <button 
+                onClick={handleUpdateItem} 
+                disabled={savingMenu}
+                className="px-6 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {savingMenu ? "Salvando..." : "Salvar Alterações"}
+              </button>
             </div>
           </div>
         </div>

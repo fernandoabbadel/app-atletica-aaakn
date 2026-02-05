@@ -4,23 +4,31 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
-  Users, CheckCircle, HelpCircle, XCircle, Lock, 
-  Loader2, Crown, MessageCircle, AlertTriangle, 
-  Heart, Send, Plus, Trash2, ShieldAlert, Star,
+  Users, CheckCircle, HelpCircle, XCircle,
+  Loader2, Crown, MessageCircle,
+  Heart, Send, Trash2, ShieldAlert, Star,
   Ghost, Zap, Gem, Trophy, ShoppingBag, Fish, Swords,
   ChevronLeft, ChevronRight, Flag, Medal, Skull, Rocket, Phone, X
-} from "lucide-react"; // 🦈 CORREÇÃO: Adicionado 'X' aqui
+} from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
   doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs, where 
+  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs, where,
+  Timestamp
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 
 // --- INTERFACES ---
+interface Lote {
+  id: string | number; 
+  nome: string;
+  preco: string;
+  status: 'ativo' | 'esgotado' | 'em_breve';
+}
+
 interface Evento {
   id: string;
   titulo: string;
@@ -37,12 +45,7 @@ interface Evento {
     talvez: number;
     likes?: number;
   };
-  lotes?: Array<{
-    id: string | number; 
-    nome: string;
-    preco: string;
-    status: 'ativo' | 'esgotado' | 'em_breve';
-  }>;
+  lotes?: Lote[];
   // 🦈 ID 12: Dados financeiros locais do evento
   pixChave?: string;
   pixBanco?: string;
@@ -64,7 +67,7 @@ interface Rsvp {
   userAvatar: string;
   userTurma: string;
   status: 'going' | 'maybe';
-  timestamp?: any;
+  timestamp?: Timestamp | null;
 }
 
 interface Comentario {
@@ -81,7 +84,7 @@ interface Comentario {
   likes: string[];
   reports: string[];
   hidden: boolean;
-  createdAt: any;
+  createdAt: Timestamp | null;
 }
 
 interface EnqueteOption {
@@ -99,23 +102,30 @@ interface Enquete {
   options: EnqueteOption[];
   voters: string[];
   userVotes?: Record<string, number[]>;
-  createdAt: any;
+  createdAt: Timestamp | null;
+}
+
+interface PatenteConfig {
+    titulo: string;
+    minXp: number;
+    cor: string;
+    iconName: string;
 }
 
 // --- CONFIGURAÇÃO DE ÍCONES ---
-const ICON_COMPONENTS: Record<string, any> = {
-    Fish: Fish, Swords: Swords, Crown: Crown, Skull: Skull, Rocket: Rocket,
-    Star: Star, Zap: Zap, Trophy: Trophy, Medal: Medal, Heart: Heart,
-    Ghost: Ghost, Gem: Gem, ShoppingBag: ShoppingBag
+const ICON_COMPONENTS: Record<string, React.ElementType> = {
+    Fish, Swords, Crown, Skull, Rocket,
+    Star, Zap, Trophy, Medal, Heart,
+    Ghost, Gem, ShoppingBag
 };
 
-const DEFAULT_PATENTES = [
-    { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
-    { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
-    { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
-    { id: "p4", titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
-    { id: "p5", titulo: "Tubarão Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
-    { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
+const DEFAULT_PATENTES: PatenteConfig[] = [
+    { titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
+    { titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
+    { titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { titulo: "Tubarão Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
 const PLAN_COLORS: Record<string, string> = {
@@ -131,8 +141,6 @@ const TURMA_IMAGENS: Record<string, string> = {
 
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
-        const now = new Date();
-        const currentYear = now.getFullYear();
         const [hours, mins] = timeStr.split(':').map(Number);
         
         if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -140,7 +148,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             return new Date(y, m - 1, d, hours || 0, mins || 0);
         }
         return null;
-    } catch (e) {
+    } catch {
         return null;
     }
 };
@@ -192,7 +200,7 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
 }
 
 // --- BADGES DO USUÁRIO ---
-const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: any[] }) => {
+const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: PatenteConfig[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
     const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
     const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
@@ -219,7 +227,7 @@ export default function DetalhesEventoPage() {
   const [rsvps, setRsvps] = useState<Rsvp[]>([]);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [enquetes, setEnquetes] = useState<Enquete[]>([]);
-  const [patentesConfig, setPatentesConfig] = useState<any[]>(DEFAULT_PATENTES);
+  const [patentesConfig, setPatentesConfig] = useState<PatenteConfig[]>(DEFAULT_PATENTES);
   const [loading, setLoading] = useState(true);
   const [userRsvp, setUserRsvp] = useState<string | null>(null);
   
@@ -231,7 +239,8 @@ export default function DetalhesEventoPage() {
 
   // 🦈 NOVOS ESTADOS PARA PEDIDOS
   const [meusPedidos, setMeusPedidos] = useState<PedidoIngresso[]>([]);
-  const [globalFinanceiro, setGlobalFinanceiro] = useState<any>(null);
+  // Usando Record<string, unknown> para evitar 'any'
+  const [globalFinanceiro, setGlobalFinanceiro] = useState<Record<string, unknown> | null>(null);
 
   // --- SINC INICIAL ---
   useEffect(() => {
@@ -268,7 +277,7 @@ export default function DetalhesEventoPage() {
 
       // 5. Patentes (Global Config)
       const unsubPatentes = onSnapshot(query(collection(db, "patentes_config"), orderBy("minXp", "asc")), (snap) => {
-          const data = snap.docs.map(d => d.data());
+          const data = snap.docs.map(d => d.data() as PatenteConfig);
           if (data.length > 0) setPatentesConfig(data);
       });
 
@@ -305,7 +314,7 @@ export default function DetalhesEventoPage() {
       try {
           await deleteDoc(doc(db, "solicitacoes_ingressos", pedidoId));
           addToast("Pedido cancelado.", "info");
-      } catch (e) {
+      } catch {
           addToast("Erro ao cancelar.", "error");
       }
   };
@@ -341,10 +350,9 @@ export default function DetalhesEventoPage() {
               }
           });
           addToast("Lista atualizada!", "success");
-      } catch (e) { addToast("Erro ao atualizar.", "error"); }
+      } catch { addToast("Erro ao atualizar.", "error"); }
   };
 
-  // ... (Funções handleSendComment, handleLikeComment, etc. mantidas iguais)
   const handleSendComment = async () => {
       if (!newComment.trim() || !user || !evento) return;
       const newCommentData = {
@@ -359,7 +367,7 @@ export default function DetalhesEventoPage() {
           await updateDoc(doc(db, "users", user.uid), { "stats.commentsCount": increment(1) });
           setNewComment("");
           addToast("Comentário enviado!", "success");
-      } catch (e) { addToast("Erro ao comentar.", "error"); }
+      } catch { addToast("Erro ao comentar.", "error"); }
   };
 
   const handleLikeComment = async (comId: string, currentLikes: string[], authorId: string) => {
@@ -380,7 +388,7 @@ export default function DetalhesEventoPage() {
 
   const handleDeleteComment = async (comId: string) => {
       if (!evento || !confirm("Apagar este comentário?")) return;
-      try { await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId)); addToast("Comentário apagado.", "info"); } catch (error) { addToast("Erro ao apagar.", "error"); }
+      try { await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId)); addToast("Comentário apagado.", "info"); } catch { addToast("Erro ao apagar.", "error"); }
   };
 
   const handleReportComment = async (comId: string) => {
@@ -423,7 +431,10 @@ export default function DetalhesEventoPage() {
                 t.update(pollRef, { options: newOptions, userVotes: userVotes, voters: arrayUnion(user.uid) });
             }
         });
-      } catch (e: any) { addToast(typeof e === 'string' ? e : "Erro ao votar.", "error"); }
+      } catch (e: unknown) { 
+        const errorMsg = typeof e === 'string' ? e : "Erro ao votar.";
+        addToast(errorMsg, "error"); 
+      }
   };
 
   const handleCreatePollOption = async (pollId: string) => {
@@ -438,8 +449,8 @@ export default function DetalhesEventoPage() {
       addToast("Opção adicionada!", "success");
   };
 
-  const handleReportPoll = async (pollId: string) => { if(!user) return; addToast("Enquete reportada à moderação.", "info"); };
-  const handleReportOption = async (pollId: string, optionText: string) => { if(!user) return; addToast(`Opção "${optionText}" denunciada.`, "info"); };
+  const handleReportPoll = async (_pollId: string) => { if(!user) return; addToast("Enquete reportada à moderação.", "info"); };
+  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; addToast(`Opção "${optionText}" denunciada.`, "info"); };
 
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
@@ -484,7 +495,12 @@ export default function DetalhesEventoPage() {
       
       {/* HERO */}
       <div className="relative h-[50vh] w-full">
-        <img src={evento.imagem || "https://placehold.co/600x400/111/333"} className="w-full h-full object-cover" style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}/>
+        <img 
+            src={evento.imagem || "https://placehold.co/600x400/111/333"} 
+            alt={`Capa do evento ${evento.titulo}`}
+            className="w-full h-full object-cover" 
+            style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
@@ -503,7 +519,7 @@ export default function DetalhesEventoPage() {
         <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
             {rankingTurmas.map((t) => (
                 <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
-                    <img src={t.imagem} className="w-6 h-6 rounded-full object-cover border border-zinc-500"/>
+                    <img src={t.imagem} alt={`Turma ${t.turma}`} className="w-6 h-6 rounded-full object-cover border border-zinc-500"/>
                     <span className="text-[10px] font-bold text-emerald-400">+{t.count}</span>
                 </div>
             ))}
@@ -543,7 +559,7 @@ export default function DetalhesEventoPage() {
                             <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-xs">
                                 <p className="text-zinc-400 mb-1 flex items-center gap-1"><Phone size={12}/> Envie o comprovante para:</p>
                                 <p className="text-white font-mono">
-                                    {evento.contatoComprovante || globalFinanceiro?.telefones || globalFinanceiro?.whatsapp || "(Consulte a diretoria)"}
+                                    {evento.contatoComprovante || (globalFinanceiro as any)?.telefones || (globalFinanceiro as any)?.whatsapp || "(Consulte a diretoria)"}
                                 </p>
                             </div>
                         )}
@@ -577,7 +593,7 @@ export default function DetalhesEventoPage() {
                     </div>
                     {/* 🦈 Link para nova compra */}
                     {evento.lotes && evento.lotes.length > 0 && evento.lotes[0].status === 'ativo' && (
-                         <Link href={`/eventos/compra?evento=${evento.id}&lote=${evento.lotes[0].id}`} className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
+                          <Link href={`/eventos/compra?evento=${evento.id}&lote=${evento.lotes[0].id}`} className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
                     )}
                 </div>
             </div>
@@ -603,7 +619,7 @@ export default function DetalhesEventoPage() {
 
         <div className="space-y-3">
             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-emerald-500"/> Ingressos</h3>
-            {evento.lotes?.map((l: any, i: number) => (
+            {evento.lotes?.map((l, i) => (
                 <div key={i} className={`flex justify-between items-center p-4 rounded-xl border ${l.status === 'ativo' ? 'bg-zinc-900 border-emerald-500/50' : 'bg-black border-zinc-800 opacity-50'}`}>
                     <div>
                         <p className="text-xs font-black text-white uppercase">{l.nome}</p>
@@ -649,7 +665,7 @@ export default function DetalhesEventoPage() {
                             {topTurmasPoll.map(turma => (
                                 <div key={turma} className="flex items-center gap-1">
                                     <div className="w-5 h-5 rounded-full border border-zinc-700 overflow-hidden">
-                                        <img src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} className="w-full h-full object-cover"/>
+                                        <img src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} alt={`Turma ${turma}`} className="w-full h-full object-cover"/>
                                     </div>
                                     <span className="text-[9px] font-bold text-zinc-400">{turma}</span>
                                 </div>
@@ -658,7 +674,7 @@ export default function DetalhesEventoPage() {
                     )}
 
                     <div className="space-y-2">
-                        {currentPoll.options?.sort((a:any, b:any) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
+                        {currentPoll.options?.sort((a: EnqueteOption, b: EnqueteOption) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
                             const totalVotes = currentPoll.options.reduce((acc, o) => acc + (o.votes || 0), 0);
                             const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
                             const userVotedHere = currentPoll.userVotes?.[user?.uid || ""]?.includes(idx);
@@ -674,7 +690,7 @@ export default function DetalhesEventoPage() {
                                         
                                         <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
                                             {opt.creatorAvatar && (
-                                                <img src={opt.creatorAvatar} className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
+                                                <img src={opt.creatorAvatar} alt="Criador" className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
                                             )}
                                             <span className="truncate text-left flex items-center gap-1">
                                                 {opt.text}
@@ -741,7 +757,7 @@ export default function DetalhesEventoPage() {
                         <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
                             <Link href={`/perfil/${c.userId}`}>
                                 <div className="relative group/avatar cursor-pointer">
-                                    <img src={c.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
+                                    <img src={c.userAvatar || "https://github.com/shadcn.png"} alt={c.userName} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
                                 </div>
                             </Link>
                             
@@ -759,6 +775,7 @@ export default function DetalhesEventoPage() {
                                         <div className="flex items-center gap-1 mt-0.5 opacity-60">
                                             <img 
                                                 src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
+                                                alt="Turma"
                                                 className="w-3 h-3 rounded-full object-cover border border-zinc-800"
                                             />
                                             <span className="text-[9px] text-zinc-300 font-mono">{c.userTurma || "Visitante"}</span>
@@ -812,7 +829,7 @@ export default function DetalhesEventoPage() {
                       {modalUsers.map((u, i) => (
                           <Link key={i} href={`/perfil/${u.userId}`} className="flex items-center gap-3 p-3 hover:bg-zinc-900 rounded-2xl transition group">
                               <div className="relative">
-                                  <img src={u.userAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full object-cover border-2 border-zinc-800 group-hover:border-emerald-500 transition-colors"/>
+                                  <img src={u.userAvatar || "https://github.com/shadcn.png"} alt={u.userName} className="w-10 h-10 rounded-full object-cover border-2 border-zinc-800 group-hover:border-emerald-500 transition-colors"/>
                                   <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-800 rounded-full flex items-center justify-center text-[9px] font-black text-white border border-black">
                                       {u.userTurma || "?"}
                                   </div>

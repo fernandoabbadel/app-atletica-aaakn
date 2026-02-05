@@ -2,17 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import { 
-  ArrowLeft, Calendar, MapPin, Share2, Ticket, Filter, 
-  Loader2, ArrowRight, Heart, Clock, Zap, Users, Crown 
+  ArrowLeft, Calendar, MapPin, 
+  Loader2, ArrowRight, Heart, Clock, Zap, Users
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importado para corrigir erro de LCP
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
   increment, getDocs, limit 
 } from "firebase/firestore";
-import { useToast } from "../../context/ToastContext";
 
 // --- INTERFACES ---
 interface Evento {
@@ -82,7 +82,8 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             const monthKey = Object.keys(months).find(m => m.startsWith(monthStr));
             
             if (monthKey && !isNaN(day)) {
-                let eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
+                // 🦈 Fix: 'const' aqui pois a referência do objeto não muda, só suas propriedades
+                const eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
                 // Se a data já passou (ex: JAN sendo que estamos em DEZ), assume próximo ano
                 if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
                     eventDate.setFullYear(currentYear + 1);
@@ -91,7 +92,8 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             }
         }
         return null;
-    } catch (e) {
+    } catch {
+        // 🦈 Fix: removido argumento 'e' não usado
         return null;
     }
 };
@@ -137,7 +139,15 @@ function EventClassRanking({ eventId }: { eventId: string }) {
         <div className="flex -space-x-2">
             {ranking.map((r, i) => (
                 <div key={r.turma} className="relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden" style={{ zIndex: 30 - i * 10 }}>
-                    <img src={r.img} className="w-full h-full object-cover"/>
+                    {/* 🦈 Fix: Image otimizada */}
+                    <Image 
+                        src={r.img} 
+                        alt={`Avatar ${r.turma}`}
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-cover"
+                        unoptimized
+                    />
                 </div>
             ))}
         </div>
@@ -203,7 +213,6 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
     setLikesCount((prev) => newLiked ? prev + 1 : prev - 1);
     
     // Atualiza no Firebase (apenas stats visual, não salva array de likes aqui para economizar escrita)
-    // Se quiser salvar array, precisaria ler o doc. Aqui é uma otimização UI.
     const eventRef = doc(db, "eventos", ev.id);
     await updateDoc(eventRef, { [`stats.likes`]: increment(newLiked ? 1 : -1) });
   };
@@ -214,10 +223,14 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
         
         {/* 1. IMAGEM */}
         <div className="relative h-56 w-full shrink-0 overflow-hidden">
-            <img 
+            {/* 🦈 Fix: Image otimizada com fill e unoptimized */}
+            <Image 
                 src={ev.imagem || "https://placehold.co/600x400/111/333?text=Evento"} 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100"
+                alt={ev.titulo}
+                fill
+                className="object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100"
                 style={{ objectPosition: `50% ${ev.imagePositionY || 50}%` }}
+                unoptimized
             />
             <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
             
@@ -297,8 +310,6 @@ export default function EventosPage() {
   const [filter, setFilter] = useState("Todos");
 
   useEffect(() => {
-    // Query sem limit para trazer todos e filtrar no front se necessário, 
-    // mas ordenando por criação para pegar os mais novos.
     const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {

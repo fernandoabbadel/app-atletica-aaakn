@@ -2,13 +2,41 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  ArrowLeft, Gift, Info, Lock, Star, Clock, CheckCircle2, AlertTriangle, Loader2
+  ArrowLeft, Gift, Info, Lock, Star, Clock, CheckCircle2, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
-import { collection, query, where, limit, onSnapshot, doc, addDoc, serverTimestamp, updateDoc, increment } from "firebase/firestore";
+import { 
+  collection, query, where, limit, onSnapshot, doc, addDoc, 
+  serverTimestamp, updateDoc, increment, Timestamp 
+} from "firebase/firestore";
+
+// --- INTERFACES ---
+interface Premio {
+  id: string;
+  title: string;
+  cost: number;
+  stock: number;
+  image?: string;
+  active: boolean;
+}
+
+interface HistoricoItem {
+  id: string;
+  acao: string;
+  rawDate: Date;
+  dataDisplay: string;
+  xp: number;
+  tipo: string;
+}
+
+interface ConfigFidelidade {
+  xpPerStamp: number;
+  rules: string[];
+}
 
 export default function FidelidadePage() {
   const { user } = useAuth();
@@ -17,9 +45,9 @@ export default function FidelidadePage() {
   
   // Estados de Dados Reais
   const [loading, setLoading] = useState(true);
-  const [premios, setPremios] = useState<any[]>([]);
-  const [historico, setHistorico] = useState<any[]>([]);
-  const [config, setConfig] = useState({ xpPerStamp: 100, rules: [] as string[] });
+  const [premios, setPremios] = useState<Premio[]>([]);
+  const [historico, setHistorico] = useState<HistoricoItem[]>([]);
+  const [config, setConfig] = useState<ConfigFidelidade>({ xpPerStamp: 100, rules: [] });
 
   // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
@@ -28,9 +56,10 @@ export default function FidelidadePage() {
     // A. Carregar Configurações
     const unsubConfig = onSnapshot(doc(db, "app_config", "fidelity"), (snap) => {
         if (snap.exists()) {
+            const data = snap.data();
             setConfig({ 
-                xpPerStamp: snap.data().xpPerStamp || 100,
-                rules: snap.data().rules || []
+                xpPerStamp: data.xpPerStamp || 100,
+                rules: data.rules || []
             });
         }
     });
@@ -38,10 +67,10 @@ export default function FidelidadePage() {
     // B. Carregar Prêmios Ativos (SEM ORDERBY NO FIREBASE)
     const qPremios = query(collection(db, "store_rewards"), where("active", "==", true));
     const unsubPremios = onSnapshot(qPremios, (snap) => {
-        const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Premio));
         
         // 🦈 SORT NO FRONTEND (Preço Crescente)
-        lista.sort((a: any, b: any) => (a.cost || 0) - (b.cost || 0));
+        lista.sort((a, b) => (a.cost || 0) - (b.cost || 0));
         
         setPremios(lista);
     });
@@ -49,21 +78,23 @@ export default function FidelidadePage() {
     // C. Carregar Histórico (SEM ORDERBY NO FIREBASE)
     const qHist = query(collection(db, "achievements_logs"), where("userId", "==", user.uid), limit(20));
     const unsubHist = onSnapshot(qHist, (snap) => {
-        const logs = snap.docs.map(d => {
+        const logs: HistoricoItem[] = snap.docs.map(d => {
             const data = d.data();
+            // Tratamento seguro de Timestamp do Firestore
+            const dateObj = data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date();
+
             return {
                 id: d.id,
                 acao: data.achievementTitle || "Atividade",
-                // Guardamos a data crua para ordenar depois
-                rawDate: data.timestamp?.toDate ? data.timestamp.toDate() : new Date(),
-                dataDisplay: data.timestamp?.toDate().toLocaleDateString("pt-BR", {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
-                xp: data.xp,
+                rawDate: dateObj,
+                dataDisplay: dateObj.toLocaleDateString("pt-BR", {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
+                xp: data.xp || 0,
                 tipo: "conquista"
             };
         });
 
         // 🦈 SORT NO FRONTEND (Mais recente primeiro)
-        logs.sort((a: any, b: any) => b.rawDate - a.rawDate);
+        logs.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
 
         setHistorico(logs);
         setLoading(false);
@@ -84,7 +115,7 @@ export default function FidelidadePage() {
   const xpProximoSelo = (selosConquistados + 1) * XP_POR_SELO - userXP;
 
   // AÇÃO: RESGATAR
-  const handleResgatar = async (premio: any) => {
+  const handleResgatar = async (premio: Premio) => {
     if (userXP < premio.cost) return addToast("XP insuficiente, marujo!", "error");
     if (premio.stock <= 0) return addToast("Estoque esgotado! 😢", "error");
 
@@ -107,7 +138,7 @@ export default function FidelidadePage() {
         });
 
         addToast("Resgate solicitado! Apresente seu ID na lojinha.", "success");
-    } catch (e) {
+    } catch {
         addToast("Erro ao processar resgate.", "error");
     }
   };
@@ -150,7 +181,8 @@ export default function FidelidadePage() {
               <div className="relative z-10 p-6 flex flex-col justify-between h-full">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <img src="/logo.png" className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" alt="Logo" />
+                    {/* 🦈 Image otimizado */}
+                    <Image src="/logo.png" width={40} height={40} className="object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" alt="Logo Atlética" unoptimized/>
                     <div>
                       <h2 className="text-base font-black italic uppercase tracking-tighter text-white leading-none">Shark Card</h2>
                       <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest mt-0.5">Membro Oficial</p>
@@ -169,9 +201,9 @@ export default function FidelidadePage() {
                       const conquistado = i < selosConquistados;
                       return (
                         <div key={i} className="aspect-square relative flex items-center justify-center">
-                          <div className={`w-full h-full rounded-full flex items-center justify-center transition-all duration-500 border ${conquistado ? "bg-emerald-500 border-emerald-400 shadow-[0_0_15px_#10b981]" : "bg-black/40 border-dashed border-zinc-700"}`}>
+                          <div className={`w-full h-full rounded-full flex items-center justify-center transition-all duration-500 border overflow-hidden relative ${conquistado ? "bg-emerald-500 border-emerald-400 shadow-[0_0_15px_#10b981]" : "bg-black/40 border-dashed border-zinc-700"}`}>
                             {conquistado ? (
-                              <img src="/logo.png" className="w-[65%] h-[65%] object-contain mix-blend-multiply opacity-80 filter brightness-0" />
+                              <Image src="/logo.png" fill className="object-contain p-1 mix-blend-multiply opacity-80 filter brightness-0" alt="Selo Conquistado" unoptimized/>
                             ) : (
                               <span className="text-[8px] font-black text-white/10">{i + 1}</span>
                             )}
@@ -252,8 +284,14 @@ export default function FidelidadePage() {
                     <div key={premio.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex gap-4 items-center group relative overflow-hidden">
                       <div className="absolute bottom-0 left-0 h-1 bg-emerald-500 transition-all duration-1000" style={{ width: `${progressoItem}%`, opacity: bloqueado ? 0.2 : 1 }}></div>
 
-                      <div className={`w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 shrink-0 ${bloqueado ? "grayscale opacity-60" : "border-emerald-500/50 shadow-lg shadow-emerald-900/20"}`}>
-                        <img src={premio.image || "/placeholder.png"} className="w-full h-full object-cover" onError={(e) => e.currentTarget.src = "/logo.png"} />
+                      <div className={`w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 shrink-0 relative ${bloqueado ? "grayscale opacity-60" : "border-emerald-500/50 shadow-lg shadow-emerald-900/20"}`}>
+                        <Image 
+                            src={premio.image || "/placeholder.png"} 
+                            alt={premio.title}
+                            fill
+                            className="object-cover" 
+                            unoptimized
+                        />
                       </div>
 
                       <div className="flex-1">

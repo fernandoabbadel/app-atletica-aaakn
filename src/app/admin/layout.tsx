@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image"; // 🦈 Importando Image
 import {
   LogOut, LayoutDashboard, Settings, ShieldAlert, Trophy, Calendar,
   Star, Gamepad2, BookOpen, Dumbbell, History, ShoppingBag, Megaphone,
@@ -10,11 +11,20 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
+// 🦈 Interface para os itens do menu (Fim do any)
+interface SidebarItem {
+    name: string;
+    path: string;
+    icon: React.ReactNode;
+    badge?: string;
+    isDanger?: boolean;
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth(); 
 
-  const sidebarItems = [
+  const sidebarItems: SidebarItem[] = [
     { name: "Dashboard", path: "/admin", icon: <LayoutDashboard size={18} /> },
     { name: "SharkRound", path: "/admin/sharkround", icon: <Dice5 size={18} /> },
     { name: "Eventos", path: "/admin/eventos", icon: <Calendar size={18} /> },
@@ -51,24 +61,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           <div className="mb-6 p-3 bg-black/40 rounded-xl border border-zinc-800 flex items-center gap-3 shadow-inner">
-            <img 
-              src={user?.foto || "https://github.com/shadcn.png"} 
-              alt="Admin" 
-              className="w-9 h-9 rounded-full border border-emerald-500 object-cover shadow-[0_0_10px_rgba(16,185,129,0.2)]"
-            />
+            <div className="relative w-9 h-9 shrink-0">
+                <Image 
+                    src={user?.foto || "https://github.com/shadcn.png"} 
+                    alt="Admin Avatar" 
+                    fill
+                    unoptimized
+                    className="rounded-full border border-emerald-500 object-cover shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                />
+            </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-white truncate">
                 {user?.nome ? user.nome.split(" ")[0] : "Admin"}
               </p>
               <span className="text-[8px] font-black text-red-500 uppercase tracking-widest block truncate">
-                {user?.role?.replace("admin_", "").replace("_", " ") || "MASTER"}
+                {typeof user?.role === 'string' 
+                    ? user.role.replace("admin_", "").replace("_", " ") 
+                    : "MASTER"}
               </span>
             </div>
           </div>
 
           <nav className="space-y-1">
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest px-2 mb-2">Menu Principal</p>
-            {sidebarItems.map((item: any) => (
+            {sidebarItems.map((item) => (
               <Link 
                 key={item.path} 
                 href={item.path} 

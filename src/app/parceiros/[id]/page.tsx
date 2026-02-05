@@ -1,25 +1,50 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, MapPin, Clock, Phone, Globe, Copy, QrCode, CheckCircle, Ticket, Instagram, MessageCircle, ChevronLeft, ChevronRight, Loader2, Store } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, Globe, QrCode, CheckCircle, Ticket, Instagram, MessageCircle, Loader2, Store } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Import correto do Next Image
 import { useParams } from "next/navigation"; 
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+
+// 🦈 Interfaces para Tipagem (Adeus 'any')
+interface Cupom {
+  id: string;
+  titulo: string;
+  regra: string;
+  valor: string;
+  imagem?: string;
+}
+
+interface Parceiro {
+  id: string;
+  nome: string;
+  categoria: string;
+  imgCapa?: string;
+  imgLogo?: string;
+  insta?: string;
+  site?: string;
+  telefone?: string;
+  descricao?: string;
+  endereco?: string;
+  horario?: string;
+  cupons?: Cupom[];
+}
 
 export default function ParceiroDetalhePage() {
   const { addToast } = useToast();
   const params = useParams();
   const parceiroId = params.id as string;
   
-  const [parceiro, setParceiro] = useState<any>(null);
+  const [parceiro, setParceiro] = useState<Parceiro | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeCupom, setActiveCupom] = useState<any>(null);
+  const [activeCupom, setActiveCupom] = useState<Cupom | null>(null);
   const [countdown, setCountdown] = useState(300);
 
-  // BUSCA DADOS NO FIREBASE (ID 48)
+  // BUSCA DADOS NO FIREBASE
   useEffect(() => {
       const fetchParceiro = async () => {
           if(!parceiroId) return;
@@ -27,7 +52,7 @@ export default function ParceiroDetalhePage() {
               const docRef = doc(db, "parceiros", parceiroId);
               const docSnap = await getDoc(docRef);
               if (docSnap.exists()) {
-                  setParceiro({ id: docSnap.id, ...docSnap.data() });
+                  setParceiro({ id: docSnap.id, ...docSnap.data() } as Parceiro);
               } else {
                   addToast("Parceiro não encontrado.", "error");
               }
@@ -38,7 +63,7 @@ export default function ParceiroDetalhePage() {
           }
       };
       fetchParceiro();
-  }, [parceiroId]);
+  }, [parceiroId, addToast]); // 🦈 Dependência corrigida
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -46,7 +71,7 @@ export default function ParceiroDetalhePage() {
     return () => clearInterval(timer);
   }, [isModalOpen, countdown]);
 
-  const handleOpenCupom = (cupom: any) => { 
+  const handleOpenCupom = (cupom: Cupom) => { 
       setActiveCupom(cupom); 
       setIsModalOpen(true); 
       setCountdown(300); 
@@ -61,9 +86,19 @@ export default function ParceiroDetalhePage() {
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-emerald-500 pb-10">
       
       {/* CAPA */}
-      <div className="relative h-[35vh] w-full bg-zinc-900">
+      <div className="relative h-[35vh] w-full bg-zinc-900 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505] z-10"/>
-        {parceiro.imgCapa ? <img src={parceiro.imgCapa} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-zinc-700"><Store size={64}/></div>}
+        {parceiro.imgCapa ? (
+            <Image 
+                src={parceiro.imgCapa} 
+                alt={`Capa ${parceiro.nome}`} 
+                fill 
+                className="object-cover"
+                priority
+            />
+        ) : (
+            <div className="flex items-center justify-center h-full text-zinc-700"><Store size={64}/></div>
+        )}
         <Link href="/parceiros" className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full hover:bg-black transition border border-white/10 text-white"><ArrowLeft size={20}/></Link>
       </div>
 
@@ -71,8 +106,18 @@ export default function ParceiroDetalhePage() {
       <div className="relative z-20 -mt-10 px-4 md:px-6">
         <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-6 shadow-2xl">
             <div className="flex items-center gap-4 mb-6">
-                <div className="w-20 h-20 rounded-2xl bg-black border-4 border-[#050505] -mt-16 flex items-center justify-center overflow-hidden shadow-lg shrink-0">
-                    {parceiro.imgLogo ? <img src={parceiro.imgLogo} className="w-full h-full object-cover"/> : <Store size={32} className="text-zinc-500"/>}
+                <div className="w-20 h-20 rounded-2xl bg-black border-4 border-[#050505] -mt-16 flex items-center justify-center overflow-hidden shadow-lg shrink-0 relative">
+                    {parceiro.imgLogo ? (
+                        <Image 
+                            src={parceiro.imgLogo} 
+                            alt={`Logo ${parceiro.nome}`} 
+                            width={80} 
+                            height={80} 
+                            className="object-cover w-full h-full"
+                        />
+                    ) : (
+                        <Store size={32} className="text-zinc-500"/>
+                    )}
                 </div>
                 <div className="pt-2">
                     <h1 className="text-2xl font-black text-white uppercase leading-none">{parceiro.nome}</h1>
@@ -81,9 +126,9 @@ export default function ParceiroDetalhePage() {
             </div>
 
             <div className="flex gap-2 mb-6">
-                {parceiro.insta && <a href={`https://instagram.com/${parceiro.insta.replace('@','')}`} target="_blank" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><Instagram size={20}/></a>}
-                {parceiro.site && <a href={`https://${parceiro.site}`} target="_blank" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><Globe size={20}/></a>}
-                {parceiro.telefone && <a href={`https://wa.me/${parceiro.telefone.replace(/\D/g,'')}`} target="_blank" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><MessageCircle size={20}/></a>}
+                {parceiro.insta && <a href={`https://instagram.com/${parceiro.insta.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><Instagram size={20}/></a>}
+                {parceiro.site && <a href={`https://${parceiro.site}`} target="_blank" rel="noopener noreferrer" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><Globe size={20}/></a>}
+                {parceiro.telefone && <a href={`https://wa.me/${parceiro.telefone.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer" className="flex-1 bg-zinc-800 p-2.5 rounded-xl text-zinc-400 hover:text-white flex justify-center"><MessageCircle size={20}/></a>}
             </div>
 
             <p className="text-sm text-zinc-400 leading-relaxed mb-6">{parceiro.descricao}</p>
@@ -96,11 +141,21 @@ export default function ParceiroDetalhePage() {
             {/* LISTA DE CUPONS */}
             <h3 className="text-sm font-bold text-white uppercase mb-3 flex items-center gap-2"><Ticket size={16} className="text-yellow-500"/> Cupons Disponíveis</h3>
             <div className="space-y-3">
-                {parceiro.cupons && parceiro.cupons.length > 0 ? parceiro.cupons.map((cupom: any) => (
+                {parceiro.cupons && parceiro.cupons.length > 0 ? parceiro.cupons.map((cupom: Cupom) => (
                     <div key={cupom.id} onClick={() => handleOpenCupom(cupom)} className="bg-gradient-to-r from-zinc-800 to-zinc-900 border border-zinc-700 rounded-2xl p-4 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition group relative overflow-hidden">
                         <div className="absolute left-0 top-0 w-1 h-full bg-emerald-500"></div>
                         <div className="flex gap-3 items-center">
-                            {cupom.imagem && <div className="w-10 h-10 rounded-lg overflow-hidden bg-black shrink-0"><img src={cupom.imagem} className="w-full h-full object-cover"/></div>}
+                            {cupom.imagem && (
+                                <div className="w-10 h-10 rounded-lg overflow-hidden bg-black shrink-0 relative">
+                                    <Image 
+                                        src={cupom.imagem} 
+                                        alt={cupom.titulo} 
+                                        width={40} 
+                                        height={40} 
+                                        className="object-cover w-full h-full"
+                                    />
+                                </div>
+                            )}
                             <div>
                                 <h4 className="font-black text-white text-sm uppercase">{cupom.titulo}</h4>
                                 <p className="text-[10px] text-zinc-400">{cupom.regra}</p>

@@ -1,3 +1,4 @@
+// src/app/menu/page.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -61,7 +62,7 @@ export default function MenuPage() {
               <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-emerald-500 to-emerald-900">
                 <img
                   src={socio.foto}
-                  alt="Perfil"
+                  alt={`Foto de perfil de ${socio.nome}`}
                   className="w-full h-full rounded-full object-cover border-4 border-[#050505]"
                 />
               </div>

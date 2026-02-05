@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  QrCode, Ticket, Edit, Save, Image as ImageIcon, Calendar, Clock, MapPin, 
-  Globe, Phone, Instagram, Trash2, Camera, LogOut, Loader2, Plus, X, Store // 🦈 CORREÇÃO: Adicionado Store
+  QrCode, Ticket, Edit, Calendar, Store,
+  Camera, LogOut, Loader2, X
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy, Timestamp } from "firebase/firestore";
 
 // Helper Base64
 const fileToBase64 = (file: File): Promise<string> => {
@@ -21,6 +22,47 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+// --- TIPAGEM ---
+interface Cupom {
+    titulo: string;
+    valor: string;
+}
+
+interface EmpresaData {
+    id: string;
+    nome: string;
+    imgLogo?: string;
+    imgCapa?: string;
+    totalScans?: number;
+    cupons?: Cupom[];
+    createdAt?: Timestamp;
+    descricao?: string;
+    insta?: string;
+    whats?: string;
+}
+
+interface ScanData {
+    id: string;
+    empresaId: string;
+    empresa: string;
+    usuario: string;
+    userId: string;
+    cupom: string;
+    valorEconomizado: string;
+    data: string;
+    hora: string;
+    timestamp: Date;
+}
+
+interface EditFormState {
+    nome?: string;
+    descricao?: string;
+    insta?: string;
+    whats?: string;
+    imgLogo?: string;
+    imgCapa?: string;
+}
+
 export default function EmpresaDashboard() {
   const { addToast } = useToast();
   const router = useRouter();
@@ -28,13 +70,13 @@ export default function EmpresaDashboard() {
   const empresaId = params.id as string;
 
   const [loading, setLoading] = useState(true);
-  const [partner, setPartner] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [partner, setPartner] = useState<EmpresaData | null>(null);
+  const [history, setHistory] = useState<ScanData[]>([]);
   const [scanning, setScanning] = useState(false);
   
   // Edição
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState<any>({});
+  const [editForm, setEditForm] = useState<EditFormState>({});
   
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +92,7 @@ export default function EmpresaDashboard() {
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
-                const data = { id: docSnap.id, ...docSnap.data() };
+                const data = { id: docSnap.id, ...docSnap.data() } as EmpresaData;
                 setPartner(data);
                 setEditForm(data); // Prepara form
             } else {
@@ -61,7 +103,7 @@ export default function EmpresaDashboard() {
             // 2. Pega histórico de Scans dessa empresa
             const qScans = query(collection(db, "scans"), where("empresaId", "==", empresaId), orderBy("data", "desc"));
             const scanSnaps = await getDocs(qScans);
-            setHistory(scanSnaps.docs.map(d => ({id: d.id, ...d.data()})));
+            setHistory(scanSnaps.docs.map(d => ({id: d.id, ...d.data()} as ScanData)));
 
         } catch (e) {
             console.error(e);
@@ -70,11 +112,12 @@ export default function EmpresaDashboard() {
         }
     };
     fetchCompanyData();
-  }, [empresaId]);
+  }, [empresaId, addToast, router]);
 
   // --- AÇÕES ---
 
   const handleScan = async () => {
+      if (!partner) return;
       setScanning(true);
       // Simulação de Scan (Num app real, abriria câmera)
       setTimeout(async () => {
@@ -82,7 +125,7 @@ export default function EmpresaDashboard() {
           
           try {
               // ID 61: Registra Scan no Firebase
-              const newScan = {
+              const newScan: Omit<ScanData, 'id'> = {
                   empresaId: empresaId,
                   empresa: partner.nome,
                   usuario: "Aluno Exemplo", // Viria do QR Code lido
@@ -94,19 +137,22 @@ export default function EmpresaDashboard() {
                   timestamp: new Date()
               };
 
-              await addDoc(collection(db, "scans"), newScan);
+              const docRef = await addDoc(collection(db, "scans"), newScan);
+              const scanWithId = { id: docRef.id, ...newScan } as ScanData;
               
               // Atualiza contador na empresa
+              const newTotal = (partner.totalScans || 0) + 1;
               await updateDoc(doc(db, "parceiros", empresaId), {
-                  totalScans: (partner.totalScans || 0) + 1
+                  totalScans: newTotal
               });
 
-              setHistory(prev => [newScan, ...prev]);
+              setHistory(prev => [scanWithId, ...prev]);
               // 🦈 CORREÇÃO: Tipagem explícita para evitar erro 'implicitly has any type'
-              setPartner((prev: any) => ({...prev, totalScans: (prev.totalScans || 0) + 1}));
+              setPartner((prev) => prev ? ({...prev, totalScans: newTotal}) : null);
               addToast("✅ Cupom Validado com Sucesso!", "success");
 
           } catch(e) {
+              console.error(e);
               addToast("Erro ao registrar scan.", "error");
           }
       }, 2000);
@@ -115,7 +161,7 @@ export default function EmpresaDashboard() {
   const handleSaveProfile = async () => {
       try {
           await updateDoc(doc(db, "parceiros", empresaId), editForm);
-          setPartner(editForm);
+          setPartner(prev => prev ? ({...prev, ...editForm}) : null);
           setShowEditModal(false);
           addToast("Perfil atualizado!", "success");
       } catch(e) {
@@ -128,7 +174,7 @@ export default function EmpresaDashboard() {
       if (e.target.files?.[0]) {
           const b64 = await fileToBase64(e.target.files[0]);
           // 🦈 CORREÇÃO: Tipagem explícita para evitar erro 'implicitly has any type'
-          setEditForm((prev: any) => ({...prev, [field]: b64}));
+          setEditForm((prev) => ({...prev, [field]: b64}));
       }
   };
 
@@ -141,9 +187,9 @@ export default function EmpresaDashboard() {
       {/* HEADER ESPECÍFICO DA EMPRESA */}
       <header className="p-6 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center sticky top-0 z-30 shadow-md">
           <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-black border border-zinc-700 flex items-center justify-center overflow-hidden">
-                  {/* 🦈 CORREÇÃO: Ícone Store agora importado corretamente */}
-                  {partner.imgLogo ? <img src={partner.imgLogo} className="w-full h-full object-cover"/> : <Store size={20} className="text-zinc-500"/>}
+              <div className="w-10 h-10 rounded-lg bg-black border border-zinc-700 flex items-center justify-center overflow-hidden relative">
+                  {/* 🦈 CORREÇÃO: Image Otimizado */}
+                  {partner.imgLogo ? <Image src={partner.imgLogo} alt={partner.nome} fill className="object-cover" unoptimized/> : <Store size={20} className="text-zinc-500"/>}
               </div>
               <div>
                   <h2 className="text-lg font-black uppercase text-white leading-none">{partner.nome}</h2>
@@ -170,7 +216,7 @@ export default function EmpresaDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                     <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 shadow-lg">
                         <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Calendar size={10}/> Cliente Desde</p>
-                        <h3 className="text-xs font-black text-white">{new Date(partner.createdAt || Date.now()).toLocaleDateString()}</h3>
+                        <h3 className="text-xs font-black text-white">{partner.createdAt ? partner.createdAt.toDate().toLocaleDateString() : new Date().toLocaleDateString()}</h3>
                     </div>
                     <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 shadow-lg">
                         <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Ticket size={10}/> Total Scans</p>
@@ -226,10 +272,10 @@ export default function EmpresaDashboard() {
                 <h3 className="font-bold text-white text-lg mb-4">Editar Informações</h3>
                 
                 <div className="space-y-4">
-                    <div><label className="text-[10px] text-zinc-500 uppercase font-bold">Descrição</label><textarea className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" rows={3} value={editForm.descricao} onChange={e => setEditForm({...editForm, descricao: e.target.value})}/></div>
+                    <div><label className="text-[10px] text-zinc-500 uppercase font-bold">Descrição</label><textarea className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" rows={3} value={editForm.descricao || ""} onChange={e => setEditForm({...editForm, descricao: e.target.value})}/></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="text-[10px] text-zinc-500 uppercase font-bold">Instagram</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" value={editForm.insta} onChange={e => setEditForm({...editForm, insta: e.target.value})}/></div>
-                        <div><label className="text-[10px] text-zinc-500 uppercase font-bold">WhatsApp</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" value={editForm.whats} onChange={e => setEditForm({...editForm, whats: e.target.value})}/></div>
+                        <div><label className="text-[10px] text-zinc-500 uppercase font-bold">Instagram</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" value={editForm.insta || ""} onChange={e => setEditForm({...editForm, insta: e.target.value})}/></div>
+                        <div><label className="text-[10px] text-zinc-500 uppercase font-bold">WhatsApp</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm" value={editForm.whats || ""} onChange={e => setEditForm({...editForm, whats: e.target.value})}/></div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <button onClick={() => logoInputRef.current?.click()} className="bg-zinc-800 p-3 rounded-lg text-xs text-zinc-300 hover:bg-zinc-700 border border-zinc-700">Alterar Logo</button>

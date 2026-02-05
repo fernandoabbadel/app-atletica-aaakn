@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, MessageCircle, Loader2, Send, Clock, Copy, CreditCard, AlertCircle } from "lucide-react";
+import { ArrowLeft, MessageCircle, Loader2, Send, Clock, Copy, CreditCard, AlertCircle, LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useToast } from "@/context/ToastContext";
@@ -11,7 +11,32 @@ import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs
 
 // Ícones locais
 import { Ghost, Star, Crown, ShoppingBag } from "lucide-react";
-const ICONS_MAP: any = { ghost: Ghost, star: Star, crown: Crown, shopping: ShoppingBag };
+
+// 🦈 1. Definição de Interfaces (O Mapa do Tesouro)
+interface Plano {
+  id: string;
+  nome: string;
+  preco: string;     // Ex: "59,90" (String formatada para exibição)
+  precoVal: number;  // Ex: 59.90 (Number para cálculos/banco)
+  icon: string;
+  cor: string;
+  descricao?: string;
+}
+
+interface PixData {
+  chave: string;
+  banco: string;
+  titular: string;
+  whatsapp?: string;
+}
+
+// 🦈 2. Tipagem do Mapa de Ícones
+const ICONS_MAP: Record<string, LucideIcon> = { 
+  ghost: Ghost, 
+  star: Star, 
+  crown: Crown, 
+  shopping: ShoppingBag 
+};
 
 export default function AdesaoPage() {
   const searchParams = useSearchParams();
@@ -20,8 +45,14 @@ export default function AdesaoPage() {
   const { user } = useAuth();
   
   const planId = searchParams.get('plano');
-  const [plano, setPlano] = useState<any>(null);
-  const [pixData, setPixData] = useState<any>({ chave: "Carregando...", banco: "...", titular: "..." });
+  
+  // 🦈 3. Estados Tipados (Adeus 'any')
+  const [plano, setPlano] = useState<Plano | null>(null);
+  const [pixData, setPixData] = useState<PixData>({ 
+    chave: "Carregando...", 
+    banco: "...", 
+    titular: "..." 
+  });
   
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -51,14 +82,24 @@ export default function AdesaoPage() {
               const docRef = doc(db, "planos", planId);
               const snap = await getDoc(docRef);
               if (snap.exists()) {
-                  setPlano({ id: snap.id, ...snap.data() });
+                  // Forçamos a tipagem aqui pois confiamos no banco ou tratamos undefined
+                  const data = snap.data();
+                  setPlano({ 
+                    id: snap.id, 
+                    nome: data.nome,
+                    preco: data.preco,
+                    precoVal: data.precoVal,
+                    icon: data.icon,
+                    cor: data.cor,
+                    descricao: data.descricao
+                  } as Plano);
               }
 
               // 3. Buscar Dados PIX (Do banco ou Hardcoded se não tiver config ainda)
               const configRef = doc(db, "app_config", "financeiro");
               const configSnap = await getDoc(configRef);
               if (configSnap.exists()) {
-                  setPixData(configSnap.data());
+                  setPixData(configSnap.data() as PixData);
               } else {
                   // Fallback
                   setPixData({
@@ -86,8 +127,8 @@ export default function AdesaoPage() {
           // 1. Criar Solicitação "Pendente" no Banco
           await addDoc(collection(db, "solicitacoes_adesao"), {
               userId: user.uid,
-              userName: user.nome || "Aluno",
-              userTurma: user.turma || "T??",
+              userName: user.displayName || "Aluno", // Ajustado para propriedade padrão do Auth
+              userTurma: (user as any).turma || "T??", // Cast temporário se 'turma' não estiver no tipo User padrão do context
               planoId: plano.id,
               planoNome: plano.nome,
               valor: plano.precoVal,

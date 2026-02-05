@@ -1,13 +1,40 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy, ExternalLink, X } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+// 🦈 Removido useRouter não utilizado
+import Image from "next/image"; // 🦈 Importado componente Image
 import { db } from "../../lib/firebase";
 import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+
+// --- INTERFACES (FIM DOS ANY) ---
+interface TreinoData {
+  id: string;
+  modalidade: string;
+  horario: string;
+  local: string;
+  imagem?: string;
+  dia: string;
+  status?: string;
+  confirmados?: string[];
+}
+
+interface RsvpData {
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  status: "going" | "not_going";
+}
+
+interface TurmaStats {
+  turma: string;
+  count: number;
+  img: string;
+}
 
 // --- 1. CONFIGURAÇÃO DE FERIADOS (UNITAU 2026) ---
 const FERIADOS = [
@@ -38,30 +65,37 @@ const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMont
 const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 // --- 2. CARD DE TREINO SUPERCHARGED ---
-function TreinoCard({ treino }: { treino: any }) {
+function TreinoCard({ treino }: { treino: TreinoData }) {
     const { user } = useAuth();
     const { addToast } = useToast();
-    const router = useRouter(); 
+    // 🦈 Router removido pois não era usado (navegação via Link)
     
     const [userRsvp, setUserRsvp] = useState<"going" | null>(null);
-    const [stats, setStats] = useState({ confirmados: 0, avatares: [] as string[], turmas: [] as any[] });
+    const [stats, setStats] = useState({ 
+        confirmados: 0, 
+        avatares: [] as string[], 
+        turmas: [] as TurmaStats[] 
+    });
     const [loadingAction, setLoadingAction] = useState(false);
 
     useEffect(() => {
         const unsub = onSnapshot(collection(db, "treinos", treino.id, "rsvps"), (snap) => {
-            const rsvps = snap.docs.map(d => d.data());
+            const rsvps = snap.docs.map(d => d.data() as RsvpData);
             
             if (user) {
-                const me = rsvps.find((r: any) => r.userId === user.uid);
+                const me = rsvps.find((r) => r.userId === user.uid);
                 setUserRsvp(me ? me.status : null);
             }
 
             // Pega os últimos 4 avatares
-            const avatares = rsvps.filter((r:any) => r.status === 'going').map((r:any) => r.userAvatar).slice(0, 4);
+            const avatares = rsvps
+                .filter((r) => r.status === 'going')
+                .map((r) => r.userAvatar)
+                .slice(0, 4);
 
             // Ranking de Turmas
             const counts: Record<string, number> = {};
-            rsvps.forEach((r: any) => {
+            rsvps.forEach((r) => {
                 if (r.status === 'going' && r.userTurma) {
                     const t = r.userTurma.toUpperCase();
                     counts[t] = (counts[t] || 0) + 1;
@@ -88,11 +122,10 @@ function TreinoCard({ treino }: { treino: any }) {
         try {
             await runTransaction(db, async (t) => {
                 const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
-                const treinoRef = doc(db, "treinos", treino.id); // Referência ao documento do treino
+                const treinoRef = doc(db, "treinos", treino.id); 
                 
                 if (status === "not_going") {
                     t.delete(rsvpRef);
-                    // 🦈 ATUALIZAÇÃO CRÍTICA: Remove do array global para o Perfil saber
                     t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
                 } else {
                     t.set(rsvpRef, {
@@ -103,7 +136,6 @@ function TreinoCard({ treino }: { treino: any }) {
                         status: 'going',
                         timestamp: serverTimestamp()
                     });
-                    // 🦈 ATUALIZAÇÃO CRÍTICA: Adiciona ao array global para o Perfil saber
                     t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
                 }
             });
@@ -151,8 +183,14 @@ function TreinoCard({ treino }: { treino: any }) {
             <div className="relative w-full min-h-[320px] rounded-[2.5rem] overflow-hidden border border-zinc-800 bg-[#09090b] group shadow-2xl hover:shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500 hover:-translate-y-1">
                 
                 {/* 1. IMAGEM DE CAPA (EXPANDIDA E VISÍVEL) */}
-                <div className="absolute inset-0 z-0 h-full">
-                    <img src={treino.imagem || "https://placehold.co/800x600/111/333"} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 group-hover:scale-105 transition duration-1000" />
+                <div className="absolute inset-0 z-0 h-full w-full">
+                    <Image 
+                        src={treino.imagem || "https://placehold.co/800x600/111/333"} 
+                        alt={`Capa do treino de ${treino.modalidade}`}
+                        fill
+                        unoptimized // 🦈 Para evitar erro de host externo
+                        className="object-cover opacity-60 group-hover:opacity-80 group-hover:scale-105 transition duration-1000" 
+                    />
                     <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient}`}></div>
                 </div>
 
@@ -192,8 +230,18 @@ function TreinoCard({ treino }: { treino: any }) {
                             <div className="flex flex-wrap gap-2">
                                 {stats.turmas.length > 0 ? stats.turmas.map((t, i) => (
                                     <div key={i} className="flex items-center gap-2 bg-black/50 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
-                                        <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-500 shrink-0">
-                                            {t.img ? <img src={t.img} className="w-full h-full object-cover"/> : <span className="text-[9px] flex items-center justify-center h-full text-white font-bold">{t.turma}</span>}
+                                        <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-500 shrink-0 relative">
+                                            {t.img ? (
+                                                <Image 
+                                                    src={t.img} 
+                                                    alt={`Logo ${t.turma}`}
+                                                    fill
+                                                    className="object-cover"
+                                                    unoptimized
+                                                />
+                                            ) : (
+                                                <span className="text-[9px] flex items-center justify-center h-full text-white font-bold">{t.turma}</span>
+                                            )}
                                         </div>
                                         <span className="text-xs font-black text-white tracking-tight">{t.turma} <span className={theme.text}>+{t.count}</span></span>
                                     </div>
@@ -205,8 +253,14 @@ function TreinoCard({ treino }: { treino: any }) {
                             {/* Avatares Pequenos */}
                             <div className="flex -space-x-2 pl-1">
                                 {stats.avatares.map((src, i) => (
-                                    <div key={i} className="w-6 h-6 rounded-full border border-black bg-zinc-800 overflow-hidden opacity-80">
-                                        <img src={src} className="w-full h-full object-cover" />
+                                    <div key={i} className="w-6 h-6 rounded-full border border-black bg-zinc-800 overflow-hidden opacity-80 relative">
+                                        <Image 
+                                            src={src} 
+                                            alt={`Avatar participante ${i}`}
+                                            fill
+                                            className="object-cover"
+                                            unoptimized
+                                        />
                                     </div>
                                 ))}
                             </div>
@@ -239,7 +293,7 @@ function TreinoCard({ treino }: { treino: any }) {
 export default function TreinosPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
-  const [treinosDoMes, setTreinosDoMes] = useState<any[]>([]);
+  const [treinosDoMes, setTreinosDoMes] = useState<TreinoData[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Buscar Treinos
@@ -257,7 +311,7 @@ export default function TreinosPage() {
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
-        const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TreinoData));
         setTreinosDoMes(lista);
         setLoading(false);
     });
@@ -268,13 +322,24 @@ export default function TreinosPage() {
   const calendarDays = useMemo(() => {
       const daysInMonth = getDaysInMonth(currentDate);
       const firstDayIndex = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-      const days = [];
+      
+      // Interface local para o calendário
+      type CalendarItem = {
+          day: number | null;
+          dateStr?: string;
+          treinos?: TreinoData[];
+          isHoliday?: boolean;
+          tooltip?: string;
+      }
+
+      const days: CalendarItem[] = [];
       for (let i = 0; i < firstDayIndex; i++) days.push({ day: null });
+      
       for (let i = 1; i <= daysInMonth; i++) {
           const dateStr = formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), i));
-          const treinosDia = treinosDoMes.filter((t: any) => t.dia === dateStr && t.status !== 'cancelado');
+          const treinosDia = treinosDoMes.filter((t) => t.dia === dateStr && t.status !== 'cancelado');
           const isHoliday = FERIADOS.includes(dateStr);
-          const tooltip = isHoliday ? "Feriado" : treinosDia.map((t:any) => `${t.modalidade}`).join(', ');
+          const tooltip = isHoliday ? "Feriado" : treinosDia.map((t) => `${t.modalidade}`).join(', ');
           days.push({ day: i, dateStr, treinos: treinosDia, isHoliday, tooltip });
       }
       return days;
@@ -283,7 +348,7 @@ export default function TreinosPage() {
   // Lista Filtrada
   const treinosSelecionados = useMemo(() => {
       const targetStr = formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay));
-      return treinosDoMes.filter((t: any) => t.dia === targetStr && t.status !== 'cancelado');
+      return treinosDoMes.filter((t) => t.dia === targetStr && t.status !== 'cancelado');
   }, [treinosDoMes, selectedDay, currentDate]);
 
   const isSelectedDateHoliday = FERIADOS.includes(formatDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay)));
@@ -314,9 +379,9 @@ export default function TreinosPage() {
             if (!item.day) return <div key={idx}></div>;
             const isSelected = selectedDay === item.day;
             return (
-              <button key={idx} onClick={() => setSelectedDay(item.day)} title={item.tooltip} className={`relative w-9 h-10 mx-auto flex flex-col items-center justify-center rounded-xl transition-all duration-300 group ${isSelected ? "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.4)] scale-110 z-10 font-black" : item.isHoliday ? "bg-red-500/10 text-red-500 border border-red-500/30" : "bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+              <button key={idx} onClick={() => setSelectedDay(item.day!)} title={item.tooltip} className={`relative w-9 h-10 mx-auto flex flex-col items-center justify-center rounded-xl transition-all duration-300 group ${isSelected ? "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.4)] scale-110 z-10 font-black" : item.isHoliday ? "bg-red-500/10 text-red-500 border border-red-500/30" : "bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
                 <span className="text-xs">{item.day}</span>
-                <div className="flex gap-0.5 mt-1 absolute bottom-1.5 px-1">{item.treinos && item.treinos.slice(0, 3).map((t:any, i:number) => <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-black' : 'bg-emerald-500'} shadow-sm`}></div>)}</div>
+                <div className="flex gap-0.5 mt-1 absolute bottom-1.5 px-1">{item.treinos && item.treinos.slice(0, 3).map((t, i) => <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-black' : 'bg-emerald-500'} shadow-sm`}></div>)}</div>
                 {item.isHoliday && !item.treinos?.length && <div className="absolute top-0 right-0 -mt-1 -mr-1"><AlertCircle size={8} className="text-red-500 fill-red-900/50"/></div>}
               </button>
             );
@@ -338,7 +403,7 @@ export default function TreinosPage() {
             <div className="flex flex-col items-center justify-center py-20 border border-dashed border-zinc-800 rounded-[2rem] bg-zinc-900/20"><Dumbbell className="text-zinc-700 mb-2" size={32}/><p className="text-zinc-500 text-xs font-bold uppercase">Sem treino</p></div>
         ) : (
             <div className="grid gap-10">
-                {treinosSelecionados.map((treino: any) => <TreinoCard key={treino.id} treino={treino} />)}
+                {treinosSelecionados.map((treino) => <TreinoCard key={treino.id} treino={treino} />)}
             </div>
         )}
       </main>

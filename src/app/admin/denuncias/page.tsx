@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, CheckCircle, X, AlertTriangle, 
-  MessageCircle, Dumbbell, LifeBuoy, Filter, 
-  Search, Eye, Send, Bell, Edit, Clock, User, Trash2, Save, ShieldAlert, Lock
+  MessageCircle, Dumbbell, LifeBuoy, 
+  Search, Eye, Bell, Edit, Clock, User, Trash2, Save, ShieldAlert, Lock
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
@@ -55,7 +55,7 @@ export default function AdminDenunciaPage() {
   // Modal
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [responseText, setResponseText] = useState("");
-  const [isEditing, setIsEditing] = useState(false); 
+  // 🦈 Removido isEditing não utilizado
 
   // --- 1. INTEGRAÇÃO FIREBASE (APELOS DE BANIDOS) ---
   useEffect(() => {
@@ -101,7 +101,6 @@ export default function AdminDenunciaPage() {
   const handleOpenReport = (report: Report) => {
       setSelectedReport(report);
       setResponseText(report.respostaAdmin || ""); 
-      setIsEditing(report.status === 'resolvida'); 
   };
 
   const handleResolve = async () => {
@@ -121,6 +120,7 @@ export default function AdminDenunciaPage() {
               });
               addToast("Resposta enviada para o usuário banido!", "success");
           } catch (error) {
+              console.error("Erro ao resolver apelação:", error); // 🦈 Tratamento de erro
               addToast("Erro ao salvar no Firebase.", "error");
               return;
           }
@@ -211,7 +211,8 @@ export default function AdminDenunciaPage() {
                                   <span className="text-[10px] text-zinc-500 flex items-center gap-1"><Clock size={10}/> {report.data}</span>
                               </div>
                               <h3 className="text-white font-bold text-base mb-1">{report.motivo}</h3>
-                              <p className="text-zinc-400 text-xs mb-3 line-clamp-2">"{report.descricao}"</p>
+                              {/* 🦈 Correção de aspas aqui */}
+                              <p className="text-zinc-400 text-xs mb-3 line-clamp-2">&quot;{report.descricao}&quot;</p>
                               <div className="flex items-center gap-4 text-xs text-zinc-500 border-t border-zinc-800 pt-3">
                                   <span className="flex items-center gap-1"><User size={12}/> <b>De:</b> {report.autor}</span>
                                   {report.categoria === 'banidos' && <span className="text-blue-500 font-bold text-[10px] uppercase border border-blue-900 bg-blue-900/10 px-1 rounded">Apelação de Ban</span>}
@@ -238,7 +239,8 @@ export default function AdminDenunciaPage() {
 
                   <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 mb-6 space-y-3">
                       <div><p className="label-admin">Motivo</p><p className="text-white font-bold text-sm">{selectedReport.motivo}</p></div>
-                      <div><p className="label-admin">Mensagem do Usuário</p><p className="text-zinc-300 text-xs italic">"{selectedReport.descricao}"</p></div>
+                      {/* 🦈 Correção de aspas aqui */}
+                      <div><p className="label-admin">Mensagem do Usuário</p><p className="text-zinc-300 text-xs italic">&quot;{selectedReport.descricao}&quot;</p></div>
                       <div className="grid grid-cols-2 gap-4">
                           <div><p className="label-admin">Autor</p><p className="text-emerald-400 text-xs font-bold">{selectedReport.autor}</p></div>
                       </div>

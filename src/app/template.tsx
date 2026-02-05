@@ -2,27 +2,30 @@
 
 import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+// 🦈 1. Importação do Image otimizado
+import Image from "next/image";
 
 export default function Template({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [frase, setFrase] = useState("");
   const pathname = usePathname();
 
-  // Lista de frases
-  const frases = [
-    "Afiando o bisturi... e os dentes. 🦈",
-    "Os tubarões estão revisando Anatomia...",
-    "Procurando a veia certa... aguarde.",
-    "Tubarão não dorme, estuda Fisiologia.",
-    "Calibrando a mordida para o Intermed. 🏆",
-    "Mergulhando em um mar de apostilas.",
-    "Oxigenando as brânquias para o plantão. 🫁",
-    "Esperando o R1 passar a visita...",
-    "Consultando o Harrison... um momento. 📚",
-    "Nadando contra a corrente (e o sono).",
-  ];
-
   useEffect(() => {
+    // 🦈 2. Movi a lista para DENTRO do useEffect
+    // Isso resolve o aviso de dependência ausente
+    const frases = [
+      "Afiando o bisturi... e os dentes. 🦈",
+      "Os tubarões estão revisando Anatomia...",
+      "Procurando a veia certa... aguarde.",
+      "Tubarão não dorme, estuda Fisiologia.",
+      "Calibrando a mordida para o Intermed. 🏆",
+      "Mergulhando em um mar de apostilas.",
+      "Oxigenando as brânquias para o plantão. 🫁",
+      "Esperando o R1 passar a visita...",
+      "Consultando o Harrison... um momento. 📚",
+      "Nadando contra a corrente (e o sono).",
+    ];
+
     // 1. Sorteia a frase
     setFrase(frases[Math.floor(Math.random() * frases.length)]);
 
@@ -45,16 +48,17 @@ export default function Template({ children }: { children: React.ReactNode }) {
         <div className="relative w-40 h-40 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
           {/* LOGO DA ATLÉTICA (Fixo no centro) */}
           <div className="relative z-20 w-28 h-28 flex items-center justify-center">
-            {/* Certifique-se que o logo.png está na pasta public */}
-            <img
+            {/* 🦈 3. Substituição por <Image /> com priority */}
+            <Image
               src="/logo.png"
               alt="Logo Atlética"
-              className="w-full h-full object-contain drop-shadow-2xl"
+              fill
+              className="object-contain drop-shadow-2xl"
+              priority // Carrega instantaneamente pois é Splash Screen
             />
           </div>
 
           {/* ONDA VERDE (Animação subindo) */}
-          {/* A duração foi ajustada para 5s para acompanhar o tempo */}
           <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/90 rounded-[40%] animate-wave z-10 top-[100%]"></div>
         </div>
 
@@ -63,8 +67,9 @@ export default function Template({ children }: { children: React.ReactNode }) {
           <h2 className="text-emerald-500 font-black text-xl tracking-widest mb-3 animate-pulse">
             CARREGANDO....
           </h2>
+          {/* 🦈 4. Correção das Aspas (&quot;) */}
           <p className="text-zinc-400 text-sm font-medium italic max-w-xs mx-auto leading-relaxed">
-            "{frase}"
+            &quot;{frase}&quot;
           </p>
         </div>
 

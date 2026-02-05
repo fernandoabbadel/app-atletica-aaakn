@@ -3,16 +3,33 @@
 import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, 
-  BookOpen, Bus, Map, Phone, Upload, Image as ImageIcon,
+  BookOpen, Bus, Map, Phone, Image as ImageIcon,
   ExternalLink, AlertTriangle, Loader2, Database, RefreshCw
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { useToast } from "../../../context/ToastContext";
 import { db, storage } from "../../../lib/firebase"; 
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// --- 🦈 DADOS DE BACKUP (SEU MOCK ORIGINAL) ---
+// --- 🦈 INTERFACE PARA OS ITENS DO GUIA ---
+interface GuiaItem {
+  id: string;
+  categoria: "academico" | "transporte" | "turismo" | "emergencia";
+  // Campos Opcionais (dependem da categoria)
+  titulo?: string;
+  url?: string;
+  nome?: string;
+  horario?: string;
+  detalhe?: string;
+  descricao?: string;
+  foto?: string;
+  numero?: string;
+  cor?: string;
+}
+
+// --- MOCK ORIGINAL ---
 const INITIAL_GUIA_DATA = [
     // Acadêmico
     { categoria: 'academico', titulo: 'Portal do Aluno (EVA)', url: 'https://eva.unitau.br' },
@@ -22,7 +39,7 @@ const INITIAL_GUIA_DATA = [
     // Transporte
     { categoria: 'transporte', nome: 'Circular (Intercampi)', horario: '07:10, 12:30 | 11:50, 17:50', detalhe: 'Saída Terminal <-> Campus' },
     
-    // Turismo (Links de imagem externos para garantir que funcione de primeira)
+    // Turismo
     { categoria: 'turismo', nome: 'Praia Martim de Sá', descricao: 'O point da galera', foto: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80' },
     { categoria: 'turismo', nome: 'Pedra da Freira', descricao: 'Pôr do sol top', foto: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=80' },
     
@@ -36,27 +53,29 @@ export default function AdminGuiaPage() {
   
   // Estados
   const [activeTab, setActiveTab] = useState<"academico" | "transporte" | "turismo" | "emergencia">("academico");
-  const [data, setData] = useState<any>({ academico: [], transporte: [], turismo: [], emergencia: [] });
+  
+  // 🦈 Tipagem correta do estado de dados
+  const [data, setData] = useState<Record<string, GuiaItem[]>>({ academico: [], transporte: [], turismo: [], emergencia: [] });
   const [loading, setLoading] = useState(true);
   
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<Partial<GuiaItem> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
   // Upload
   const [previewImage, setPreviewImage] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  // 🦈 Removido isUploading não utilizado
 
   // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
     const q = query(collection(db, "guia_data"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newData = { academico: [], transporte: [], turismo: [], emergencia: [] } as any;
+      const newData: Record<string, GuiaItem[]> = { academico: [], transporte: [], turismo: [], emergencia: [] };
       
       snapshot.forEach((doc) => {
-        const item = { id: doc.id, ...doc.data() } as any;
+        const item = { id: doc.id, ...doc.data() } as GuiaItem;
         if (newData[item.categoria]) {
           newData[item.categoria].push(item);
         }
@@ -90,7 +109,7 @@ export default function AdminGuiaPage() {
 
   // --- HANDLERS GENÉRICOS ---
   const handleCreate = () => {
-      const baseItem = { id: "", categoria: activeTab }; 
+      const baseItem: Partial<GuiaItem> = { categoria: activeTab }; 
       if (activeTab === "academico") setEditingItem({ ...baseItem, titulo: "", url: "" });
       if (activeTab === "transporte") setEditingItem({ ...baseItem, nome: "", horario: "", detalhe: "" });
       if (activeTab === "turismo") { setEditingItem({ ...baseItem, nome: "", descricao: "", foto: "" }); setPreviewImage(""); setImageFile(null); }
@@ -99,10 +118,10 @@ export default function AdminGuiaPage() {
       setIsModalOpen(true);
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: GuiaItem) => {
       setEditingItem({ ...item });
       if (activeTab === "turismo") {
-          setPreviewImage(item.foto);
+          setPreviewImage(item.foto || "");
           setImageFile(null);
       }
       setIsModalOpen(true);
@@ -114,6 +133,7 @@ export default function AdminGuiaPage() {
               await deleteDoc(doc(db, "guia_data", id));
               addToast("Item removido.", "info");
           } catch (e) {
+              console.error(e); // 🦈 Logando erro
               addToast("Erro ao excluir.", "error");
           }
       }
@@ -141,7 +161,10 @@ export default function AdminGuiaPage() {
           }
 
           const dataToSave = { ...editingItem, foto: finalFotoUrl };
-          const { id, ...payload } = dataToSave; 
+          
+          // 🦈 Forma correta de remover o ID do payload
+          const payload = { ...dataToSave };
+          delete payload.id;
 
           if (editingItem.id) {
               await updateDoc(doc(db, "guia_data", editingItem.id), payload);
@@ -160,7 +183,7 @@ export default function AdminGuiaPage() {
   };
 
   // --- RENDERIZADORES DE CARD ---
-  const renderCard = (item: any) => {
+  const renderCard = (item: GuiaItem) => {
       if (activeTab === "academico") return (
           <div className="flex justify-between items-center w-full">
               <div>
@@ -181,8 +204,18 @@ export default function AdminGuiaPage() {
       );
       if (activeTab === "turismo") return (
           <div className="flex gap-4 w-full">
-              <div className="w-16 h-16 bg-black rounded-lg overflow-hidden shrink-0 border border-zinc-700">
-                  {item.foto ? <img src={item.foto} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>}
+              <div className="w-16 h-16 bg-black rounded-lg overflow-hidden shrink-0 border border-zinc-700 relative">
+                  {item.foto ? (
+                      <Image 
+                        src={item.foto} 
+                        alt={item.nome || "Turismo"} 
+                        fill
+                        unoptimized
+                        className="object-cover"
+                      />
+                  ) : (
+                      <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>
+                  )}
               </div>
               <div>
                   <h4 className="font-bold text-white">{item.nome}</h4>
@@ -231,7 +264,7 @@ export default function AdminGuiaPage() {
           ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {data[activeTab].map((item: any) => (
+                    {data[activeTab].map((item: GuiaItem) => (
                         <div key={item.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex justify-between items-center gap-4 hover:border-emerald-500/30 transition group">
                             {renderCard(item)}
                             <div className="flex flex-col gap-2 shrink-0 border-l border-zinc-800 pl-3 ml-2">
@@ -280,47 +313,53 @@ export default function AdminGuiaPage() {
                       {/* FORMULÁRIO ACADÊMICO */}
                       {activeTab === "academico" && (
                           <>
-                              <div><label className="label-admin">Título do Link</label><input type="text" className="input-admin" value={editingItem.titulo} onChange={e => setEditingItem({...editingItem, titulo: e.target.value})}/></div>
-                              <div><label className="label-admin">URL de Destino</label><input type="text" className="input-admin" value={editingItem.url} onChange={e => setEditingItem({...editingItem, url: e.target.value})}/></div>
+                              <div><label className="label-admin">Título do Link</label><input type="text" className="input-admin" value={editingItem.titulo || ""} onChange={e => setEditingItem({...editingItem, titulo: e.target.value})}/></div>
+                              <div><label className="label-admin">URL de Destino</label><input type="text" className="input-admin" value={editingItem.url || ""} onChange={e => setEditingItem({...editingItem, url: e.target.value})}/></div>
                           </>
                       )}
 
                       {/* FORMULÁRIO TRANSPORTE */}
                       {activeTab === "transporte" && (
                           <>
-                              <div><label className="label-admin">Nome da Linha</label><input type="text" className="input-admin" value={editingItem.nome} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Horários (Separe por vírgula)</label><input type="text" className="input-admin" value={editingItem.horario} onChange={e => setEditingItem({...editingItem, horario: e.target.value})}/></div>
-                              <div><label className="label-admin">Detalhes / Trajeto</label><input type="text" className="input-admin" value={editingItem.detalhe} onChange={e => setEditingItem({...editingItem, detalhe: e.target.value})}/></div>
+                              <div><label className="label-admin">Nome da Linha</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
+                              <div><label className="label-admin">Horários (Separe por vírgula)</label><input type="text" className="input-admin" value={editingItem.horario || ""} onChange={e => setEditingItem({...editingItem, horario: e.target.value})}/></div>
+                              <div><label className="label-admin">Detalhes / Trajeto</label><input type="text" className="input-admin" value={editingItem.detalhe || ""} onChange={e => setEditingItem({...editingItem, detalhe: e.target.value})}/></div>
                           </>
                       )}
 
                       {/* FORMULÁRIO TURISMO (COM UPLOAD) */}
                       {activeTab === "turismo" && (
                           <>
-                              <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 border-dashed hover:border-emerald-500/50 transition text-center relative group h-40 flex items-center justify-center">
+                              <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 border-dashed hover:border-emerald-500/50 transition text-center relative group h-40 flex items-center justify-center overflow-hidden">
                                   {previewImage ? (
-                                      <img src={previewImage} className="h-full w-full object-cover rounded-lg absolute inset-0"/>
+                                      <Image 
+                                        src={previewImage} 
+                                        alt="Preview" 
+                                        fill
+                                        unoptimized
+                                        className="object-cover rounded-lg"
+                                      />
                                   ) : (
                                       <div className="flex flex-col items-center gap-2 text-zinc-500">
                                           <ImageIcon size={32}/>
                                           <span className="text-xs font-bold uppercase">Foto do Local</span>
                                       </div>
                                   )}
-                                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFileChange}/>
+                                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" onChange={handleFileChange}/>
                               </div>
-                              <div><label className="label-admin">Nome do Local</label><input type="text" className="input-admin" value={editingItem.nome} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Descrição Curta</label><textarea rows={2} className="input-admin" value={editingItem.descricao} onChange={e => setEditingItem({...editingItem, descricao: e.target.value})}/></div>
+                              <div><label className="label-admin">Nome do Local</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
+                              <div><label className="label-admin">Descrição Curta</label><textarea rows={2} className="input-admin" value={editingItem.descricao || ""} onChange={e => setEditingItem({...editingItem, descricao: e.target.value})}/></div>
                           </>
                       )}
 
                       {/* FORMULÁRIO EMERGÊNCIA */}
                       {activeTab === "emergencia" && (
                           <>
-                              <div><label className="label-admin">Nome do Serviço</label><input type="text" className="input-admin" value={editingItem.nome} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Número de Telefone</label><input type="text" className="input-admin text-2xl font-black text-white" value={editingItem.numero} onChange={e => setEditingItem({...editingItem, numero: e.target.value})}/></div>
+                              <div><label className="label-admin">Nome do Serviço</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
+                              <div><label className="label-admin">Número de Telefone</label><input type="text" className="input-admin text-2xl font-black text-white" value={editingItem.numero || ""} onChange={e => setEditingItem({...editingItem, numero: e.target.value})}/></div>
                               <div>
                                   <label className="label-admin">Cor do Ícone</label>
-                                  <select className="input-admin" value={editingItem.cor} onChange={e => setEditingItem({...editingItem, cor: e.target.value})}>
+                                  <select className="input-admin" value={editingItem.cor || "red"} onChange={e => setEditingItem({...editingItem, cor: e.target.value})}>
                                       <option value="red">Vermelho (Emergência)</option>
                                       <option value="zinc">Cinza (Polícia/Geral)</option>
                                       <option value="blue">Azul (Serviços)</option>

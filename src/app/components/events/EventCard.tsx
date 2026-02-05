@@ -1,14 +1,39 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { MapPin, Calendar, Heart, CheckCircle, HelpCircle, Loader2, Users } from "lucide-react";
+import { MapPin, Heart, CheckCircle, HelpCircle, Loader2, Users } from "lucide-react";
+import Image from "next/image"; // 🦈 Importando Image
 import { useAuth } from "../../../context/AuthContext";
 import { db } from "../../../lib/firebase";
-import { doc, runTransaction, serverTimestamp, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot, collection, limit, query, getDocs } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot, collection, limit, query } from "firebase/firestore";
 import { useToast } from "../../../context/ToastContext";
 
+// 🦈 Interfaces para tipagem forte (Fim do any)
+interface Lote {
+    nome: string;
+    status: string;
+}
+
+interface EventStats {
+    likes?: number;
+    confirmados?: number;
+    talvez?: number;
+}
+
+interface EventData {
+    id: string;
+    titulo: string;
+    local: string;
+    data: string;
+    imagem?: string;
+    tipo: string;
+    likesList?: string[];
+    lotes?: Lote[];
+    stats?: EventStats;
+}
+
 interface EventCardProps {
-  evento: any;
+  evento: EventData;
 }
 
 export function EventCard({ evento }: EventCardProps) {
@@ -41,8 +66,8 @@ export function EventCard({ evento }: EventCardProps) {
       return () => unsub();
   }, [evento.id]);
 
-  const isLiked = evento.likesList?.includes(user?.uid);
-  const loteAtivo = evento.lotes?.find((l: any) => l.status === "ativo");
+  const isLiked = evento.likesList?.includes(user?.uid || "");
+  const loteAtivo = evento.lotes?.find((l) => l.status === "ativo");
   const [dia, mes] = evento.data ? evento.data.split(" ") : ["??", "???"];
 
   // --- ACTIONS ---
@@ -88,7 +113,10 @@ export function EventCard({ evento }: EventCardProps) {
                 t.update(eventRef, { [`stats.${status === 'going' ? 'confirmados' : 'talvez'}`]: increment(1) });
             }
         });
-    } catch (err) { addToast("Erro ao atualizar.", "error"); } 
+    } catch (err) { 
+        console.error(err); // 🦈 Log do erro
+        addToast("Erro ao atualizar.", "error"); 
+    } 
     finally { setIsLoading(false); }
   };
 
@@ -97,7 +125,14 @@ export function EventCard({ evento }: EventCardProps) {
       
       {/* IMAGEM */}
       <div className="relative h-64 w-full overflow-hidden">
-        <img src={evento.imagem || "https://placehold.co/600x400"} alt={evento.titulo} className="w-full h-full object-cover group-hover:scale-110 transition duration-700 ease-in-out" />
+        {/* 🦈 Imagem Otimizada */}
+        <Image 
+            src={evento.imagem || "https://placehold.co/600x400"} 
+            alt={evento.titulo} 
+            fill
+            unoptimized
+            className="object-cover group-hover:scale-110 transition duration-700 ease-in-out" 
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-black/20 to-transparent"></div>
         
         {/* DATA GIGANTE */}
@@ -135,8 +170,14 @@ export function EventCard({ evento }: EventCardProps) {
             <div className="flex items-center -space-x-2">
                 {previewAvatars.length > 0 ? (
                     previewAvatars.slice(0, 4).map((avatar, i) => (
-                        <div key={i} className="h-7 w-7 rounded-full border-2 border-[#09090b] z-10">
-                            <img src={avatar || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover" />
+                        <div key={i} className="h-7 w-7 rounded-full border-2 border-[#09090b] z-10 relative overflow-hidden">
+                            <Image 
+                                src={avatar || "https://github.com/shadcn.png"} 
+                                fill
+                                className="object-cover" 
+                                alt="Avatar Participante"
+                                unoptimized
+                            />
                         </div>
                     ))
                 ) : (
@@ -144,7 +185,7 @@ export function EventCard({ evento }: EventCardProps) {
                 )}
                 {(evento.stats?.confirmados || 0) > 4 && (
                     <div className="h-7 w-7 rounded-full bg-zinc-800 border-2 border-[#09090b] flex items-center justify-center z-0">
-                        <span className="text-[8px] font-bold text-zinc-400">+{evento.stats.confirmados - 4}</span>
+                        <span className="text-[8px] font-bold text-zinc-400">+{ (evento.stats?.confirmados || 0) - 4 }</span>
                     </div>
                 )}
             </div>

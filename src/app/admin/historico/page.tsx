@@ -7,6 +7,7 @@ import {
   Upload, Settings, Layout, Loader2, Database, RefreshCw
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db, storage } from "../../../lib/firebase"; 
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc } from "firebase/firestore";
@@ -194,6 +195,7 @@ export default function AdminHistoricoPage() {
       const anoDerivado = editingEvent.ano || editingEvent.data.split("-")[0];
       const eventData = { ...editingEvent, ano: anoDerivado, foto: finalFotoUrl };
       
+      // Remove id from payload
       const { id, ...dataToSave } = eventData;
 
       if (editingEvent.id) {
@@ -205,6 +207,7 @@ export default function AdminHistoricoPage() {
       }
       setIsModalOpen(false);
     } catch (error) {
+      console.error(error);
       addToast("Erro ao salvar.", "error");
     } finally {
       setIsSaving(false);
@@ -217,6 +220,7 @@ export default function AdminHistoricoPage() {
         await deleteDoc(doc(db, "historic_events", id));
         addToast("Evento removido.", "info");
       } catch (error) {
+        console.error(error);
         addToast("Erro ao excluir.", "error");
       }
     }
@@ -233,6 +237,7 @@ export default function AdminHistoricoPage() {
       setPageConfig(prev => ({ ...prev, fotoCapa: url }));
       addToast("Capa carregada!", "success");
     } catch (error) {
+      console.error(error);
       addToast("Erro no upload.", "error");
     } finally {
       setIsUploading(false);
@@ -245,6 +250,7 @@ export default function AdminHistoricoPage() {
       await setDoc(doc(db, "app_config", "historico"), pageConfig);
       addToast("Configurações salvas!", "success");
     } catch (error) {
+      console.error(error);
       addToast("Erro ao salvar.", "error");
     } finally {
       setIsSaving(false);
@@ -290,7 +296,7 @@ export default function AdminHistoricoPage() {
                       {events.map((event) => (
                           <div key={event.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex gap-4 hover:border-emerald-500/50 transition group items-center">
                               <div className="w-20 h-20 bg-black rounded-xl overflow-hidden shrink-0 border border-zinc-700 relative">
-                                  {event.foto ? <img src={event.foto} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>}
+                                  {event.foto ? <Image src={event.foto} alt={event.titulo} fill className="object-cover" unoptimized/> : <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>}
                               </div>
                               <div className="flex-1 min-w-0">
                                   <div className="flex justify-between items-start">
@@ -337,7 +343,7 @@ export default function AdminHistoricoPage() {
                                   <label className="label-admin">Capa</label>
                                   <div className="flex items-center gap-4 mt-2 bg-black/30 p-4 rounded-xl border border-zinc-800">
                                       <div className="w-24 h-16 bg-black rounded-lg overflow-hidden border border-zinc-700 relative">
-                                          {pageConfig.fotoCapa ? <img src={pageConfig.fotoCapa} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>}
+                                          {pageConfig.fotoCapa ? <Image src={pageConfig.fotoCapa} alt="Capa" fill className="object-cover" unoptimized/> : <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={20}/></div>}
                                       </div>
                                       <label className={`cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 transition ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                           {isUploading ? <Loader2 className="animate-spin" size={14}/> : <Upload size={14}/>}
@@ -385,7 +391,9 @@ export default function AdminHistoricoPage() {
                       {/* UPLOAD DO EVENTO */}
                       <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 border-dashed hover:border-emerald-500/50 transition text-center relative group">
                           {previewImage ? (
-                              <img src={previewImage} className="h-40 w-full object-cover rounded-lg"/>
+                              <div className="h-40 w-full relative">
+                                <Image src={previewImage} alt="Preview" fill className="object-cover rounded-lg" unoptimized/>
+                              </div>
                           ) : (
                               <div className="py-8 flex flex-col items-center gap-2 text-zinc-500">
                                   <ImageIcon size={32}/>

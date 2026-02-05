@@ -2,21 +2,64 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Edit2, Trash2, Save, Target,
-  Zap, Users, TrendingUp, Award, Crown, History, Power, PowerOff, Flame, 
-  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw, Gem
+  ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Edit2, Trash2, Target,
+  Zap, Award, Crown, History, Power, PowerOff, Flame, 
+  Fish, Swords, Skull, Rocket, Star, Heart, RefreshCw, Gem, Search, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
-import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../../lib/achievements";
+import { ACHIEVEMENTS_CATALOG } from "../../../lib/achievements";
 
-// --- DADOS PADRÃO DAS PATENTES (PARA RESTAURAR) ---
-// Esses dados definem a "Régua" de evolução. 
-// O AuthContext vai ler isso para saber qual ícone dar ao usuário.
-const DEFAULT_PATENTES = [
-    { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish", opacity: true },
+// --- INTERFACES (O Escudo do Código) ---
+interface AchievementConfig {
+  id: string;
+  titulo: string;
+  desc: string;
+  xp: number;
+  target: number;
+  statKey: string;
+  cat: string;
+  iconName: string;
+  active: boolean;
+  repeatable: boolean;
+}
+
+interface LogData {
+  id: string;
+  userName: string;
+  achievementTitle: string;
+  timestamp: any;
+}
+
+interface UserRank {
+  id: string;
+  nome: string;
+  turma: string;
+  xp: number;
+  foto: string;
+}
+
+interface PatenteConfig {
+  id: string;
+  titulo: string;
+  minXp: number;
+  cor: string;
+  iconName: string;
+  bg?: string;
+  text?: string;
+}
+
+interface ColorStyle {
+  bg: string;
+  border: string;
+}
+
+// --- DADOS PADRÃO ---
+const DEFAULT_PATENTES: PatenteConfig[] = [
+    { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
     { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
     { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
     { id: "p4", titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
@@ -24,7 +67,6 @@ const DEFAULT_PATENTES = [
     { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
-// Lista de Ícones disponíveis para seleção (Sincronizado com a Comunidade)
 const ICON_OPTIONS = [
     { label: "Peixe", value: "Fish", icon: <Fish/> },
     { label: "Espadas", value: "Swords", icon: <Swords/> },
@@ -36,55 +78,53 @@ const ICON_OPTIONS = [
     { label: "Troféu", value: "Trophy", icon: <Trophy/> },
     { label: "Medalha", value: "Medal", icon: <Medal/> },
     { label: "Coração", value: "Heart", icon: <Heart/> },
-    { label: "Diamante", value: "Gem", icon: <Gem/> }, // Adicionado Gem
+    { label: "Diamante", value: "Gem", icon: <Gem/> },
 ];
 
 export default function AdminConquistasPage() {
   const { addToast } = useToast();
   
   const [activeTab, setActiveTab] = useState<"dashboard" | "conquistas" | "historico" | "patentes">("dashboard");
-  const [activeCat, setActiveCat] = useState<AchievementCategory | "Todas">("Todas");
+  const [activeCat, setActiveCat] = useState<string>("Todas");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [achievements, setAchievements] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [usersRanking, setUsersRanking] = useState<any[]>([]);
-  const [patentes, setPatentes] = useState<any[]>([]);
+  // 🦈 Estados Tipados
+  const [achievements, setAchievements] = useState<AchievementConfig[]>([]);
+  const [logs, setLogs] = useState<LogData[]>([]);
+  const [usersRanking, setUsersRanking] = useState<UserRank[]>([]);
+  const [patentes, setPatentes] = useState<PatenteConfig[]>([]);
 
   // Estados de Edição
-  const [editingAch, setEditingAch] = useState<any>(null);
-  const [editingPatente, setEditingPatente] = useState<any>(null);
+  const [editingAch, setEditingAch] = useState<AchievementConfig | null>(null);
+  const [editingPatente, setEditingPatente] = useState<PatenteConfig | null>(null);
 
   // CARREGAR DADOS
   useEffect(() => {
     // 1. Conquistas
     const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAchievements(data.length > 0 ? data : ACHIEVEMENTS_CATALOG);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as AchievementConfig));
+      // Se vazio, usa o catálogo padrão (fallback)
+      setAchievements(data.length > 0 ? data : ACHIEVEMENTS_CATALOG as unknown as AchievementConfig[]);
     });
 
     // 2. Histórico
     const qLogs = query(collection(db, "achievements_logs"), orderBy("timestamp", "desc"), limit(50));
     const unsubLogs = onSnapshot(qLogs, (snap) => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as LogData)));
     });
 
     // 3. Ranking
     const qRank = query(collection(db, "users"), orderBy("xp", "desc"), limit(10));
     const unsubRank = onSnapshot(qRank, (snap) => {
-      setUsersRanking(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setUsersRanking(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserRank)));
     });
 
     // 4. Patentes
     const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
     const unsubPatentes = onSnapshot(qPatentes, (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (data.length > 0) {
-            setPatentes(data);
-        } else {
-            setPatentes([]); 
-        }
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PatenteConfig));
+        setPatentes(data);
         setLoading(false);
     });
 
@@ -109,7 +149,7 @@ export default function AdminConquistasPage() {
           desc: "",
           xp: 100,
           target: 1,
-          statKey: "loginCount", // Default seguro
+          statKey: "loginCount",
           cat: "Social",
           iconName: "Star",
           active: true,
@@ -134,7 +174,7 @@ export default function AdminConquistasPage() {
       addToast("Deletada.", "info");
   };
 
-  const toggleMissionStatus = async (ach: any) => {
+  const toggleMissionStatus = async (ach: AchievementConfig) => {
     try {
       await setDoc(doc(db, "achievements_config", ach.id), { active: !ach.active }, { merge: true });
       addToast("Status atualizado.", "info");
@@ -153,15 +193,13 @@ export default function AdminConquistasPage() {
       });
   };
 
-  // ID 510: RESTAURAR PATENTES PADRÃO
   const handleSeedPatentes = async () => {
-      if (!confirm("Isso vai restaurar as patentes originais (Megalodon, etc). Continuar?")) return;
+      if (!confirm("Isso vai restaurar as patentes originais. Continuar?")) return;
       setLoading(true);
       try {
           const batch = writeBatch(db);
           DEFAULT_PATENTES.forEach(p => {
-              // Recria cores e bordas baseadas na cor do texto
-              const colorMap: any = {
+              const colorMap: Record<string, ColorStyle> = {
                   "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
                   "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
                   "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
@@ -187,7 +225,7 @@ export default function AdminConquistasPage() {
   const handleSavePatente = async () => {
       if(!editingPatente) return;
       try {
-          const colorMap: any = {
+          const colorMap: Record<string, ColorStyle> = {
               "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
               "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
               "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
@@ -223,6 +261,8 @@ export default function AdminConquistasPage() {
     }
   };
 
+  if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">
       
@@ -232,19 +272,32 @@ export default function AdminConquistasPage() {
             <div><h1 className="text-lg font-black text-white uppercase tracking-tighter">Engenharia de Conquistas</h1><p className="text-[10px] text-zinc-500">Controle de Recompensas e XP</p></div>
         </div>
         
-        {/* ID 509: Botão Nova Conquista (Funcional) */}
         <button onClick={handleCreateAch} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 transition hover:scale-105">
             <Plus size={16}/> Nova Conquista
         </button>
       </header>
 
-      <div className="px-6 pt-4">
+      <div className="px-6 pt-4 space-y-4">
           <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto no-scrollbar">
               <button onClick={() => setActiveTab("dashboard")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'dashboard' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><LayoutDashboard size={16}/> Hall da Fama</button>
               <button onClick={() => setActiveTab("conquistas")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'conquistas' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><Trophy size={16}/> Catálogo</button>
               <button onClick={() => setActiveTab("patentes")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'patentes' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><Medal size={16}/> Patentes</button>
               <button onClick={() => setActiveTab("historico")} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'historico' ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}><History size={16}/> Logs</button>
           </div>
+
+          {/* Barra de Pesquisa */}
+          {activeTab === 'conquistas' && (
+            <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"/>
+                <input 
+                    type="text" 
+                    placeholder="Buscar conquista..." 
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-full pl-9 pr-4 py-2 text-xs focus:border-emerald-500 outline-none transition"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
+            </div>
+          )}
       </div>
 
       <main className="p-6 space-y-6">
@@ -259,7 +312,9 @@ export default function AdminConquistasPage() {
                             <div key={u.id} className="flex items-center justify-between p-3 bg-black/40 rounded-2xl border border-zinc-800">
                                 <div className="flex items-center gap-4">
                                     <span className="font-black text-zinc-700 w-4">#{i+1}</span>
-                                    <img src={u.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full border-2 border-zinc-800 object-cover"/>
+                                    <div className="w-10 h-10 rounded-full border-2 border-zinc-800 overflow-hidden relative">
+                                        <Image src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} fill className="object-cover" unoptimized/>
+                                    </div>
                                     <div><p className="font-bold text-sm text-white">{u.nome}</p><p className="text-[10px] text-zinc-500 uppercase">{u.turma} • XP: {u.xp}</p></div>
                                 </div>
                             </div>
@@ -277,7 +332,7 @@ export default function AdminConquistasPage() {
              <div className="space-y-6 animate-in fade-in">
                  <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                     {["Todas", "Social", "Gym", "Games", "Loja", "Eventos"].map(cat => (
-                        <button key={cat} onClick={() => setActiveCat(cat as any)} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition border ${activeCat === cat ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>{cat}</button>
+                        <button key={cat} onClick={() => setActiveCat(cat)} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition border ${activeCat === cat ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>{cat}</button>
                     ))}
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -309,7 +364,7 @@ export default function AdminConquistasPage() {
              </div>
         )}
 
-        {/* ABA PATENTES (ID 508 - Corrigida) */}
+        {/* ABA PATENTES */}
         {activeTab === 'patentes' && (
             <div className="space-y-6 animate-in fade-in">
                 <div className="flex justify-between items-center bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
@@ -337,7 +392,6 @@ export default function AdminConquistasPage() {
                                     <button onClick={() => setEditingPatente(p)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"><Edit2 size={12}/></button>
                                     <button onClick={() => handleDeletePatente(p.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500"><Trash2 size={12}/></button>
                                 </div>
-                                {/* 🦈 CORREÇÃO CRÍTICA AQUI: Cast tipado para resolver erro TS2769 */}
                                 <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-3 ${p.bg || 'bg-zinc-800'} ${p.text || p.cor}`}>
                                     {React.cloneElement(iconComp as React.ReactElement<{ size?: number; className?: string }>, { size: 32 })}
                                 </div>
@@ -348,7 +402,7 @@ export default function AdminConquistasPage() {
                     })}
                     {patentes.length === 0 && (
                         <div className="col-span-full text-center py-12 text-zinc-500">
-                            Nenhuma patente encontrada. Clique em "Restaurar Padrões" para iniciar.
+                            Nenhuma patente encontrada. Clique em &quot;Restaurar Padrões&quot; para iniciar.
                         </div>
                     )}
                 </div>

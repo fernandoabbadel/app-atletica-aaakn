@@ -1,3 +1,4 @@
+// src/app/loja/[id]/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -5,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { 
     doc, onSnapshot, collection, addDoc, serverTimestamp, 
-    query, where, updateDoc, arrayUnion, arrayRemove, getDocs 
+    query, where, updateDoc, arrayUnion, arrayRemove, Timestamp 
 } from "firebase/firestore";
 import { 
     ArrowLeft, ShoppingBag, Heart, Star, Clock, 
@@ -27,18 +28,25 @@ interface Produto {
 
 interface Review {
     id: string;
+    productId: string;
     userId: string;
     userName: string;
+    userAvatar?: string;
     rating: number;
     comment: string;
-    createdAt: any;
+    createdAt: Timestamp | null;
 }
 
 interface Order {
     id: string;
+    userId: string;
+    userName: string;
+    productId: string;
+    productName: string;
+    price: number;
     status: 'pendente' | 'approved' | 'rejected' | 'delivered';
-    createdAt: any;
-    updatedAt?: any; // Data da aprovação
+    createdAt: Timestamp | null;
+    updatedAt?: Timestamp | null; // Data da aprovação
 }
 
 export default function DetalheProdutoPage() {
@@ -118,7 +126,7 @@ export default function DetalheProdutoPage() {
         const dateRef = userOrder.updatedAt || userOrder.createdAt;
         if (!dateRef) return false;
 
-        const approvalDate = dateRef.toDate ? dateRef.toDate() : new Date(dateRef);
+        const approvalDate = dateRef.toDate ? dateRef.toDate() : new Date();
         const now = new Date();
         const diffTime = Math.abs(now.getTime() - approvalDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -194,7 +202,7 @@ export default function DetalheProdutoPage() {
             setComment("");
             setRating(5);
             addToast("Avaliação enviada! +10XP", "success");
-        } catch (error) {
+        } catch {
             addToast("Erro ao avaliar.", "error");
         } finally {
             setSubmittingReview(false);
@@ -211,7 +219,11 @@ export default function DetalheProdutoPage() {
             
             {/* HERO */}
             <div className="relative w-full h-[45vh] bg-black">
-                <img src={produto.img} className="w-full h-full object-cover" />
+                <img 
+                    src={produto.img} 
+                    alt={produto.nome}
+                    className="w-full h-full object-cover" 
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent"></div>
                 <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:bg-zinc-800 transition border border-white/10"><ArrowLeft size={24}/></button>
                 <button onClick={handleLike} className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:scale-110 transition border border-white/10">
@@ -317,7 +329,7 @@ export default function DetalheProdutoPage() {
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2">
                                             <div className="w-8 h-8 bg-zinc-800 rounded-full overflow-hidden">
-                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${rev.userName}`} alt="Avatar"/>
+                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${rev.userName}`} alt={rev.userName}/>
                                             </div>
                                             <span className="text-xs font-bold text-white">{rev.userName}</span>
                                         </div>

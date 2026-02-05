@@ -11,17 +11,21 @@ export type ActionType =
   | "QUIZ"       
   | "FOLLOW"     
   | "UNFOLLOW"
-  | "GAME_CYCLE"; // <--- ADICIONADO PARA O SHARKROUND
+  | "GAME_CYCLE";
 
+// 🦈 Correção: 'any' substituído por 'unknown' (Tipagem segura)
 export const logActivity = async (
   userId: string,
   userName: string, 
   action: ActionType,
   resource: string, 
-  details: any
+  details: unknown 
 ) => {
   try {
-    const detailsString = typeof details === 'object' ? JSON.stringify(details) : String(details);
+    // Verifica se é objeto para stringificar, senão converte direto pra string
+    const detailsString = typeof details === 'object' && details !== null 
+        ? JSON.stringify(details) 
+        : String(details);
 
     await addDoc(collection(db, "activity_logs"), {
       userId,

@@ -2,16 +2,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MapPin, Calendar, Loader2, Target, Users, Heart, 
+  Calendar, Loader2, Target, Users, Heart, 
   CheckCircle, ChevronRight, ChevronLeft, ShoppingBag, 
-  Star, Wallet, Dumbbell, Medal, ExternalLink, MessageCircle, Lightbulb
+  Star, Wallet, Dumbbell, Medal, ExternalLink, MessageCircle, Lightbulb, MapPin
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext'; 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Image from 'next/image'; // 🦈 Otimização de Imagem
 import { db } from '../../lib/firebase'; 
 import { 
-    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, getDocs, where, documentId
+    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, getDocs, where, Timestamp
 } from 'firebase/firestore';
 
 // --- INTERFACES ESTRITAS ---
@@ -61,7 +61,7 @@ interface PostComunidade {
     userId: string;
     userName: string; 
     avatar: string;
-    createdAt: any;   
+    createdAt: Timestamp;   
     texto: string;
     likes: string[];
 }
@@ -77,7 +77,7 @@ interface UserData {
 
 // --- SUB-COMPONENTES PADRONIZADOS ---
 
-const NavButton = ({ onClick, icon: Icon }: { onClick: () => void, icon: any }) => (
+const NavButton = ({ onClick, icon: Icon }: { onClick: () => void, icon: React.ElementType }) => (
     <button 
         onClick={onClick} 
         className="w-8 h-8 flex items-center justify-center bg-zinc-900 rounded-full border border-zinc-700 text-zinc-400 hover:text-white hover:border-emerald-500 hover:bg-zinc-800 transition-all shadow-md active:scale-95"
@@ -86,14 +86,23 @@ const NavButton = ({ onClick, icon: Icon }: { onClick: () => void, icon: any }) 
     </button>
 );
 
-const SectionHeader = ({ title, icon: Icon, link, onPrev, onNext, colorClass = "text-emerald-500" }: any) => (
+interface SectionHeaderProps {
+    title: string;
+    icon: React.ElementType;
+    link?: string;
+    onPrev?: () => void;
+    onNext?: () => void;
+    colorClass?: string;
+}
+
+const SectionHeader = ({ title, icon: Icon, link, onPrev, onNext, colorClass = "text-emerald-500" }: SectionHeaderProps) => (
     <div className="flex items-center justify-between mb-4 px-1">
         <h2 className="text-sm font-black uppercase tracking-widest mb-0 flex items-center gap-2 text-white">
             <Icon size={18} className={colorClass}/> {title}
         </h2>
         <div className="flex items-center gap-3">
             {link && (
-                <Link href={link} className={`text-[10px] font-bold text-zinc-500 hover:${colorClass} uppercase transition flex items-center gap-1`}>
+                <Link href={link} className={`text-[10px] font-bold text-zinc-500 hover:${colorClass.replace('text-', 'text-hover-')} uppercase transition flex items-center gap-1`}>
                     Ver todos <ExternalLink size={10}/>
                 </Link>
             )}
@@ -108,7 +117,7 @@ const SectionHeader = ({ title, icon: Icon, link, onPrev, onNext, colorClass = "
 );
 
 // --- COMPONENTE: CARD EVENTO ---
-const EventCardItem = ({ evt, userId, onToggleLike }: { evt: Evento, userId: string, onToggleLike: any }) => {
+const EventCardItem = ({ evt, userId, onToggleLike }: { evt: Evento, userId: string, onToggleLike: (id: string, state: boolean) => void }) => {
   const isLiked = evt.likesList?.includes(userId);
   const isGoing = evt.participantes?.includes(userId);
 
@@ -116,16 +125,18 @@ const EventCardItem = ({ evt, userId, onToggleLike }: { evt: Evento, userId: str
     <div className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col snap-center relative h-[450px]">
       <Link href={`/eventos/${evt.id}`} className="relative h-64 w-full bg-black block group">
         {evt.imagem ? (
-            <img 
+            <Image 
                 src={evt.imagem} 
-                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition duration-500" 
+                alt={evt.titulo}
+                fill
+                className="object-cover opacity-80 group-hover:opacity-100 transition duration-500" 
                 style={{ objectPosition: `50% ${evt.imagePositionY || 50}%` }} 
-                onError={(e) => (e.currentTarget.src = "/placeholder_evento.png")}
+                unoptimized
             />
         ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-700"><Calendar size={48}/></div>
         )}
-        <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-black text-white uppercase bg-black/60 backdrop-blur-md border border-white/10 shadow-xl">{evt.tipo || 'Geral'}</span>
+        <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-black text-white uppercase bg-black/60 backdrop-blur-md border border-white/10 shadow-xl z-10">{evt.tipo || 'Geral'}</span>
       </Link>
       
       <div className="p-6 flex flex-col justify-between flex-1 bg-gradient-to-b from-zinc-900 to-black">
@@ -154,7 +165,7 @@ const EventCardItem = ({ evt, userId, onToggleLike }: { evt: Evento, userId: str
 };
 
 // --- COMPONENTE: CARD PRODUTO COM CONTADOR DE TURMAS ---
-const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: string, onToggleLike: any }) => {
+const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: string, onToggleLike: (id: string, state: boolean) => void }) => {
     const isLiked = prod.likes?.includes(userId);
     const likeCount = prod.likes?.length || 0;
     
@@ -170,7 +181,6 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
 
             try {
                 // Pegamos uma amostra dos últimos 10 likes para não sobrecarregar o banco
-                // Em um app real de produção, isso seria uma Cloud Function
                 const likesSample = prod.likes.slice(0, 10);
                 
                 // Busca os usuários que deram like para saber a turma
@@ -181,7 +191,6 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    // Normaliza a turma (Ex: T1, t1, 01 vira "1")
                     const turmaRaw = data.turma || "Geral";
                     const turmaKey = turmaRaw.replace(/\D/g, '') || "Geral"; 
                     
@@ -190,7 +199,6 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
                     }
                 });
 
-                // Converte para array e ordena pelas que mais curtiram
                 const sorted = Object.entries(stats)
                     .map(([turma, count]) => ({ turma, count }))
                     .sort((a, b) => b.count - a.count)
@@ -204,15 +212,17 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
         };
 
         calculateTurmas();
-    }, [prod.likes]); // Recalcula se os likes mudarem
+    }, [prod.likes]); 
 
     return (
         <div className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col h-[450px] snap-center group relative">
             <Link href={`/loja/${prod.id}`} className="h-64 bg-black relative block overflow-hidden">
-                <img 
+                <Image 
                     src={prod.img} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
-                    onError={(e) => (e.currentTarget.src = "/placeholder_loja.png")}
+                    alt={prod.nome}
+                    fill
+                    className="object-cover group-hover:scale-105 transition duration-500" 
+                    unoptimized
                 />
             </Link>
             
@@ -248,12 +258,13 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
                         <div className="flex items-center gap-2">
                             {turmaStats.map((st, i) => (
                                 <div key={i} className="flex items-center bg-zinc-800/50 rounded-full pr-2 border border-zinc-700/50 p-0.5">
-                                    <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-600 bg-black">
-                                         {/* Assume que as imagens das turmas estão em /public/turmaX.jpeg */}
-                                         <img 
+                                    <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-600 bg-black relative">
+                                         <Image 
                                             src={`/turma${st.turma}.jpeg`} 
-                                            onError={(e) => (e.currentTarget.src = '/logo.png')}
-                                            className="w-full h-full object-cover"
+                                            alt={`T${st.turma}`}
+                                            fill
+                                            className="object-cover"
+                                            unoptimized
                                          />
                                     </div>
                                     <span className="text-[9px] font-bold text-zinc-400 ml-1.5">+{st.count}</span>
@@ -269,7 +280,6 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
-  const router = useRouter();
 
   const [events, setEvents] = useState<Evento[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -351,9 +361,9 @@ export default function DashboardPage() {
       } finally { setLoadingLike(false); }
   };
 
-  const formatTime = (ts: any) => { 
+  const formatTime = (ts: Timestamp) => { 
       if (!ts) return ""; 
-      const d = ts.toDate ? ts.toDate() : new Date(ts); 
+      const d = ts.toDate(); 
       const diff = Math.floor((new Date().getTime() - d.getTime()) / 60000); 
       return diff < 60 ? `${diff}min` : `${Math.floor(diff/60)}h`; 
   };
@@ -364,7 +374,7 @@ export default function DashboardPage() {
 
   if (loading || loadingData) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10" /></div>;
 
-  const userData = user as UserData; 
+  const userData = user as unknown as UserData; 
 
   return (
     <div className="flex flex-col gap-8 p-5 pb-32 max-w-md mx-auto w-full bg-[#050505] min-h-screen text-white font-sans selection:bg-emerald-500">
@@ -376,23 +386,26 @@ export default function DashboardPage() {
           <p className="text-zinc-500 text-xs font-bold tracking-wide">Pronto para dominar?</p>
         </div>
         <Link href="/perfil">
-            <div className="h-12 w-12 rounded-full bg-zinc-900 border-2 border-emerald-500 p-0.5 overflow-hidden shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                <img 
+            <div className="h-12 w-12 rounded-full bg-zinc-900 border-2 border-emerald-500 p-0.5 overflow-hidden shadow-[0_0_15px_rgba(16,185,129,0.3)] relative">
+                <Image 
                     src={userData?.foto || "https://github.com/shadcn.png"} 
                     alt="Perfil" 
-                    onError={(e) => (e.currentTarget.src = "https://github.com/shadcn.png")}
-                    className="w-full h-full rounded-full object-cover" 
+                    fill
+                    className="rounded-full object-cover" 
+                    unoptimized
                 />
             </div>
         </Link>
       </div>
 
       {/* 1. CARTEIRINHA */}
-      <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group shadow-2xl">
-          <img 
+      <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group shadow-2xl block">
+          <Image 
             src={`/turma${userData?.turma?.replace('T','') || '1'}.jpeg`} 
-            onError={(e) => (e.currentTarget.src = "/turma1.jpeg")}
-            className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-50 transition transform group-hover:scale-105 duration-700" 
+            alt="Carteira BG"
+            fill
+            className="object-cover opacity-40 group-hover:opacity-50 transition transform group-hover:scale-105 duration-700" 
+            unoptimized
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent p-6 flex flex-col justify-center">
               <div className="flex items-center gap-2 mb-2">
@@ -415,8 +428,8 @@ export default function DashboardPage() {
                  <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x">
                      {parceirosOuro.map(p => (
                          <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[80px] flex flex-col items-center gap-2 snap-start group">
-                             <div className="w-16 h-16 rounded-full bg-black border-2 border-yellow-500/50 p-1 group-hover:scale-110 transition shadow-[0_0_15px_rgba(234,179,8,0.3)]">
-                                 <img src={p.imgLogo} onError={(e) => (e.currentTarget.src = "/placeholder.jpg")} className="w-full h-full rounded-full object-cover"/>
+                             <div className="w-16 h-16 rounded-full bg-black border-2 border-yellow-500/50 p-1 group-hover:scale-110 transition shadow-[0_0_15px_rgba(234,179,8,0.3)] relative">
+                                 <Image src={p.imgLogo} alt={p.nome} fill className="rounded-full object-cover" unoptimized/>
                              </div>
                              <span className="text-[10px] font-bold text-yellow-200/80 truncate max-w-[80px]">{p.nome}</span>
                          </Link>
@@ -436,7 +449,11 @@ export default function DashboardPage() {
           
           <Link href="/treinos" className="bg-zinc-900 rounded-3xl h-44 overflow-hidden relative active:scale-95 transition border border-zinc-800 group shadow-lg">
               <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 opacity-30 group-hover:opacity-50 transition">
-                  {treinos.length > 0 ? treinos.map((img, i) => <img key={i} src={img} className="w-full h-full object-cover border-[0.5px] border-black"/>) : (
+                  {treinos.length > 0 ? treinos.map((img, i) => (
+                    <div key={i} className="relative w-full h-full border-[0.5px] border-black">
+                        <Image src={img} alt="Treino" fill className="object-cover" unoptimized/>
+                    </div>
+                  )) : (
                       <>
                         <div className="bg-zinc-800 w-full h-full"></div><div className="bg-zinc-700 w-full h-full"></div>
                         <div className="bg-zinc-700 w-full h-full"></div><div className="bg-zinc-800 w-full h-full"></div>
@@ -500,32 +517,34 @@ export default function DashboardPage() {
                    <div ref={ligasScrollRef} className="flex gap-4 overflow-x-auto scrollbar-hide snap-x px-1 py-2">
                        {ligasComBizu.map(liga => (
                            <Link href={`/ligas_unitau`} key={liga.id} className="min-w-[160px] flex flex-col items-center gap-4 snap-start group cursor-pointer relative bg-gradient-to-b from-zinc-900 to-black p-5 rounded-[24px] border border-zinc-800 hover:border-yellow-500/50 transition-all shadow-xl active:scale-95">
-                                
-                                <div className="relative w-24 h-24">
-                                    <div className="absolute inset-0 rounded-full border-2 border-dashed border-yellow-500/50 animate-spin-slow pointer-events-none"></div>
-                                    <div className="w-full h-full rounded-full bg-zinc-950 p-1.5 relative z-10 overflow-hidden shadow-lg group-hover:scale-105 transition">
-                                        <img 
+                               
+                               <div className="relative w-24 h-24">
+                                   <div className="absolute inset-0 rounded-full border-2 border-dashed border-yellow-500/50 animate-spin-slow pointer-events-none"></div>
+                                   <div className="w-full h-full rounded-full bg-zinc-950 p-1.5 relative z-10 overflow-hidden shadow-lg group-hover:scale-105 transition">
+                                       <Image 
                                             src={liga.foto || liga.logoBase64 || liga.logo || "/placeholder_liga.png"} 
-                                            onError={(e) => (e.currentTarget.src = "/placeholder_liga.png")}
-                                            className="w-full h-full rounded-full object-cover"
-                                        />
-                                    </div>
-                                    <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black p-1.5 rounded-full z-20 border-2 border-black">
-                                        <Lightbulb size={12} fill="black"/>
-                                    </div>
-                                </div>
-                                
-                                <div className="text-center w-full overflow-hidden">
-                                    <span className="text-[11px] font-black text-emerald-500 uppercase tracking-widest block mb-2 group-hover:text-yellow-500 transition">{liga.sigla}</span>
-                                    
-                                    <div className="w-full bg-zinc-900/50 py-2 px-3 rounded-lg border border-zinc-800/50 relative overflow-hidden">
-                                        <div className="w-full overflow-hidden whitespace-nowrap">
-                                            <p className="text-[10px] text-zinc-300 italic inline-block animate-marquee pl-[100%] leading-relaxed">
-                                                "{liga.bizu}"
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                                            alt={liga.nome}
+                                            fill
+                                            className="rounded-full object-cover"
+                                            unoptimized
+                                       />
+                                   </div>
+                                   <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black p-1.5 rounded-full z-20 border-2 border-black">
+                                       <Lightbulb size={12} fill="black"/>
+                                   </div>
+                               </div>
+                               
+                               <div className="text-center w-full overflow-hidden">
+                                   <span className="text-[11px] font-black text-emerald-500 uppercase tracking-widest block mb-2 group-hover:text-yellow-500 transition">{liga.sigla}</span>
+                                   
+                                   <div className="w-full bg-zinc-900/50 py-2 px-3 rounded-lg border border-zinc-800/50 relative overflow-hidden">
+                                       <div className="w-full overflow-hidden whitespace-nowrap">
+                                           <p className="text-[10px] text-zinc-300 italic inline-block animate-marquee pl-[100%] leading-relaxed">
+                                               &quot;{liga.bizu}&quot;
+                                           </p>
+                                       </div>
+                                   </div>
+                               </div>
                            </Link>
                        ))}
                    </div>
@@ -558,11 +577,11 @@ export default function DashboardPage() {
                    {parceirosComuns.map((p) => (
                        <Link href={`/parceiros/${p.id}`} key={p.id} className="min-w-[150px] h-44 bg-black rounded-2xl flex flex-col items-center justify-center gap-4 snap-start group active:scale-95 transition relative overflow-hidden border border-zinc-800 hover:border-zinc-600">
                            <div className="absolute inset-0">
-                               <img src={p.imgCapa || "/placeholder.jpg"} onError={(e) => (e.currentTarget.src = "/placeholder.jpg")} className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition"/>
+                               <Image src={p.imgCapa || "/placeholder.jpg"} alt="Capa" fill className="object-cover opacity-30 group-hover:opacity-50 transition" unoptimized/>
                                <div className="absolute inset-0 bg-black/40"/>
                            </div>
                            <div className="w-20 h-20 bg-black rounded-full border-2 border-zinc-600 flex items-center justify-center overflow-hidden shadow-2xl relative z-10 group-hover:scale-110 transition">
-                               <img src={p.imgLogo} onError={(e) => (e.currentTarget.src = "/placeholder_loja.png")} className="w-full h-full object-cover"/>
+                               <Image src={p.imgLogo} alt="Logo" fill className="object-cover" unoptimized/>
                            </div>
                            <div className="text-center relative z-10 px-2 w-full">
                                <h4 className="text-xs font-bold text-white truncate">{p.nome}</h4>
@@ -583,11 +602,15 @@ export default function DashboardPage() {
                    <Link href="/comunidade" className="absolute inset-0 z-0"/>
                    
                    <div className="p-4 flex gap-4 items-start relative z-0">
-                      <img 
-                        src={msg.avatar || "https://github.com/shadcn.png"} 
-                        onError={(e) => (e.currentTarget.src = "https://github.com/shadcn.png")}
-                        className="w-10 h-10 rounded-full bg-black object-cover border border-zinc-700"
-                      />
+                      <div className="w-10 h-10 rounded-full bg-black border border-zinc-700 relative overflow-hidden">
+                        <Image 
+                            src={msg.avatar || "https://github.com/shadcn.png"} 
+                            alt="Avatar"
+                            fill
+                            className="object-cover"
+                            unoptimized
+                        />
+                      </div>
                       <div className="flex-1 min-w-0">
                           <div className="flex items-baseline justify-between w-full gap-2 mb-1">
                               <span className="text-sm font-bold text-white truncate">{msg.userName}</span>

@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Dice5, MapPin, Building2, AlertTriangle, CheckCircle2, XCircle, Stethoscope, Lock, 
-  Users, TrendingUp, DollarSign, Siren, ArrowLeft, Trash2, PlusCircle, HelpCircle, 
-  Wrench, Info, Trophy, Heart, ChevronLeft, ChevronRight, Edit3, Loader2, Gem, User as UserIcon
+  Dice5, MapPin, Building2, AlertTriangle, XCircle, Lock, 
+  TrendingUp, DollarSign, ArrowLeft, HelpCircle, 
+  Wrench, Trophy, Heart, ChevronLeft, ChevronRight, Loader2
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,14 +12,13 @@ import { useRouter } from 'next/navigation';
 import { useToast } from "../../context/ToastContext"; 
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
-import { collection, query, getDocs, where, orderBy, limit, doc, updateDoc, increment } from "firebase/firestore";
+import { collection, query, getDocs, where, orderBy, limit } from "firebase/firestore";
 import { logActivity } from "../../lib/logger";
 
 // --- TIPAGENS ---
 type TipoCasa = 'LIGA' | 'SORTE' | 'AZAR' | 'PRISAO' | 'INICIO';
 type NivelConstrucao = 'TERRENO' | 'CLINICA_GERAL' | 'CENTRO_ESPECIALIDADES' | 'CENTRO_MULTIPROFISSIONAL' | 'HOSPITAL_UNIVERSITARIO' | 'CENTRO_EXCELENCIA' | 'MINISTERIO_SAUDE';
 
-// Tipagem estrita para Modal de Evento (Remove o any)
 interface ModalEventoData {
     titulo: string;
     msg: string;
@@ -51,16 +50,14 @@ interface Socio { uid: string; nome: string; nivel: NivelConstrucao; }
 interface CasaTabuleiro { index: number; tipo: TipoCasa; titulo: string; sigla?: string; descricao?: string; cor: string; donoId?: string; socios?: Socio[]; nivel?: NivelConstrucao; backgroundImage?: string; ligaId?: string; } 
 interface RankingItem { id: string; nome: string; foto: string; tubas: number; }
 
-const BOARD_SIZE = 40;
-
 export default function SharkRoundPage() {
   const { addToast } = useToast(); 
   const { user, loading } = useAuth(); 
   const router = useRouter();
 
-  // Configuração
-  const [boardSide, setBoardSide] = useState(11);
-  const [boardSizeTotal, setBoardSizeTotal] = useState(40);
+  // Configuração (Constantes agora, já que os setters não eram usados)
+  const boardSide = 11;
+  const boardSizeTotal = 40;
 
   // Estados do Jogo
   const [tabuleiro, setTabuleiro] = useState<CasaTabuleiro[]>([]);
@@ -77,7 +74,6 @@ export default function SharkRoundPage() {
   const [valorDado, setValorDado] = useState(1);
   const [modalPergunta, setModalPergunta] = useState<{pergunta: Pergunta, ligaNome: string} | null>(null);
   
-  // Correção do any no modalEvento
   const [modalEvento, setModalEvento] = useState<ModalEventoData | null>(null);
   
   const [modalRegras, setModalRegras] = useState(false);
@@ -161,6 +157,7 @@ export default function SharkRoundPage() {
             }));
             setOutrosJogadores(players);
         } catch (e) {
+             console.error("Erro ao carregar jogadores", e);
              setOutrosJogadores([{ id: 'p2', nome: 'Vivian', avatar: 'https://github.com/shadcn.png', posicao: 10, preso: true, coracoes: 2 }]);
         }
     };
@@ -288,8 +285,8 @@ export default function SharkRoundPage() {
                 setModalPergunta({ pergunta: randomQ, ligaNome: liga.nome });
             } else {
                  setModalPergunta({ 
-                    pergunta: { id: 'fallback', texto: `Pergunta genérica sobre ${liga.nome}...`, alternativas: ['A','B','C','D'], respostaCorreta: 0 },
-                    ligaNome: liga.nome 
+                   pergunta: { id: 'fallback', texto: `Pergunta genérica sobre ${liga.nome}...`, alternativas: ['A','B','C','D'], respostaCorreta: 0 },
+                   ligaNome: liga.nome 
                  });
             }
         } else {
@@ -378,7 +375,7 @@ export default function SharkRoundPage() {
               {/* Logo Central */}
               <div className="col-start-3 col-end-10 row-start-3 row-end-10 flex flex-col items-center justify-center relative z-0">
                   <div className="absolute inset-0 bg-emerald-900/10 blur-3xl rounded-full animate-pulse"></div>
-                  <div className="w-40 h-40 md:w-64 md:h-64 relative mb-4 opacity-100 hover:scale-105 transition duration-500 animate-float"><Image src="/logo.png" alt="AAAKN" fill className="object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]"/></div>
+                  <div className="w-40 h-40 md:w-64 md:h-64 relative mb-4 opacity-100 hover:scale-105 transition duration-500 animate-float"><Image src="/logo.png" alt="AAAKN" fill className="object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]" unoptimized/></div>
               </div>
 
               {tabuleiro.map((casa) => {
@@ -389,7 +386,7 @@ export default function SharkRoundPage() {
 
                   return (
                       <div key={casa.index} onClick={() => setModalDetalhes(casa)} className={`relative rounded-md flex flex-col items-center justify-center text-center transition-all duration-300 border border-black/20 overflow-hidden cursor-pointer hover:brightness-125 ${isHere ? 'z-20 scale-110 shadow-[0_0_15px_rgba(255,255,255,0.3)] ring-1 ring-white' : ''}`} style={{ ...style, backgroundColor: isHere ? '#10b981' : undefined }}>
-                          {casa.backgroundImage && <div className="absolute inset-0 opacity-40 z-0"><img src={casa.backgroundImage} className="w-full h-full object-cover grayscale mix-blend-overlay"/></div>}
+                          {casa.backgroundImage && <div className="absolute inset-0 opacity-40 z-0"><Image src={casa.backgroundImage} alt="Fundo da casa" fill className="object-cover grayscale mix-blend-overlay" unoptimized/></div>}
                           <div className={`absolute inset-0 opacity-80 ${casa.cor} transition-opacity -z-10`}></div>
                           
                           <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-0.5">
@@ -398,11 +395,11 @@ export default function SharkRoundPage() {
                               {casa.nivel && <div className="absolute top-0.5 right-0.5 text-yellow-300 drop-shadow-md bg-black/50 rounded-full p-0.5">{casa.nivel === 'TERRENO' && <span className="text-[6px]">🚩</span>}{casa.nivel !== 'TERRENO' && <Building2 size={8}/>}</div>}
                           </div>
 
-                          {isHere && <div className="absolute inset-0 flex items-center justify-center z-30"><div className="w-6 h-6 rounded-full border-[2px] border-white shadow-xl overflow-hidden bg-black relative animate-bounce-slow"><img src={jogador.avatar} alt="Me" className="w-full h-full object-cover"/></div></div>}
+                          {isHere && <div className="absolute inset-0 flex items-center justify-center z-30"><div className="w-6 h-6 rounded-full border-[2px] border-white shadow-xl overflow-hidden bg-black relative animate-bounce-slow"><Image src={jogador.avatar} alt="Me" fill className="object-cover" unoptimized/></div></div>}
                           
                           {othersHere.length > 0 && !isHere && (
                               <div className="absolute bottom-0 right-0 flex -space-x-1 z-20 p-0.5">
-                                  {othersHere.slice(0,3).map((other, i) => (<div key={i} className="w-3 h-3 rounded-full border border-white bg-black overflow-hidden relative"><img src={other.avatar} className="w-full h-full object-cover"/></div>))}
+                                  {othersHere.slice(0,3).map((other, i) => (<div key={i} className="w-3 h-3 rounded-full border border-white bg-black overflow-hidden relative"><Image src={other.avatar} alt={other.nome} fill className="object-cover" unoptimized/></div>))}
                                   {othersHere.length > 3 && <div className="w-3 h-3 rounded-full bg-zinc-800 text-[5px] flex items-center justify-center border border-white text-white font-bold">+{othersHere.length-3}</div>}
                               </div>
                           )}
@@ -439,7 +436,7 @@ export default function SharkRoundPage() {
                           <p className="text-xs font-bold text-zinc-500 uppercase mb-2">Presos na DP</p>
                           {outrosJogadores.filter(p => p.preso).map(p => (
                               <div key={p.id} className="flex items-center justify-between bg-zinc-950 p-2 rounded-lg border border-zinc-800 mb-2">
-                                  <div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-zinc-800 overflow-hidden"><img src={p.avatar} className="w-full h-full object-cover"/></div><span className="text-xs text-white font-bold">{p.nome}</span></div>
+                                  <div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-zinc-800 overflow-hidden relative"><Image src={p.avatar} alt={p.nome} fill className="object-cover" unoptimized/></div><span className="text-xs text-white font-bold">{p.nome}</span></div>
                                   <div className="flex gap-1 items-center">
                                       <div className="flex">{[1,2,3,4,5].map(i => (<Heart key={i} size={10} className={`${i <= (p.coracoes || 0) ? 'fill-red-500 text-red-500' : 'text-zinc-800'}`}/>))}</div>
                                       <button onClick={() => darCoracao(p.id)} className="bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-black p-1 rounded-full ml-1"><Heart size={12}/></button>
@@ -492,7 +489,7 @@ export default function SharkRoundPage() {
                       {rankingData.map((user, i) => (
                           <div key={user.id} onClick={() => router.push(`/perfil/${user.id}`)} className="flex items-center gap-3 p-3 bg-zinc-800 rounded-xl border border-zinc-700 cursor-pointer hover:bg-zinc-700 transition">
                               <span className={`font-black w-6 text-center ${i===0?'text-yellow-500':i===1?'text-gray-400':i===2?'text-orange-500':'text-zinc-500'}`}>#{i+1}</span>
-                              <div className="w-8 h-8 rounded-full bg-black overflow-hidden"><img src={user.foto} className="w-full h-full object-cover"/></div>
+                              <div className="w-8 h-8 rounded-full bg-black overflow-hidden relative"><Image src={user.foto} alt={user.nome} fill className="object-cover" unoptimized/></div>
                               <div className="flex-1"><p className="text-sm font-bold text-white">{user.nome}</p></div>
                               <span className="text-xs font-bold text-emerald-500 flex items-center gap-1"><DollarSign size={10}/> {user.tubas}</span>
                           </div>

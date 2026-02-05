@@ -1,9 +1,10 @@
+// src/app/login/page.tsx
 "use client";
 
 import type React from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Waves, Sparkles, LogIn } from "lucide-react";
+import { Eye, EyeOff, Waves, LogIn } from "lucide-react";
 import { useToast } from "@/context/ToastContext"; 
 import { useAuth } from "@/context/AuthContext"; // 🦈 IMPORTANTE: Importar o Auth
 
@@ -64,7 +65,7 @@ export default function LoginPage() {
           setIsLoading(true);
           await loginGoogle();
           // O redirecionamento é automático pelo AuthContext/RouteGuard
-      } catch (error) {
+      } catch {
           setIsLoading(false);
       }
   }
@@ -82,7 +83,7 @@ export default function LoginPage() {
           {/* Garanta que logo.png existe em public/ */}
           <img
             src="/logo.png"
-            alt="AAAKN"
+            alt="AAAKN Logo"
             className="w-40 h-40 md:w-48 md:h-48 object-contain drop-shadow-[0_0_30px_rgba(16,185,129,0.3)] mx-auto"
           />
           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full -z-10 scale-75" />
@@ -182,7 +183,7 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full py-3 bg-white text-black font-bold text-sm rounded-xl transition hover:bg-zinc-200 flex items-center justify-center gap-2"
             >
-               <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google" />
+               <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google Logo" />
                Entrar com Google
             </button>
 

@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image"; // 🦈 Importação do Image
 import {
   ArrowLeft,
   Bus,
-  Map,
   Phone,
   ExternalLink,
   Landmark,
@@ -14,10 +14,39 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { db } from "../../lib/firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query } from "firebase/firestore";
+
+// --- INTERFACES ---
+interface GuiaItem {
+  id: string;
+  categoria: 'academico' | 'transporte' | 'turismo' | 'emergencia';
+  // Campos variáveis dependendo da categoria
+  titulo?: string;
+  url?: string;
+  nome?: string;
+  horario?: string;
+  detalhe?: string;
+  descricao?: string;
+  foto?: string;
+  numero?: string;
+  cor?: string;
+}
+
+interface GuiaState {
+  academico: GuiaItem[];
+  transporte: GuiaItem[];
+  turismo: GuiaItem[];
+  emergencia: GuiaItem[];
+}
+
+interface CategoriaConfig {
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+}
 
 // Definição das Categorias para Mapeamento
-const CATEGORIAS_CONFIG: any = {
+const CATEGORIAS_CONFIG: Record<string, CategoriaConfig> = {
   academico: { label: "Acadêmico", icon: <GraduationCap size={18} />, color: "text-emerald-500" },
   transporte: { label: "Transporte", icon: <Bus size={18} />, color: "text-orange-500" },
   turismo: { label: "Turismo", icon: <Landmark size={18} />, color: "text-blue-500" },
@@ -25,7 +54,7 @@ const CATEGORIAS_CONFIG: any = {
 };
 
 export default function GuiaPage() {
-  const [guiaData, setGuiaData] = useState<any>({
+  const [guiaData, setGuiaData] = useState<GuiaState>({
     academico: [],
     transporte: [],
     turismo: [],
@@ -38,11 +67,11 @@ export default function GuiaPage() {
     const q = query(collection(db, "guia_data"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newData = { academico: [], transporte: [], turismo: [], emergencia: [] } as any;
+      const newData: GuiaState = { academico: [], transporte: [], turismo: [], emergencia: [] };
       
       snapshot.forEach((doc) => {
-        const item = { id: doc.id, ...doc.data() } as any;
-        if (newData[item.categoria]) {
+        const item = { id: doc.id, ...doc.data() } as GuiaItem;
+        if (item.categoria && newData[item.categoria]) {
           newData[item.categoria].push(item);
         }
       });
@@ -86,8 +115,8 @@ export default function GuiaPage() {
               {CATEGORIAS_CONFIG.academico.icon} {CATEGORIAS_CONFIG.academico.label}
             </h2>
             <div className="grid gap-3 grid-cols-1">
-              {guiaData.academico.map((item: any) => (
-                <LinkButton key={item.id} texto={item.titulo} url={item.url} />
+              {guiaData.academico.map((item) => (
+                <LinkButton key={item.id} texto={item.titulo || "Link"} url={item.url || "#"} />
               ))}
             </div>
           </section>
@@ -100,7 +129,7 @@ export default function GuiaPage() {
               {CATEGORIAS_CONFIG.transporte.icon} {CATEGORIAS_CONFIG.transporte.label}
             </h2>
             <div className="grid gap-3 grid-cols-1">
-              {guiaData.transporte.map((item: any) => (
+              {guiaData.transporte.map((item) => (
                 <div key={item.id} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-3 hover:border-zinc-700 transition">
                   <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
                     <span className="font-bold text-white">{item.nome}</span>
@@ -123,8 +152,13 @@ export default function GuiaPage() {
               {CATEGORIAS_CONFIG.turismo.icon} {CATEGORIAS_CONFIG.turismo.label}
             </h2>
             <div className="grid gap-3 grid-cols-2">
-              {guiaData.turismo.map((item: any) => (
-                <CardTurismo key={item.id} nome={item.nome} desc={item.descricao} img={item.foto} />
+              {guiaData.turismo.map((item) => (
+                <CardTurismo 
+                    key={item.id} 
+                    nome={item.nome || "Local"} 
+                    desc={item.descricao || ""} 
+                    img={item.foto || ""} 
+                />
               ))}
             </div>
           </section>
@@ -137,7 +171,7 @@ export default function GuiaPage() {
               {CATEGORIAS_CONFIG.emergencia.icon} {CATEGORIAS_CONFIG.emergencia.label}
             </h2>
             <div className="grid gap-3 grid-cols-2">
-              {guiaData.emergencia.map((item: any) => (
+              {guiaData.emergencia.map((item) => (
                 <div key={item.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl text-center hover:bg-zinc-900 transition cursor-pointer">
                   <span className={`block font-black text-2xl mb-1 ${item.cor === 'red' ? 'text-red-500' : 'text-zinc-400'}`}>
                     {item.numero}
@@ -172,13 +206,17 @@ function LinkButton({ texto, url }: { texto: string; url: string }) {
 }
 
 function CardTurismo({ nome, desc, img }: { nome: string; desc: string; img: string }) {
+  const [src, setSrc] = useState(img || "https://via.placeholder.com/150");
+
   return (
     <div className="relative h-32 rounded-xl overflow-hidden group cursor-pointer border border-zinc-800 hover:border-emerald-500/50 transition">
-      <img
-        src={img || "https://via.placeholder.com/150"}
-        className="w-full h-full object-cover opacity-60 group-hover:opacity-80 group-hover:scale-110 transition duration-700"
+      <Image
+        src={src}
         alt={nome}
-        onError={(e) => e.currentTarget.src = "https://via.placeholder.com/150?text=Sem+Foto"}
+        fill
+        className="object-cover opacity-60 group-hover:opacity-80 group-hover:scale-110 transition duration-700"
+        onError={() => setSrc("https://via.placeholder.com/150?text=Sem+Foto")}
+        unoptimized
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
       <div className="absolute bottom-3 left-3 right-3">

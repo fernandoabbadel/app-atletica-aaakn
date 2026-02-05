@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  ArrowLeft, Plus, Trash2, Megaphone, Percent, ExternalLink,
-  LayoutDashboard, QrCode, FileText, Crown, Store, TrendingUp,
-  Users, CheckCircle, Search, X, Camera, DollarSign, Wallet,
-  Edit, Save, Image as ImageIcon, Instagram, Phone, Globe, Clock, MapPin, Tag,
-  FileBadge, User, BarChart3, PieChart, Power, AlertTriangle, Eye, EyeOff, Shield, Star, Loader2, Lock
+  ArrowLeft, Plus, Trash2, ExternalLink,
+  LayoutDashboard, QrCode, FileText, Crown, Store,
+  CheckCircle, DollarSign,
+  Edit, Image as ImageIcon, Tag,
+  FileBadge, User, BarChart3, PieChart, Power, AlertTriangle, Eye, EyeOff, Shield, Star, Loader2, Lock, X
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
@@ -50,6 +51,7 @@ interface Parceiro {
     totalScans: number;
     cupons: Cupom[];
     senha?: string;
+    createdAt?: string;
 }
 
 interface ScanHistory {
@@ -61,6 +63,7 @@ interface ScanHistory {
     userId: string;
     cupom: string;
     valorEconomizado: string;
+    timestamp?: any;
 }
 
 const CATEGORIAS_PADRAO = ["Alimentação", "Saúde", "Lazer", "Serviços", "Vestuário"];
@@ -119,7 +122,7 @@ export default function AdminParceirosPage() {
         }
     };
     fetchData();
-  }, []);
+  }, [addToast]);
 
   // --- LÓGICA DE NEGÓCIO ---
 
@@ -128,16 +131,16 @@ export default function AdminParceirosPage() {
           await updateDoc(doc(db, "parceiros", id), { status: 'active' });
           setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
           addToast("Parceiro aprovado!", "success");
-      } catch (e) { addToast("Erro ao aprovar.", "error"); }
+      } catch (_) { addToast("Erro ao aprovar.", "error"); }
   };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
       const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
       try {
           await updateDoc(doc(db, "parceiros", id), { status: newStatus });
-          setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as any } : p));
+          setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as "active" | "disabled" } : p));
           addToast("Status atualizado.", "success");
-      } catch (e) { addToast("Erro.", "error"); }
+      } catch (_) { addToast("Erro.", "error"); }
   };
 
   const togglePasswordVisibility = (id: string) => {
@@ -217,11 +220,9 @@ export default function AdminParceirosPage() {
               await deleteDoc(doc(db, "parceiros", id));
               setParceiros(prev => prev.filter(p => p.id !== id));
               addToast("Parceiro removido.", "success");
-          } catch(e) { addToast("Erro ao remover.", "error"); }
+          } catch(_) { addToast("Erro ao remover.", "error"); }
       }
   };
-  
-  const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => { ref.current?.click(); };
   
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: string, isCupom = false) => {
       if (e.target.files?.[0]) {
@@ -230,7 +231,7 @@ export default function AdminParceirosPage() {
               if (isCupom) { setNewCupom(prev => ({ ...prev, imagem: base64 })); }
               else { setCurrentPartner(prev => ({ ...prev, [field]: base64 })); }
               addToast("Imagem carregada!", "success");
-          } catch (e) { addToast("Erro na imagem", "error"); }
+          } catch (_) { addToast("Erro na imagem", "error"); }
       }
   };
 
@@ -262,7 +263,7 @@ export default function AdminParceirosPage() {
       <div className="px-6 pt-6">
           <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto scrollbar-hide">
               {[{ id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard }, { id: 'parceiros', label: 'Empresas', icon: Store }, { id: 'cadastros', label: 'Dados Cadastrais', icon: FileBadge }, { id: 'historico', label: 'Histórico', icon: FileText }].map(tab => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`pb-4 text-xs font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white hover:border-zinc-700'}`}><tab.icon size={16}/> {tab.label}</button>
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id as "dashboard" | "parceiros" | "cadastros" | "historico")} className={`pb-4 text-xs font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white hover:border-zinc-700'}`}><tab.icon size={16}/> {tab.label}</button>
               ))}
           </div>
       </div>
@@ -331,8 +332,8 @@ export default function AdminParceirosPage() {
                 {parceiros.map((parceiro) => (
                     <div key={parceiro.id} className={`bg-zinc-900 p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-center gap-4 transition group ${parceiro.status === 'pending' ? 'border-yellow-600/50 bg-yellow-900/10' : parceiro.status === 'disabled' ? 'border-red-900/30 opacity-60' : 'border-zinc-800 hover:border-emerald-500/30'}`}>
                         <div className="flex gap-4 items-center w-full">
-                            <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center overflow-hidden border border-zinc-800 shrink-0">
-                                {parceiro.imgLogo ? <img src={parceiro.imgLogo} className="w-full h-full object-cover"/> : <span className="font-bold text-zinc-600">{parceiro.nome.charAt(0)}</span>}
+                            <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center overflow-hidden border border-zinc-800 shrink-0 relative">
+                                {parceiro.imgLogo ? <Image src={parceiro.imgLogo} alt={parceiro.nome} fill className="object-cover" unoptimized/> : <span className="font-bold text-zinc-600">{parceiro.nome.charAt(0)}</span>}
                             </div>
                             <div>
                                 <div className="flex gap-2 mb-1">
@@ -458,7 +459,7 @@ export default function AdminParceirosPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                         <select className="input-admin text-zinc-300" value={currentPartner.categoria} onChange={e => setCurrentPartner({...currentPartner, categoria: e.target.value})}>{categorias.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                        <select className="input-admin font-bold text-yellow-500 bg-yellow-900/10 border-yellow-600/50" value={currentPartner.tier} onChange={e => setCurrentPartner({...currentPartner, tier: e.target.value as any})}><option value="standard">Standard</option><option value="prata">Prata</option><option value="ouro">Ouro</option></select>
+                        <select className="input-admin font-bold text-yellow-500 bg-yellow-900/10 border-yellow-600/50" value={currentPartner.tier} onChange={e => setCurrentPartner({...currentPartner, tier: e.target.value as "ouro" | "prata" | "standard"})}><option value="standard">Standard</option><option value="prata">Prata</option><option value="ouro">Ouro</option></select>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <input type="text" placeholder="Responsável" className="input-admin" value={currentPartner.responsavel} onChange={e => setCurrentPartner({...currentPartner, responsavel: e.target.value})}/>
@@ -477,8 +478,8 @@ export default function AdminParceirosPage() {
                 {/* DIREITA */}
                 <div className="space-y-5">
                     <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => logoInputRef.current?.click()} className="bg-zinc-800 border border-dashed border-zinc-600 p-4 rounded-xl text-xs text-zinc-400 hover:border-emerald-500 relative overflow-hidden h-24 flex flex-col items-center justify-center">{currentPartner.imgLogo ? <img src={currentPartner.imgLogo} className="absolute inset-0 w-full h-full object-cover opacity-50"/> : <ImageIcon size={20}/>} Logo</button>
-                        <button onClick={() => coverInputRef.current?.click()} className="bg-zinc-800 border border-dashed border-zinc-600 p-4 rounded-xl text-xs text-zinc-400 hover:border-emerald-500 relative overflow-hidden h-24 flex flex-col items-center justify-center">{currentPartner.imgCapa ? <img src={currentPartner.imgCapa} className="absolute inset-0 w-full h-full object-cover opacity-50"/> : <ImageIcon size={20}/>} Capa</button>
+                        <button onClick={() => logoInputRef.current?.click()} className="bg-zinc-800 border border-dashed border-zinc-600 p-4 rounded-xl text-xs text-zinc-400 hover:border-emerald-500 relative overflow-hidden h-24 flex flex-col items-center justify-center">{currentPartner.imgLogo ? <Image src={currentPartner.imgLogo} alt="Logo" fill className="object-cover opacity-50" unoptimized/> : <ImageIcon size={20}/>} Logo</button>
+                        <button onClick={() => coverInputRef.current?.click()} className="bg-zinc-800 border border-dashed border-zinc-600 p-4 rounded-xl text-xs text-zinc-400 hover:border-emerald-500 relative overflow-hidden h-24 flex flex-col items-center justify-center">{currentPartner.imgCapa ? <Image src={currentPartner.imgCapa} alt="Capa" fill className="object-cover opacity-50" unoptimized/> : <ImageIcon size={20}/>} Capa</button>
                         <input type="file" hidden ref={logoInputRef} onChange={e => handleFileChange(e, 'imgLogo')}/><input type="file" hidden ref={coverInputRef} onChange={e => handleFileChange(e, 'imgCapa')}/>
                     </div>
                     <div className="bg-black/30 p-4 rounded-xl border border-zinc-800">
@@ -488,7 +489,7 @@ export default function AdminParceirosPage() {
                     </div>
                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
                         {currentPartner.cupons?.map(cupom => (
-                            <div key={cupom.id} className="bg-black p-3 rounded-xl border border-zinc-800 flex justify-between items-center"><div className="flex gap-3 items-center"><div className="w-10 h-10 bg-zinc-900 rounded-lg overflow-hidden shrink-0">{cupom.imagem && <img src={cupom.imagem} className="w-full h-full object-cover"/>}</div><div><p className="text-xs font-bold text-white">{cupom.titulo}</p><p className="text-[10px] text-zinc-500">{cupom.valor}</p></div></div><button onClick={() => handleRemoveCupom(cupom.id)} className="text-zinc-600 hover:text-red-500"><X size={14}/></button></div>
+                            <div key={cupom.id} className="bg-black p-3 rounded-xl border border-zinc-800 flex justify-between items-center"><div className="flex gap-3 items-center"><div className="w-10 h-10 bg-zinc-900 rounded-lg overflow-hidden shrink-0 relative">{cupom.imagem && <Image src={cupom.imagem} alt="Cupom" fill className="object-cover" unoptimized/>}</div><div><p className="text-xs font-bold text-white">{cupom.titulo}</p><p className="text-[10px] text-zinc-500">{cupom.valor}</p></div></div><button onClick={() => handleRemoveCupom(cupom.id)} className="text-zinc-600 hover:text-red-500"><X size={14}/></button></div>
                         ))}
                     </div>
                 </div>

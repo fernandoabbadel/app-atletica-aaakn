@@ -1,10 +1,10 @@
+// src/app/gym/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import {
   Flame, MessageCircle, ArrowLeft,
-  Calendar as CalendarIcon, CheckCircle2,
-  History, Camera, Heart, Tag, Info, X
+  Camera, Heart, Tag, Info, X
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../context/ToastContext";
@@ -38,6 +38,7 @@ interface Post {
     validado: boolean;
     likes: number;
     likedBy: string[]; // Lista de UIDs que deram like
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     comentarios: any[];
 }
 
@@ -120,11 +121,6 @@ export default function GymPage() {
     }
   };
 
-  const handleReport = () => {
-      addToast("Denúncia enviada para os Admins. 🚨", "success");
-      setDetailPost(null);
-  };
-
   // Agrupamento Visual (Opcional, mantido para estética)
   const groupedPosts = posts.reduce((groups, post) => {
       const date = post.data || "Hoje";
@@ -199,7 +195,7 @@ export default function GymPage() {
                             <div key={post.id} className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 mb-4 relative overflow-hidden">
                               <div className="flex justify-between items-start mb-3">
                                   <div className="flex items-center gap-3">
-                                      <Link href={`/perfil/${post.usuarioId}`}><img src={post.usuarioAvatar || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full object-cover border border-zinc-700 hover:border-emerald-500 transition"/></Link>
+                                      <Link href={`/perfil/${post.usuarioId}`}><img src={post.usuarioAvatar || "https://github.com/shadcn.png"} alt={post.usuarioNome} className="w-10 h-10 rounded-full object-cover border border-zinc-700 hover:border-emerald-500 transition"/></Link>
                                       <div>
                                           <Link href={`/perfil/${post.usuarioId}`}><h4 className="font-bold text-sm text-zinc-200 hover:text-emerald-400 transition">{post.usuarioNome}</h4></Link>
                                           <p className="text-[10px] text-zinc-500">{post.tempo}</p>
@@ -221,7 +217,7 @@ export default function GymPage() {
                               </div>
 
                               <div className="rounded-xl overflow-hidden h-64 bg-black relative border border-zinc-800 group cursor-pointer" onClick={() => setDetailPost(post)}>
-                                <img src={post.foto} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" />
+                                <img src={post.foto} alt="Foto do treino" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" />
                               </div>
 
                               <div className="flex justify-between items-center mt-3 pt-2 border-t border-zinc-800/50">
@@ -267,7 +263,7 @@ export default function GymPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
               <button onClick={() => setDetailPost(null)} className="absolute top-4 right-4 p-2 bg-zinc-800 rounded-full text-white hover:bg-zinc-700 z-50"><X size={24}/></button>
               <div className="w-full max-w-md bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-                  <img src={detailPost.foto} className="w-full h-64 object-cover" />
+                  <img src={detailPost.foto} alt="Detalhe do treino" className="w-full h-64 object-cover" />
                   <div className="p-4">
                       <h2 className="text-xl font-bold text-white">{detailPost.titulo}</h2>
                       <div className="flex gap-4 mt-4">

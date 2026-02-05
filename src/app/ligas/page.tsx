@@ -1,18 +1,18 @@
+// src/app/ligas/page.tsx
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Lock, ArrowRight, Upload, Plus, Trash2, Save, LogOut, 
-  Image as ImageIcon, Layout, Edit3, Eye, Bell, 
-  Calendar, Link as LinkIcon, UserPlus, Search, X, MoveVertical, Tag, 
-  Loader2, Ticket, MessageCircle, ShieldAlert, Flag, CheckCircle2, HelpCircle, LayoutGrid
+  Image as ImageIcon, Layout, Edit3, Bell, 
+  Calendar, UserPlus, Search, X, 
+  Loader2, MessageCircle, LayoutGrid
 } from 'lucide-react';
-import Link from 'next/link';
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
-  collection, query, getDocs, updateDoc, doc, 
-  serverTimestamp, setDoc, addDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, orderBy
+  collection, getDocs, updateDoc, doc, 
+  serverTimestamp, setDoc, addDoc, deleteDoc, onSnapshot
 } from "firebase/firestore";
 import { logActivity } from "../../lib/logger"; 
 
@@ -217,7 +217,7 @@ export default function LigasAdminPage() {
           } else { 
               addToast("Senha incorreta.", "error"); 
           }
-      } catch (e) { 
+      } catch { 
           addToast("Erro de conexão.", "error"); 
       } finally { 
           setLoading(false); 
@@ -323,62 +323,7 @@ export default function LigasAdminPage() {
   };
 
   // --- GESTÃO DE ENQUETES (SHARK FEATURE 🦈) ---
-  const handleCreatePoll = async () => {
-      if (!pollModal || !novaEnquete.question) return;
-      try {
-          const ref = await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
-              question: novaEnquete.question,
-              allowUserOptions: novaEnquete.allowUserOptions,
-              options: [],
-              voters: [],
-              createdAt: serverTimestamp(),
-              creatorId: ligaData?.id,
-              isOfficial: true
-          });
-          setNovaEnquete({ question: "", allowUserOptions: true });
-          addToast("Enquete criada!", "success");
-          
-          // LOG CORRIGIDO: ORDEM CORRETA
-          await logActivity(
-              ligaData?.id || 'sys', 
-              ligaData?.nome || 'Sistema', 
-              "CREATE", 
-              "events_polls", 
-              `Enquete criada: ${novaEnquete.question}`
-          );
-
-      } catch (e) { addToast("Erro ao criar enquete.", "error"); }
-  };
-
-  const handleDeletePoll = async (pollId: string) => {
-      if (!pollModal) return;
-      if (!confirm("Excluir enquete?")) return;
-      try {
-          await deleteDoc(doc(db, "eventos", pollModal, "enquetes", pollId));
-          addToast("Enquete excluída.", "info");
-          
-          // LOG CORRIGIDO
-          await logActivity(
-              ligaData?.id || 'sys', 
-              ligaData?.nome || 'Sistema', 
-              "DELETE", 
-              "events_polls", 
-              `Enquete ${pollId} excluída`
-          );
-
-      } catch (e) { addToast("Erro ao excluir.", "error"); }
-  };
-
-  const handleDeleteOption = async (poll: Poll, optionIndex: number) => {
-      if (!pollModal) return;
-      if (!confirm("Remover opção?")) return;
-      const newOptions = poll.options.filter((_, i) => i !== optionIndex);
-      try {
-          await updateDoc(doc(db, "eventos", pollModal, "enquetes", poll.id), { options: newOptions });
-          addToast("Opção removida.", "info");
-      } catch (e) { addToast("Erro.", "error"); }
-  };
-
+  
   // --- SALVAR TUDO (AQUI ESTÁ O PULO DO GATO 🦈) ---
   const handleSaveAll = async () => {
       if (!ligaData) return;
@@ -551,7 +496,7 @@ export default function LigasAdminPage() {
                       <label className="text-[10px] font-bold text-zinc-500 uppercase">Logo da Liga</label>
                       <div className="flex items-center gap-4 mt-2">
                           <label className="w-20 h-20 bg-black rounded-xl border-2 border-dashed border-zinc-700 flex items-center justify-center cursor-pointer hover:border-emerald-500 overflow-hidden relative group transition-colors">
-                              {ligaData.logoBase64 ? <img src={ligaData.logoBase64} className="w-full h-full object-cover"/> : <Upload size={20} className="text-zinc-500"/>}
+                              {ligaData.logoBase64 ? <img src={ligaData.logoBase64} alt="Logo" className="w-full h-full object-cover"/> : <Upload size={20} className="text-zinc-500"/>}
                               <input type="file" className="hidden" onChange={(e) => handleImageUpload(e, 'logo')}/>
                           </label>
                           <span className="text-xs text-zinc-500 max-w-[150px]">Clique para alterar a logo.<br/>Recomendado: Quadrado.</span>
@@ -591,7 +536,7 @@ export default function LigasAdminPage() {
                       {ligaData.membros?.map((m, idx) => (
                           <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex items-center gap-4 relative group hover:border-zinc-600 transition">
                               <button onClick={() => removeMember(idx)} className="absolute top-2 right-2 text-zinc-600 hover:text-red-500"><Trash2 size={14}/></button>
-                              <div className="w-12 h-12 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0"><img src={m.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
+                              <div className="w-12 h-12 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0"><img src={m.foto || "https://github.com/shadcn.png"} alt={m.nome} className="w-full h-full object-cover"/></div>
                               <div className="flex-1 space-y-1">
                                   <p className="text-sm font-bold text-white">{m.nome}</p>
                                   <input type="text" placeholder="Cargo (Ex: Presidente)" className="w-full bg-transparent border-b border-zinc-700 text-xs text-emerald-500 outline-none focus:border-emerald-500 font-medium" value={m.cargo} onChange={e => updateMemberCargo(idx, e.target.value)}/>
@@ -613,7 +558,7 @@ export default function LigasAdminPage() {
                       {ligaData.eventos?.map((ev, idx) => (
                           <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 relative flex flex-col md:flex-row gap-4 items-start md:items-center">
                               <button onClick={() => {const n=[...ligaData.eventos!]; n.splice(idx,1); setLigaData({...ligaData, eventos:n})}} className="absolute top-2 right-2 text-zinc-600 hover:text-red-500"><Trash2 size={14}/></button>
-                              <img src={ev.imagem || ligaData.logoBase64} className="w-16 h-16 rounded-lg object-cover bg-black"/>
+                              <img src={ev.imagem || ligaData.logoBase64} alt={ev.titulo} className="w-16 h-16 rounded-lg object-cover bg-black"/>
                               <div className="flex-1">
                                   <h4 className="font-bold text-white text-sm mb-1">{ev.titulo}</h4>
                                   <div className="flex gap-3 text-[10px] text-zinc-400 font-bold uppercase">
@@ -676,7 +621,7 @@ export default function LigasAdminPage() {
                           {filteredUsers.map(u => (
                               <div key={u.id} className="flex items-center justify-between p-3 bg-black/50 rounded-lg cursor-pointer hover:bg-zinc-800 transition" onClick={() => addMemberFromSearch(u)}>
                                   <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden"><img src={u.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div>
+                                      <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden"><img src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} className="w-full h-full object-cover"/></div>
                                       <div><p className="text-xs font-bold text-white">{u.nome}</p><p className="text-[10px] text-zinc-500">{u.turma || "Sem turma"}</p></div>
                                   </div>
                                   <Plus size={14} className="text-emerald-500"/>
@@ -754,7 +699,7 @@ export default function LigasAdminPage() {
                                           {poll.options.map((opt, idx) => (
                                               <div key={idx} className="flex justify-between items-center text-xs text-zinc-300 p-2 hover:bg-zinc-700/30 rounded group">
                                                   <div className="flex items-center gap-2">
-                                                      {opt.creatorAvatar ? <img src={opt.creatorAvatar} className="w-5 h-5 rounded-full object-cover border border-zinc-600"/> : <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-bold">ADM</div>}
+                                                      {opt.creatorAvatar ? <img src={opt.creatorAvatar} alt="Creator" className="w-5 h-5 rounded-full object-cover border border-zinc-600"/> : <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-bold">ADM</div>}
                                                       <span>{opt.text} <span className="text-zinc-500">({opt.votes})</span></span>
                                                   </div>
                                                   <button onClick={async () => {
@@ -781,7 +726,7 @@ export default function LigasAdminPage() {
                       
                       <div onClick={() => eventFileRef.current?.click()} className="h-32 border-2 border-dashed border-zinc-700 rounded-xl flex items-center justify-center cursor-pointer bg-black/20 relative group overflow-hidden">
                           <input type="file" ref={eventFileRef} className="hidden" onChange={handleEventImageUpload}/>
-                          {uploadingEventImg ? <span className="text-xs text-emerald-500 animate-pulse">Enviando...</span> : currentEvent.imagem ? <img src={currentEvent.imagem} className="w-full h-full object-cover" style={{ objectPosition: `50% ${currentEvent.imagePositionY || 50}%` }}/> : <div className="text-center text-zinc-500"><ImageIcon/><span className="text-xs">Capa</span></div>}
+                          {uploadingEventImg ? <span className="text-xs text-emerald-500 animate-pulse">Enviando...</span> : currentEvent.imagem ? <img src={currentEvent.imagem} alt="Evento" className="w-full h-full object-cover" style={{ objectPosition: `50% ${currentEvent.imagePositionY || 50}%` }}/> : <div className="text-center text-zinc-500"><ImageIcon/><span className="text-xs">Capa</span></div>}
                       </div>
                       {currentEvent.imagem && <div className="bg-zinc-900 p-2 rounded-xl"><div className="flex justify-between text-[10px] text-zinc-400 uppercase mb-1"><span>Ajuste Vertical</span><span>{currentEvent.imagePositionY || 50}%</span></div><input type="range" min="0" max="100" value={currentEvent.imagePositionY || 50} onChange={(e) => setCurrentEvent({ ...currentEvent, imagePositionY: Number(e.target.value) })} className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/></div>}
                       

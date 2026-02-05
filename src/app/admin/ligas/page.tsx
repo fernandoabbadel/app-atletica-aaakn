@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, Search, 
-  Shield, Key, Users, UploadCloud, Eye, EyeOff, 
-  Loader2, Calendar, MessageCircle, Lightbulb, Bell, UserPlus, 
-  CheckCircle, MonitorPlay
+  Shield, Key, UploadCloud, Eye, EyeOff, 
+  Loader2, Calendar, UserPlus, MonitorPlay
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot, query, orderBy, setDoc, serverTimestamp, getDocs 
+  onSnapshot, query, orderBy, getDocs 
 } from "firebase/firestore";
 
 // --- TIPAGEM ---
@@ -75,6 +75,14 @@ interface Liga {
   likes: number;
 }
 
+// Interface para usuário vindo do banco
+interface UserData {
+    id: string;
+    nome?: string;
+    foto?: string;
+    turma?: string;
+}
+
 export default function AdminLigasPage() {
   const { addToast } = useToast();
   const [ligas, setLigas] = useState<Liga[]>([]);
@@ -93,7 +101,7 @@ export default function AdminLigasPage() {
   // Busca de Usuários
   const [searchUserModal, setSearchUserModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<UserData[]>([]);
 
   // Form State Principal
   const [formData, setFormData] = useState<Partial<Liga>>({
@@ -130,7 +138,7 @@ export default function AdminLigasPage() {
   useEffect(() => {
       const fetchUsers = async () => {
           const snap = await getDocs(collection(db, "users"));
-          setAllUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setAllUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
       };
       if (searchUserModal) fetchUsers();
   }, [searchUserModal]);
@@ -211,7 +219,7 @@ export default function AdminLigasPage() {
   };
 
   // --- GESTÃO DE MEMBROS ---
-  const addMemberFromSearch = (u: any) => {
+  const addMemberFromSearch = (u: UserData) => {
       const newMember: Member = { 
           id: u.id, 
           nome: u.nome || "Sem Nome", 
@@ -280,6 +288,8 @@ export default function AdminLigasPage() {
 
   const removeQuestion = (idx: number) => setFormData(prev => ({...prev, perguntas: prev.perguntas?.filter((_, i) => i !== idx)}));
 
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
       {/* HEADER */}
@@ -312,10 +322,15 @@ export default function AdminLigasPage() {
 
               <div className="flex items-start justify-between mt-2">
                 <div className="flex items-center gap-3">
-                  <img 
-                    src={liga.foto || "https://github.com/shadcn.png"} 
-                    className={`w-12 h-12 rounded-full object-cover border-2 ${liga.visivel ? 'border-emerald-500' : 'border-zinc-800'}`}
-                  />
+                  <div className={`w-12 h-12 rounded-full overflow-hidden border-2 ${liga.visivel ? 'border-emerald-500' : 'border-zinc-800'} relative`}>
+                    <Image 
+                      src={liga.foto || "https://github.com/shadcn.png"} 
+                      alt={liga.nome}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
                   <div>
                     <h3 className="font-bold text-white uppercase text-sm truncate w-32" title={liga.nome}>{liga.nome}</h3>
                     <p className="text-[10px] text-zinc-500 font-bold uppercase">{liga.sigla}</p>
@@ -383,7 +398,7 @@ export default function AdminLigasPage() {
                     <div className="space-y-3">
                         <div className="flex justify-center mb-4">
                             <label className="relative w-24 h-24 rounded-full bg-zinc-900 border-2 border-dashed border-zinc-700 flex items-center justify-center cursor-pointer hover:border-emerald-500 overflow-hidden group">
-                                {formData.foto ? <img src={formData.foto} className="w-full h-full object-cover"/> : <UploadCloud className="text-zinc-500 group-hover:text-emerald-500"/>}
+                                {formData.foto ? <Image src={formData.foto} alt="Logo" fill className="object-cover" unoptimized/> : <UploadCloud className="text-zinc-500 group-hover:text-emerald-500"/>}
                                 <input type="file" className="hidden" onChange={handleUpload}/>
                                 {uploading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>}
                             </label>
@@ -421,7 +436,9 @@ export default function AdminLigasPage() {
                         <button onClick={() => setSearchUserModal(true)} className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold uppercase hover:border-emerald-500 hover:text-emerald-500 transition flex justify-center items-center gap-2"><UserPlus size={16}/> Adicionar Membro</button>
                         {formData.membros?.map((m, idx) => (
                             <div key={idx} className="flex items-center gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-800">
-                                <img src={m.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full object-cover"/>
+                                <div className="w-10 h-10 rounded-full overflow-hidden relative">
+                                    <Image src={m.foto || "https://github.com/shadcn.png"} alt={m.nome} fill className="object-cover" unoptimized/>
+                                </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-bold text-white">{m.nome}</p>
                                     <input type="text" placeholder="Cargo" value={m.cargo} onChange={e => updateMemberCargo(idx, e.target.value)} className="bg-transparent text-xs text-emerald-500 outline-none w-full"/>
@@ -485,7 +502,9 @@ export default function AdminLigasPage() {
                     {allUsers.filter(u => u.nome?.toLowerCase().includes(searchTerm.toLowerCase())).map(u => (
                         <div key={u.id} className="flex items-center justify-between p-3 bg-black/50 rounded-lg cursor-pointer hover:bg-zinc-800 transition" onClick={() => addMemberFromSearch(u)}>
                             <div className="flex items-center gap-3">
-                                <img src={u.foto || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full object-cover"/>
+                                <div className="w-8 h-8 rounded-full overflow-hidden relative">
+                                    <Image src={u.foto || "https://github.com/shadcn.png"} alt={u.nome || "User"} fill className="object-cover" unoptimized/>
+                                </div>
                                 <div><p className="text-xs font-bold text-white">{u.nome}</p><p className="text-[10px] text-zinc-500">{u.turma || "Sem turma"}</p></div>
                             </div>
                             <Plus size={14} className="text-emerald-500"/>

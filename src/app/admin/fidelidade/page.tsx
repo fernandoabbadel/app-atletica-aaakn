@@ -2,22 +2,43 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  ArrowLeft, Plus, Trash2, Edit2, Star, Gift, LayoutDashboard,
-  ScrollText, Save, Users, TrendingUp, Info, X, Loader2
+  ArrowLeft, Plus, Trash2, Star, Gift, LayoutDashboard,
+  ScrollText, Save, Users, TrendingUp, X, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, orderBy, limit } from "firebase/firestore";
+
+// 🦈 Interfaces para tipagem forte
+interface Reward {
+    id: string;
+    title: string;
+    cost: number;
+    stock: number;
+    image: string;
+    active: boolean;
+}
+
+interface TopUser {
+    id: string;
+    nome: string;
+    xp: number;
+    foto: string;
+    turma: string;
+}
+
+type TabType = "dashboard" | "premios" | "regras";
 
 export default function AdminFidelidadePage() {
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "premios" | "regras">("dashboard");
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
 
   // --- ESTADOS REAIS ---
   const [loading, setLoading] = useState(true);
-  const [rewards, setRewards] = useState<any[]>([]);
-  const [topUsers, setTopUsers] = useState<any[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [config, setConfig] = useState({ xpPerStamp: 100, rules: [] as string[] });
 
   // Modal
@@ -28,7 +49,7 @@ export default function AdminFidelidadePage() {
   useEffect(() => {
     // A. Prêmios
     const unsubRewards = onSnapshot(collection(db, "store_rewards"), (snap) => {
-        setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() } as Reward)));
     });
 
     // B. Configuração
@@ -44,7 +65,7 @@ export default function AdminFidelidadePage() {
     // C. Top Users (Ranking por XP)
     const qUsers = query(collection(db, "users"), orderBy("xp", "desc"), limit(5));
     const unsubUsers = onSnapshot(qUsers, (snap) => {
-        setTopUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setTopUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as TopUser)));
         setLoading(false);
     });
 
@@ -69,6 +90,7 @@ export default function AdminFidelidadePage() {
         setNewReward({ title: "", cost: "", stock: "", image: "" });
         addToast("Prêmio adicionado!", "success");
     } catch (e) {
+        console.error(e); // 🦈 Logando o erro
         addToast("Erro ao adicionar.", "error");
     }
   };
@@ -101,6 +123,7 @@ export default function AdminFidelidadePage() {
         await setDoc(doc(db, "app_config", "fidelity"), config, { merge: true });
         addToast("Configurações salvas!", "success");
     } catch (e) {
+        console.error(e); // 🦈 Logando o erro
         addToast("Erro ao salvar config.", "error");
     }
   };
@@ -131,7 +154,7 @@ export default function AdminFidelidadePage() {
       <div className="px-6 pt-4">
         <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto">
           {["dashboard", "premios", "regras"].map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab as any)} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === tab ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}>
+              <button key={tab} onClick={() => setActiveTab(tab as TabType)} className={`pb-3 text-sm font-bold uppercase transition border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === tab ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-white"}`}>
                   {tab === 'dashboard' && <LayoutDashboard size={16}/>}
                   {tab === 'premios' && <Gift size={16}/>}
                   {tab === 'regras' && <ScrollText size={16}/>}
@@ -163,7 +186,14 @@ export default function AdminFidelidadePage() {
                   <div key={u.id} className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition">
                     <div className="flex items-center gap-4">
                       <span className={`font-black w-6 text-center ${i === 0 ? "text-yellow-500" : "text-zinc-500"}`}>#{i + 1}</span>
-                      <img src={u.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full border border-zinc-700 object-cover" />
+                      <Image 
+                        src={u.foto || "https://github.com/shadcn.png"} 
+                        alt={u.nome}
+                        width={40}
+                        height={40}
+                        unoptimized
+                        className="rounded-full border border-zinc-700 object-cover w-10 h-10" 
+                      />
                       <div><p className="font-bold text-sm text-white">{u.nome}</p><p className="text-[10px] text-zinc-500">{u.turma}</p></div>
                     </div>
                     <div className="text-right">
@@ -182,7 +212,15 @@ export default function AdminFidelidadePage() {
           <div className="space-y-4">
             {rewards.map((reward) => (
               <div key={reward.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex flex-col sm:flex-row gap-4 group items-center">
-                <div className="w-20 h-20 bg-black rounded-xl overflow-hidden shrink-0 border border-zinc-800"><img src={reward.image} className="w-full h-full object-cover" onError={(e) => e.currentTarget.src = "/logo.png"} /></div>
+                <div className="w-20 h-20 bg-black rounded-xl overflow-hidden shrink-0 border border-zinc-800 relative">
+                    <Image 
+                        src={reward.image || "/logo.png"} 
+                        alt={reward.title}
+                        fill
+                        unoptimized
+                        className="object-cover"
+                    />
+                </div>
                 <div className="flex-1 w-full">
                   <div className="flex justify-between items-start">
                     <div>

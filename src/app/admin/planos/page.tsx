@@ -5,11 +5,12 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { 
   ArrowLeft, Edit, Save, Plus, Trash2, CheckCircle, X, 
-  LayoutDashboard, CreditCard, DollarSign, Crown, Star, Ghost, 
-  Users, TrendingUp, Calendar, Search, Megaphone, Loader2, RefreshCw, ShoppingBag, Eye, ClipboardList, Check,
-  Fish, Zap, Gem, Trophy, TicketPercent, ShieldAlert, User 
+  LayoutDashboard, CreditCard, DollarSign, Crown, 
+  Users, TrendingUp, Calendar, Search, Megaphone, Loader2, RefreshCw, ClipboardList, Eye,
+  Zap, TicketPercent, ShieldAlert
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc } from "firebase/firestore";
@@ -93,7 +94,6 @@ export default function AdminPlanosPage() {
   const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
   const [viewingReceipt, setViewingReceipt] = useState<Solicitacao | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   // Dados
@@ -105,7 +105,7 @@ export default function AdminPlanosPage() {
 
   useEffect(() => {
     const unsubPlanos = onSnapshot(query(collection(db, "planos"), orderBy("precoVal", "asc")), (snap) => setPlanos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Plano))));
-    const unsubAssinaturas = onSnapshot(query(collection(db, "assinaturas"), orderBy("dataInicio", "desc")), (snap) => { setAssinaturas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Assinatura))); setLoading(false); });
+    const unsubAssinaturas = onSnapshot(query(collection(db, "assinaturas"), orderBy("dataInicio", "desc")), (snap) => { setAssinaturas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Assinatura))); });
     const unsubSolicitacoes = onSnapshot(query(collection(db, "solicitacoes_adesao"), orderBy("dataSolicitacao", "desc")), (snap) => setSolicitacoes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Solicitacao))));
     getDoc(doc(db, "app_config", "marketing_banner")).then(snap => { if (snap.exists()) setBannerConfig(snap.data() as BannerConfig); });
 
@@ -188,7 +188,7 @@ export default function AdminPlanosPage() {
           
           addToast("Solicitação rejeitada e usuário liberado.", "info");
           setViewingReceipt(null);
-      } catch(e) { addToast("Erro.", "error"); }
+      } catch(e) { console.error(e); addToast("Erro.", "error"); }
   };
 
   // 🦈 NOVA FUNÇÃO: DESTRAVA USUÁRIO NA FORÇA BRUTA
@@ -213,7 +213,7 @@ export default function AdminPlanosPage() {
   const handleSeedPlanos = async () => {
       if(!confirm("⚠️ ISSO VAI RECRIAR OS PLANOS PADRÃO. Confirmar?")) return;
       setIsSaving(true);
-      try { await Promise.all(INITIAL_PLANOS.map(p => addDoc(collection(db, "planos"), p))); addToast("Planos resetados!", "success"); } catch (e) { addToast("Erro.", "error"); } finally { setIsSaving(false); }
+      try { await Promise.all(INITIAL_PLANOS.map(p => addDoc(collection(db, "planos"), p))); addToast("Planos resetados!", "success"); } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); }
   };
   
   const handleCreate = () => { 
@@ -236,11 +236,11 @@ export default function AdminPlanosPage() {
           if (id) { await updateDoc(doc(db, "planos", id), payload); addToast("Plano atualizado!", "success"); } 
           else { await addDoc(collection(db, "planos"), payload); addToast("Plano criado!", "success"); } 
           setIsModalOpen(false); 
-      } catch (e) { addToast("Erro.", "error"); } finally { setIsSaving(false); } 
+      } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); } 
   };
   
-  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deleteDoc(doc(db, "planos", id)); addToast("Removido.", "info"); } catch(e) { addToast("Erro.", "error"); } };
-  const handleSaveBanner = async () => { setIsSaving(true); try { await setDoc(doc(db, "app_config", "marketing_banner"), bannerConfig); addToast("Banner atualizado!", "success"); } catch (e) { addToast("Erro.", "error"); } finally { setIsSaving(false); } };
+  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deleteDoc(doc(db, "planos", id)); addToast("Removido.", "info"); } catch(e) { console.error(e); addToast("Erro.", "error"); } };
+  const handleSaveBanner = async () => { setIsSaving(true); try { await setDoc(doc(db, "app_config", "marketing_banner"), bannerConfig); addToast("Banner atualizado!", "success"); } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); } };
   
   const handleBenefitChange = (index: number, value: string) => { if (!editingPlan) return; const newBenefits = [...editingPlan.beneficios]; newBenefits[index] = value; setEditingPlan({ ...editingPlan, beneficios: newBenefits }); };
   const addBenefit = () => { if (!editingPlan) return; setEditingPlan({ ...editingPlan, beneficios: [...editingPlan.beneficios, "Novo Benefício"] }); };
@@ -456,7 +456,8 @@ export default function AdminPlanosPage() {
                         <button onClick={() => setViewingReceipt(null)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20}/></button>
                     </div>
                     <div className="flex-1 bg-black p-4 flex items-center justify-center overflow-auto">
-                        <img src={viewingReceipt.comprovanteUrl} className="max-w-full rounded-lg border border-zinc-800" alt="Comprovante"/>
+                        {/* 🦈 Image otimizado */}
+                        <Image src={viewingReceipt.comprovanteUrl} width={400} height={600} className="max-w-full rounded-lg border border-zinc-800 object-contain" alt="Comprovante" unoptimized/>
                     </div>
                     <div className="p-4 bg-zinc-900 border-t border-zinc-800 flex gap-3">
                         <button onClick={() => handleReject(viewingReceipt)} disabled={isSaving} className="flex-1 bg-red-900/20 text-red-500 hover:bg-red-900/40 py-3 rounded-xl font-bold uppercase text-xs transition border border-red-900/30">Rejeitar</button>
@@ -477,8 +478,8 @@ export default function AdminPlanosPage() {
                     <div className="overflow-y-auto p-4 space-y-2 custom-scrollbar">
                         {assinaturas.filter(s => s.planoId === viewingPlanId || s.planoNome === planos.find(p => p.id === viewingPlanId)?.nome).map((sub) => (
                             <div key={sub.id} className="flex items-center gap-4 p-3 rounded-xl bg-black/30 border border-zinc-800">
-                                <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700 shrink-0">
-                                    {sub.foto ? <img src={sub.foto} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-zinc-500"><User size={16}/></div>}
+                                <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700 shrink-0 relative">
+                                    {sub.foto ? <Image src={sub.foto} alt="User" fill className="object-cover" unoptimized/> : <div className="w-full h-full flex items-center justify-center text-zinc-500"><Users size={16}/></div>}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h4 className="text-white font-bold text-sm truncate">{sub.aluno}</h4>

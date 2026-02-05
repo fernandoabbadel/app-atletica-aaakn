@@ -13,7 +13,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { db, storage } from "../../lib/firebase"; 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore"; // Importado para ID 1
+import { doc, updateDoc } from "firebase/firestore"; 
 import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
@@ -269,7 +269,6 @@ export default function CadastroPage() {
         await updateDoc(doc(db, "users", user.uid), {
             "stats.profileComplete": 1 
         });
-        // Feedback visual extra (opcional, já que o toast de sucesso vem abaixo)
       }
 
       addToast("Perfil atualizado! Bem-vindo ao cardume. 🦈", "success");
@@ -310,7 +309,13 @@ export default function CadastroPage() {
                                 <Loader2 className="animate-spin text-emerald-500" size={32}/>
                             </div>
                         ) : (
-                            <img src={formData.foto || "https://github.com/shadcn.png"} alt="Avatar" className="w-full h-full object-cover" />
+                            <Image 
+                                src={formData.foto || "https://github.com/shadcn.png"} 
+                                alt="Avatar" 
+                                fill
+                                className="object-cover" 
+                                unoptimized
+                            />
                         )}
                         
                         {/* Overlay de Edição */}
@@ -513,7 +518,14 @@ export default function CadastroPage() {
                             <div key={t.id} onClick={() => setFormData({...formData, turma: t.id})} className={`cursor-pointer rounded-2xl border p-4 flex items-center justify-between transition-all ${formData.turma === t.id ? "bg-emerald-500/10 border-emerald-500" : "bg-black/40 border-zinc-800 hover:bg-zinc-800"}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden relative">
-                                        <Image src={t.img} alt={t.id} fill className="object-cover" unoptimized />
+                                        {/* 🦈 1. Correção: Uso do Image do Next.js */}
+                                        <Image 
+                                            src={t.img} 
+                                            alt={t.nome} 
+                                            fill 
+                                            className="object-cover" 
+                                            unoptimized
+                                        />
                                     </div>
                                     <span className={`text-sm font-bold uppercase ${formData.turma === t.id ? "text-emerald-400" : "text-zinc-400"}`}>{t.nome}</span>
                                 </div>

@@ -1,22 +1,35 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-// 🦈 Importação Namespace para pegar ícones dinamicamente pelo nome (string)
+// 🦈 Importação Namespace para pegar ícones dinamicamente pelo nome
 import * as LucideIcons from "lucide-react";
 import {
   ArrowLeft, CreditCard, ChevronRight,
   QrCode, X, Award
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importado para otimização
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
 import SharkLoader from "@/app/components/SharkLoader";
 
-// 🦈 CONFIGURAÇÃO VISUAL POR COR (E NÃO MAIS POR TIER FIXO)
-// O Tailwind precisa das classes completas escritas para o purger não remover.
-const COLOR_STYLES: any = {
+// --- TIPAGEM ---
+interface StyleConfig {
+    color: string;
+    border: string;
+    bgBadge: string;
+    glow: string;
+}
+
+interface CarteirinhaConfig {
+    backgrounds?: Record<string, string>;
+    validade?: string;
+}
+
+// 🦈 CONFIGURAÇÃO VISUAL POR COR
+const COLOR_STYLES: Record<string, StyleConfig> = {
     yellow: {
         color: "text-yellow-400",
         border: "border-yellow-500/50",
@@ -57,7 +70,7 @@ const COLOR_STYLES: any = {
 
 export default function CarteirinhaPage() {
   const { user, loading } = useAuth();
-  const [config, setConfig] = useState<any>(null); // Configurações visuais (Backgrounds)
+  const [config, setConfig] = useState<CarteirinhaConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [showQrModal, setShowQrModal] = useState(false);
 
@@ -68,7 +81,7 @@ export default function CarteirinhaPage() {
               const docRef = doc(db, "app_config", "carteirinha");
               const snap = await getDoc(docRef);
               if (snap.exists()) {
-                  setConfig(snap.data());
+                  setConfig(snap.data() as CarteirinhaConfig);
               }
           } catch (e) {
               console.error("Erro config carteirinha", e);
@@ -88,20 +101,18 @@ export default function CarteirinhaPage() {
   const bgFinal = config?.backgrounds?.[user.turma || ""] || bgPadrao;
   const validadeTexto = config?.validade || "DEZ/2026";
 
-  // --- 🦈 LÓGICA VISUAL DINÂMICA (CORRIGIDA) ---
-  // 1. Recupera a cor e o ícone salvos no banco (fallback para padrão se não existir)
+  // --- 🦈 LÓGICA VISUAL DINÂMICA ---
   const userCor = user.plano_cor || "zinc"; 
   const userIconName = user.plano_icon || "ghost";
 
-  // 2. Define o estilo baseado na COR, não no nome do plano
+  // Define o estilo
   const style = COLOR_STYLES[userCor] || COLOR_STYLES.zinc;
 
-  // 3. Resolve o componente do ícone dinamicamente (Lucide)
-  // Converte "ghost" -> "Ghost", "crown" -> "Crown" para achar no pacote
+  // Resolve o ícone dinamicamente sem usar 'any' inseguro
   const iconPascalCase = userIconName.charAt(0).toUpperCase() + userIconName.slice(1);
-  const PlanIcon = (LucideIcons as any)[iconPascalCase] || LucideIcons.Ghost;
+  const IconModule = LucideIcons as unknown as Record<string, React.ElementType>;
+  const PlanIcon = IconModule[iconPascalCase] || LucideIcons.Ghost;
 
-  // Verifica se pode fazer upgrade (lógica simples baseada no tier antigo ou se for cinza)
   const canUpgrade = userCor === 'zinc' || userCor === 'emerald';
 
   return (
@@ -123,7 +134,7 @@ export default function CarteirinhaPage() {
 
       <main className="flex-1 flex flex-col items-center justify-start pt-8 px-6 relative overflow-hidden space-y-8 w-full max-w-md mx-auto">
         
-        {/* Luz de fundo ambiente baseada na cor do Tier */}
+        {/* Luz de fundo ambiente */}
         <div className={`absolute top-20 left-1/2 -translate-x-1/2 w-[300px] h-[300px] blur-[100px] rounded-full pointer-events-none opacity-20 ${style.color.replace('text-', 'bg-')}`}></div>
 
         {/* --- CARTÃO DIGITAL --- */}
@@ -132,11 +143,12 @@ export default function CarteirinhaPage() {
           {/* === CAMADA DE FUNDO === */}
           <div className="absolute inset-0 z-0 bg-zinc-900">
              <div className="absolute inset-0 bg-zinc-900" />
-             <img
+             <Image
                 src={bgFinal}
                 alt="Background Turma"
-                className="w-full h-full object-cover opacity-60 mix-blend-overlay brightness-75 scale-105"
-                onError={(e) => (e.currentTarget.src = "/carteirinha-bg-default.jpg")}
+                fill
+                className="object-cover opacity-60 mix-blend-overlay brightness-75 scale-105"
+                unoptimized // Permite URLs externas/base64 sem config no next.config.js
              />
              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/80"></div>
              <div className="absolute inset-0 opacity-[0.07] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
@@ -148,8 +160,8 @@ export default function CarteirinhaPage() {
             {/* 1. TOPO: Logo e Status */}
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-black/80 backdrop-blur rounded-lg flex items-center justify-center border border-white/10 shadow-lg">
-                  <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
+                <div className="w-10 h-10 bg-black/80 backdrop-blur rounded-lg flex items-center justify-center border border-white/10 shadow-lg relative overflow-hidden">
+                  <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-contain" unoptimized />
                 </div>
                 <div>
                   <h2 className="font-black text-white text-lg leading-none tracking-tight">AAAKN</h2>
@@ -157,7 +169,7 @@ export default function CarteirinhaPage() {
                 </div>
               </div>
 
-              {/* Badge do Plano (Agora usa user.plano e cor dinâmica) */}
+              {/* Badge do Plano */}
               <div className={`px-2.5 py-1 rounded-md border backdrop-blur-md flex items-center gap-1.5 shadow-lg ${style.color} ${style.border} ${style.bgBadge}`}>
                   <PlanIcon size={10} className="stroke-[3]" />
                   <span className="text-[9px] font-black uppercase tracking-wider">{user.plano || "Visitante"}</span>
@@ -167,11 +179,15 @@ export default function CarteirinhaPage() {
             {/* 2. MEIO: Foto e Dados */}
             <div className="flex items-center gap-4 mt-2">
               <div className={`w-[72px] h-[96px] flex-shrink-0 rounded-lg border-2 p-[2px] bg-black/50 shadow-xl overflow-hidden relative ${style.border}`}>
-                <img
-                  src={user.foto || "https://github.com/shadcn.png"}
-                  className="w-full h-full object-cover object-top rounded-[4px]"
-                  alt="Foto do Atleta"
-                />
+                <div className="relative w-full h-full overflow-hidden rounded-[4px]">
+                    <Image
+                      src={user.foto || "https://github.com/shadcn.png"}
+                      alt="Foto do Atleta"
+                      fill
+                      className="object-cover object-top"
+                      unoptimized
+                    />
+                </div>
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 pointer-events-none rounded-[4px]"></div>
               </div>
 
@@ -265,8 +281,8 @@ export default function CarteirinhaPage() {
                   </button>
                   
                   <div className="mb-6 mt-2">
-                      <div className="w-12 h-12 bg-black rounded-xl mx-auto flex items-center justify-center mb-3">
-                        <img src="/logo.png" className="w-8 h-8 object-contain" />
+                      <div className="w-12 h-12 bg-black rounded-xl mx-auto flex items-center justify-center mb-3 relative overflow-hidden">
+                        <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-contain" unoptimized />
                       </div>
                       <h3 className="text-black font-black text-xl uppercase tracking-tighter">Acesso Atleta</h3>
                       <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Aproxime do Leitor</p>

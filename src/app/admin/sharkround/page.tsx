@@ -2,20 +2,28 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  LayoutGrid, Users, Power, Key, Plus, Trash2, Loader2, ArrowLeft, 
-  CheckCircle2, Copy, RefreshCw, Settings, HelpCircle, AlertTriangle
+  Power, Loader2, ArrowLeft, Copy
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image'; // 🦈 Importando Image
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase"; 
-import { doc, collection, deleteDoc, updateDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { doc, collection, updateDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+
+// 🦈 Interface para Questão (Fim do any)
+interface Questao {
+    id: string;
+    pergunta: string;
+    respostas: string[];
+    correta: number;
+}
 
 interface LigaConfig {
     id: string;
     nome: string;
     senha: string;
     ativa: boolean;
-    perguntas: any[];
+    perguntas: Questao[]; // 🦈 Tipado corretamente
     foto?: string;
     sigla?: string;
 }
@@ -54,6 +62,7 @@ export default function AdminSharkRound() {
           await updateDoc(doc(db, "ligas", liga.id), { ativa: novoStatus });
           addToast(novoStatus ? "Liga ATIVADA no SharkRound!" : "Liga removida do tabuleiro.", "success");
       } catch (e) {
+          console.error(e);
           addToast("Erro ao atualizar status.", "error");
       }
   };
@@ -98,7 +107,15 @@ export default function AdminSharkRound() {
                   <div key={liga.id} className={`p-5 rounded-2xl border transition-all ${liga.ativa ? 'bg-zinc-900 border-emerald-500/50 shadow-lg' : 'bg-zinc-950 border-zinc-800 opacity-80'}`}>
                       <div className="flex justify-between items-start mb-4">
                           <div className="flex items-center gap-3 overflow-hidden">
-                              <img src={liga.foto || "https://github.com/shadcn.png"} className="w-12 h-12 rounded-full object-cover border-2 border-zinc-800 bg-black"/>
+                              <div className="relative w-12 h-12 shrink-0">
+                                <Image 
+                                    src={liga.foto || "https://github.com/shadcn.png"} 
+                                    alt={liga.nome}
+                                    fill
+                                    unoptimized
+                                    className="rounded-full object-cover border-2 border-zinc-800 bg-black"
+                                />
+                              </div>
                               <div className="min-w-0">
                                   <h3 className="font-bold text-sm text-white truncate">{liga.nome}</h3>
                                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${canActivate ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>

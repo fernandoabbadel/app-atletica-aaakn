@@ -4,15 +4,55 @@ import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, Save, MessageSquare, AlertTriangle, 
   Trash2, Pin, ShieldAlert, Palette, Loader2, 
-  Eye, EyeOff, Ban, MessageCircle, X, Search, CheckCircle, Lock, ExternalLink
+  Eye, Ban, MessageCircle, X, Search, CheckCircle, Lock, ExternalLink
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { db } from "../../../lib/firebase";
 import { 
   doc, onSnapshot, updateDoc, collection, 
-  deleteDoc, query, orderBy, getDocs 
+  deleteDoc, query, orderBy, getDocs, Timestamp 
 } from "firebase/firestore";
 import { useToast } from "../../../context/ToastContext";
+
+// --- TIPAGENS (O Escudo do Código) ---
+interface AppConfig {
+  titulo: string;
+  subtitulo: string;
+  capaUrl: string;
+  limitMessages: boolean;
+}
+
+interface PostData {
+  id: string;
+  userName: string;
+  handle: string;
+  avatar: string;
+  texto: string;
+  createdAt: Timestamp;
+  blocked?: boolean;
+  fixado?: boolean;
+  commentsDisabled?: boolean;
+  comentarios: number;
+  denunciasCount: number;
+}
+
+interface DenunciaData {
+  id: string;
+  postId: string;
+  postText: string;
+  reporterId: string;
+  reason: string;
+  timestamp: Timestamp;
+}
+
+interface CommentData {
+  id: string;
+  userName: string;
+  avatar: string;
+  texto: string;
+  createdAt: Timestamp;
+}
 
 export default function AdminComunidadePage() {
   const { addToast } = useToast();
@@ -23,31 +63,31 @@ export default function AdminComunidadePage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Dados do Firebase
-  const [config, setConfig] = useState<any>({ titulo: "", subtitulo: "", capaUrl: "", limitMessages: true });
-  const [posts, setPosts] = useState<any[]>([]);
-  const [denuncias, setDenuncias] = useState<any[]>([]);
+  const [config, setConfig] = useState<AppConfig>({ titulo: "", subtitulo: "", capaUrl: "", limitMessages: true });
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [denuncias, setDenuncias] = useState<DenunciaData[]>([]);
 
   // Estados de Modais
   const [viewCommentsId, setViewCommentsId] = useState<string | null>(null);
-  const [adminComments, setAdminComments] = useState<any[]>([]);
+  const [adminComments, setAdminComments] = useState<CommentData[]>([]);
 
   // 1. CARREGAR DADOS EM TEMPO REAL
   useEffect(() => {
     // Configurações
     const unsubConfig = onSnapshot(doc(db, "app_config", "comunidade"), (snap) => { 
-      if (snap.exists()) setConfig(snap.data()); 
+      if (snap.exists()) setConfig(snap.data() as AppConfig); 
     });
 
     // Posts (Todos, ordenados por data)
     const qPosts = query(collection(db, "posts"), orderBy("createdAt", "desc"));
     const unsubPosts = onSnapshot(qPosts, (snap) => {
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostData)));
     });
 
     // Denúncias
     const qDenuncias = query(collection(db, "denuncias"), orderBy("timestamp", "desc"));
     const unsubDenuncias = onSnapshot(qDenuncias, (snap) => {
-        setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() } as DenunciaData)));
         setLoading(false);
     });
 
@@ -61,7 +101,7 @@ export default function AdminComunidadePage() {
       const fetchComments = async () => {
           const q = query(collection(db, `posts/${viewCommentsId}/comments`), orderBy("createdAt", "desc"));
           const snap = await getDocs(q);
-          setAdminComments(snap.docs.map(d => ({id: d.id, ...d.data()})));
+          setAdminComments(snap.docs.map(d => ({id: d.id, ...d.data()} as CommentData)));
       };
       fetchComments();
   }, [viewCommentsId]);
@@ -69,9 +109,11 @@ export default function AdminComunidadePage() {
   // --- AÇÕES DE CONFIGURAÇÃO ---
   const handleSaveConfig = async () => {
     try { 
-        await updateDoc(doc(db, "app_config", "comunidade"), config); 
+        // 🦈 Correção: Usando Partial<AppConfig> para evitar 'any'
+        await updateDoc(doc(db, "app_config", "comunidade"), config as Partial<AppConfig>); 
         addToast("Configurações da Resenha salvas!", "success"); 
     } catch (e) { 
+        console.error(e); // 🦈 Log do erro
         addToast("Erro ao salvar config.", "error"); 
     }
   };
@@ -81,21 +123,30 @@ export default function AdminComunidadePage() {
       try {
           await updateDoc(doc(db, "posts", id), { blocked: !currentStatus });
           addToast(currentStatus ? "Post desbloqueado e visível." : "Post bloqueado (oculto).", "info");
-      } catch (e) { addToast("Erro ao atualizar status.", "error"); }
+      } catch (e) { 
+          console.error(e); // 🦈 Log do erro
+          addToast("Erro ao atualizar status.", "error"); 
+      }
   };
 
   const toggleCommentsLock = async (id: string, currentStatus: boolean) => {
       try {
           await updateDoc(doc(db, "posts", id), { commentsDisabled: !currentStatus });
           addToast(currentStatus ? "Comentários reabertos." : "Comentários trancados.", "info");
-      } catch (e) { addToast("Erro ao atualizar status.", "error"); }
+      } catch (e) { 
+          console.error(e); // 🦈 Log do erro
+          addToast("Erro ao atualizar status.", "error"); 
+      }
   };
 
   const togglePin = async (id: string, current: boolean) => { 
       try {
           await updateDoc(doc(db, "posts", id), { fixado: !current }); 
           addToast(current ? "Post desafixado." : "Post fixado no topo!", "success"); 
-      } catch (e) { addToast("Erro ao fixar.", "error"); }
+      } catch (e) { 
+          console.error(e); // 🦈 Log do erro
+          addToast("Erro ao fixar.", "error"); 
+      }
   };
 
   const deletePost = async (id: string) => {
@@ -103,7 +154,10 @@ export default function AdminComunidadePage() {
       try {
           await deleteDoc(doc(db, "posts", id));
           addToast("Post removido do banco de dados.", "info");
-      } catch (e) { addToast("Erro ao excluir.", "error"); }
+      } catch (e) { 
+          console.error(e); // 🦈 Log do erro
+          addToast("Erro ao excluir.", "error"); 
+      }
   };
 
   // --- AÇÕES DE DENÚNCIA ---
@@ -125,6 +179,7 @@ export default function AdminComunidadePage() {
           
           if (action === 'ignore') addToast("Denúncia ignorada/removida.", "info");
       } catch (e) {
+          console.error(e); // 🦈 Log do erro
           addToast("Erro ao resolver denúncia.", "error");
       }
   };
@@ -216,8 +271,15 @@ export default function AdminComunidadePage() {
                             <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                             <div className="relative z-10 text-center">
                                 <h3 className="text-xl font-black text-white uppercase mb-2">Preview da Capa</h3>
-                                <div className="h-40 w-full bg-black rounded-xl overflow-hidden border border-zinc-700 shadow-2xl">
-                                    <img src={config.capaUrl || "/carteirinha-bg.jpg"} className="w-full h-full object-cover opacity-60" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                                <div className="h-40 w-full bg-black rounded-xl overflow-hidden border border-zinc-700 shadow-2xl relative">
+                                    {/* 🦈 Imagem Otimizada */}
+                                    <Image 
+                                      src={config.capaUrl || "/carteirinha-bg.jpg"} 
+                                      alt="Preview Capa" 
+                                      fill 
+                                      className="object-cover opacity-60" 
+                                      unoptimized // 🦈 Para aceitar links externos
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -231,9 +293,15 @@ export default function AdminComunidadePage() {
                             <div key={post.id} className={`bg-zinc-900 border p-5 rounded-2xl flex items-start gap-5 transition hover:border-zinc-700 ${post.blocked ? 'border-red-900/50 bg-red-950/10 opacity-70' : 'border-zinc-800'} ${post.fixado ? 'border-emerald-500/30 bg-emerald-900/10' : ''}`}>
                                 
                                 {/* Avatar */}
-                                <div className="relative shrink-0">
-                                    <img src={post.avatar} className="w-12 h-12 rounded-full border-2 border-zinc-800 object-cover"/>
-                                    {post.fixado && <div className="absolute -top-2 -right-2 bg-emerald-500 text-black p-1 rounded-full"><Pin size={10} fill="black"/></div>}
+                                <div className="relative shrink-0 w-12 h-12 rounded-full border-2 border-zinc-800 overflow-hidden">
+                                    <Image 
+                                        src={post.avatar || "https://github.com/shadcn.png"} 
+                                        alt={post.userName} 
+                                        fill 
+                                        className="object-cover" 
+                                        unoptimized
+                                    />
+                                    {post.fixado && <div className="absolute -top-2 -right-2 bg-emerald-500 text-black p-1 rounded-full z-10"><Pin size={10} fill="black"/></div>}
                                 </div>
 
                                 {/* Conteúdo */}
@@ -259,15 +327,15 @@ export default function AdminComunidadePage() {
                                     <div className="flex flex-wrap gap-2">
                                         <button onClick={() => setViewCommentsId(post.id)} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition"><Eye size={12}/> Ver Conversa</button>
                                         
-                                        <button onClick={() => togglePin(post.id, post.fixado)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.fixado ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
+                                        <button onClick={() => togglePin(post.id, !!post.fixado)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.fixado ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
                                             <Pin size={12}/> {post.fixado ? 'Desafixar' : 'Fixar no Topo'}
                                         </button>
                                         
-                                        <button onClick={() => toggleCommentsLock(post.id, post.commentsDisabled)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.commentsDisabled ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
+                                        <button onClick={() => toggleCommentsLock(post.id, !!post.commentsDisabled)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.commentsDisabled ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
                                             {post.commentsDisabled ? <><Lock size={12}/> Destrancar</> : <><Lock size={12}/> Trancar Coments</>}
                                         </button>
 
-                                        <button onClick={() => toggleBlockPost(post.id, post.blocked)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.blocked ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
+                                        <button onClick={() => toggleBlockPost(post.id, !!post.blocked)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1 transition ${post.blocked ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
                                             {post.blocked ? <><CheckCircle size={12}/> Desbloquear</> : <><Ban size={12}/> Bloquear</>}
                                         </button>
                                         
@@ -319,7 +387,7 @@ export default function AdminComunidadePage() {
                                             </p>
                                             {/* 🦈 EXIBIÇÃO DO TEXTO CORRETO DA MENSAGEM */}
                                             <p className="text-zinc-300 text-xs italic mt-1 line-clamp-3 bg-red-950/20 p-3 rounded border border-red-900/30">
-                                                "{den.postText || 'Carregando conteúdo...'}"
+                                                &quot;{den.postText || 'Carregando conteúdo...'}&quot;
                                             </p>
                                         </div>
 
@@ -365,7 +433,15 @@ export default function AdminComunidadePage() {
                       {adminComments.length === 0 && <p className="text-center text-zinc-600 text-sm py-10">Nenhum comentário neste post.</p>}
                       {adminComments.map(c => (
                           <div key={c.id} className="p-3 bg-black rounded-xl border border-zinc-800 flex gap-3">
-                              <img src={c.avatar} className="w-8 h-8 rounded-full border border-zinc-700 shrink-0"/>
+                              <div className="relative w-8 h-8 shrink-0">
+                                  <Image 
+                                    src={c.avatar || "https://github.com/shadcn.png"} 
+                                    alt={c.userName} 
+                                    fill 
+                                    className="rounded-full object-cover border border-zinc-700" 
+                                    unoptimized
+                                  />
+                              </div>
                               <div>
                                   <p className="text-[10px] font-bold text-emerald-500 mb-0.5">{c.userName} <span className="text-zinc-600 font-normal"> - {c.createdAt?.toDate().toLocaleTimeString()}</span></p>
                                   <p className="text-xs text-zinc-300">{c.texto}</p>

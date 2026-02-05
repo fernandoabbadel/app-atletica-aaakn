@@ -2,12 +2,12 @@
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
-  ArrowLeft, Plus, Trash2, Edit, Tag, DollarSign, ShoppingBag,
-  Package, AlertCircle, Search, UploadCloud, X, PieChart,
-  BarChart3, Sparkles, Zap, Flame, Check, TrendingUp, Users,
-  MousePointer2, XCircle, ExternalLink, MessageSquare, Star, CheckCircle, Clock
+  ArrowLeft, Plus, Trash2, Edit, Tag, ShoppingBag,
+  Package, UploadCloud, X, PieChart,
+  MessageSquare, Star, CheckCircle, ExternalLink, XCircle
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
 import { db } from "../../../lib/firebase";
@@ -43,13 +43,11 @@ interface Review {
     status: 'pending' | 'approved' | 'rejected';
 }
 
-const TAG_OPTIONS = [
-  { label: "Sem Etiqueta", value: "none", color: "gray" },
-  { label: "OFERTA 🔥", value: "promo", color: "red", effect: "pulse" },
-  { label: "NOVO ✨", value: "new", color: "emerald", effect: "shine" },
-  { label: "ÚLTIMAS ⚠️", value: "last", color: "orange", effect: "pulse" },
-  { label: "EXCLUSIVO 💎", value: "exclusive", color: "purple", effect: "shine" },
-];
+// Interface para Categorias do Firestore
+interface CategoriaData {
+    id: string;
+    nome: string;
+}
 
 const DEFAULT_CATEGORIES = ["Vestuário", "Acessórios", "Kits", "Ingressos"];
 
@@ -61,7 +59,7 @@ export default function AdminLojaPage() {
   const [produtos, setProdutos] = useState<ProdutoAdmin[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [categorias, setCategorias] = useState<any[]>([]);
+  const [categorias, setCategorias] = useState<CategoriaData[]>([]);
   
   const [activeTab, setActiveTab] = useState<"dashboard" | "produtos" | "pedidos" | "reviews">("dashboard");
   const [showModalProduto, setShowModalProduto] = useState(false);
@@ -89,7 +87,7 @@ export default function AdminLojaPage() {
     
     // Categorias
     const unsubCats = onSnapshot(query(collection(db, "categorias"), orderBy("nome")), (snap) => 
-        setCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        setCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() } as CategoriaData))));
 
     // Pedidos (Sem orderBy para evitar erro de índice se não tiver)
     const unsubPedidos = onSnapshot(collection(db, "orders"), (snap) => {
@@ -266,7 +264,7 @@ export default function AdminLojaPage() {
             {produtos.map((prod) => (
                 <div key={prod.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-zinc-700 transition">
                   <div className="flex items-center gap-4">
-                    <div className="relative w-16 h-16 rounded-lg bg-black overflow-hidden border border-zinc-800"><img src={prod.img} className="w-full h-full object-cover" /></div>
+                    <div className="relative w-16 h-16 rounded-lg bg-black overflow-hidden border border-zinc-800"><Image src={prod.img} alt={prod.nome} fill className="object-cover" unoptimized/></div>
                     <div>
                       <h3 className="font-bold text-white text-sm">{prod.nome}</h3>
                       <p className="text-emerald-400 font-bold text-sm mt-1">R$ {Number(prod.preco).toFixed(2)}</p>
@@ -332,7 +330,7 @@ export default function AdminLojaPage() {
                                 <div className="flex text-yellow-500">{[...Array(5)].map((_, i) => <Star key={i} size={10} className={i < rev.rating ? "fill-current" : "text-zinc-700"}/>)}</div>
                                 <span className="text-xs font-bold text-white">{rev.userName}</span>
                             </div>
-                            <p className="text-zinc-400 text-sm italic">"{rev.comment}"</p>
+                            <p className="text-zinc-400 text-sm italic">&quot;{rev.comment}&quot;</p>
                             <Link href={`/loja/${rev.productId}`} target="_blank" className="text-[10px] text-zinc-500 hover:text-white mt-1 block">Ver produto relacionado</Link>
                         </div>
                         <div className="flex flex-col gap-2">
@@ -361,7 +359,7 @@ export default function AdminLojaPage() {
              <div className="grid grid-cols-2 gap-6">
                  <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-zinc-700 rounded-xl h-40 flex items-center justify-center cursor-pointer hover:border-emerald-500 relative overflow-hidden">
                      <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageUpload}/>
-                     {uploading ? <span className="text-xs animate-pulse text-emerald-500">Enviando...</span> : formData.img ? <img src={formData.img} className="w-full h-full object-contain"/> : <div className="text-center"><UploadCloud size={32}/><span className="text-xs uppercase font-bold">Foto</span></div>}
+                     {uploading ? <span className="text-xs animate-pulse text-emerald-500">Enviando...</span> : formData.img ? <Image src={formData.img} alt="Preview" fill className="object-contain" unoptimized/> : <div className="text-center"><UploadCloud size={32}/><span className="text-xs uppercase font-bold">Foto</span></div>}
                  </div>
                  <div className="space-y-3">
                      <input type="text" placeholder="Nome" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.nome || ""} onChange={e => setFormData({...formData, nome: e.target.value})}/>
@@ -375,14 +373,14 @@ export default function AdminLojaPage() {
              </div>
 
              <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800">
-                  <div className="flex justify-between items-center mb-3 text-[10px] font-bold uppercase text-zinc-500"><span>Variantes</span></div>
-                  <div className="flex gap-2 mb-3">
-                    <input type="text" placeholder="Tam" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white uppercase" value={novaVariante.tamanho} onChange={(e) => setNovaVariante({ ...novaVariante, tamanho: e.target.value })} />
-                    <input type="text" placeholder="Cor" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.cor} onChange={(e) => setNovaVariante({ ...novaVariante, cor: e.target.value })} />
-                    <input type="number" placeholder="Qtd" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.estoque || ""} onChange={(e) => setNovaVariante({ ...novaVariante, estoque: Number(e.target.value) })} />
-                    <button onClick={handleAddVariante} className="bg-emerald-600 px-3 rounded text-white font-bold hover:bg-emerald-500"><Plus size={16} /></button>
-                  </div>
-                  <div className="space-y-1 max-h-24 overflow-y-auto">{variantesTemp.map((v) => (<div key={v.id} className="flex justify-between text-xs bg-black p-2 rounded border border-zinc-800"><span>{v.tamanho} - {v.cor}</span><span className="text-emerald-400 font-bold">{v.estoque} un</span></div>))}</div>
+                 <div className="flex justify-between items-center mb-3 text-[10px] font-bold uppercase text-zinc-500"><span>Variantes</span></div>
+                 <div className="flex gap-2 mb-3">
+                   <input type="text" placeholder="Tam" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white uppercase" value={novaVariante.tamanho} onChange={(e) => setNovaVariante({ ...novaVariante, tamanho: e.target.value })} />
+                   <input type="text" placeholder="Cor" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.cor} onChange={(e) => setNovaVariante({ ...novaVariante, cor: e.target.value })} />
+                   <input type="number" placeholder="Qtd" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.estoque || ""} onChange={(e) => setNovaVariante({ ...novaVariante, estoque: Number(e.target.value) })} />
+                   <button onClick={handleAddVariante} className="bg-emerald-600 px-3 rounded text-white font-bold hover:bg-emerald-500"><Plus size={16} /></button>
+                 </div>
+                 <div className="space-y-1 max-h-24 overflow-y-auto">{variantesTemp.map((v) => (<div key={v.id} className="flex justify-between text-xs bg-black p-2 rounded border border-zinc-800"><span>{v.tamanho} - {v.cor}</span><span className="text-emerald-400 font-bold">{v.estoque} un</span></div>))}</div>
              </div>
 
              <button onClick={handleSaveProduto} disabled={saving} className="w-full py-4 bg-emerald-600 rounded-xl font-black uppercase text-sm hover:bg-emerald-500 transition">{saving ? "Salvando..." : "Salvar Produto"}</button>
@@ -395,7 +393,10 @@ export default function AdminLojaPage() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4">
             <div className="bg-zinc-950 p-6 rounded-xl border border-zinc-800 w-full max-w-sm">
                 <h3 className="text-white font-bold mb-4">Categorias</h3>
-                <div className="flex gap-2 mb-4"><input type="text" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-white" value={categoriaNome} onChange={e => setCategoriaNome(e.target.value)}/><button onClick={handleCreateCategoria} className="bg-emerald-600 px-4 rounded text-white font-bold">Add</button></div>
+                <div className="flex gap-2 mb-4">
+                    <input type="text" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-white" value={categoriaNome} onChange={e => setCategoriaNome(e.target.value)}/>
+                    <button onClick={handleCreateCategoria} disabled={savingCategoria} className="bg-emerald-600 px-4 rounded text-white font-bold">{savingCategoria ? "..." : "Add"}</button>
+                </div>
                 <button onClick={() => setShowModalCategoria(false)} className="w-full text-zinc-500 text-xs">Fechar</button>
             </div>
         </div>

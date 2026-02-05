@@ -2,21 +2,75 @@
 
 import React, { use, useState, useEffect, useMemo } from "react";
 import { 
-  ArrowLeft, User, CheckCircle, Ban, 
-  Dumbbell, ShoppingBag, MessageCircle, Star, 
-  CreditCard, LayoutGrid, Activity, Award, 
-  Gamepad2, Coins, Flame, ShieldAlert, GraduationCap, Loader2,
-  Trophy, DollarSign, Calendar, Mail, Phone, Lock, Unlock,
+  ArrowLeft, User, Ban, 
+  Dumbbell, ShoppingBag, MessageCircle, 
+  LayoutGrid, Activity, Award, 
+  Gamepad2, Coins, ShieldAlert, GraduationCap, Loader2,
+  Trophy, DollarSign, Calendar, Mail, Phone, Lock,
   Zap, Power, Trash2, PowerOff
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useToast } from "../../../../context/ToastContext"; // 🦈 Corrected path
-import { db } from "../../../../lib/firebase"; // 🦈 Corrected path
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, deleteDoc } from "firebase/firestore";
+import { useToast } from "../../../../context/ToastContext"; 
+import { db } from "../../../../lib/firebase"; 
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, deleteDoc, Timestamp } from "firebase/firestore";
 
 // --- TIPOS AUXILIARES ---
 type TabType = "visao" | "financeiro" | "social" | "games" | "seguranca";
+
+interface UserData {
+    id: string;
+    nome: string;
+    email: string;
+    foto?: string;
+    matricula?: string;
+    turma?: string;
+    telefone?: string;
+    status: 'ativo' | 'bloqueado';
+    level?: number;
+    xp?: number;
+    sharkCoins?: number;
+    plano_badge?: string;
+    tier?: string;
+    patente?: string;
+    createdAt?: Timestamp;
+    [key: string]: any; // Flexibilidade para outros campos
+}
+
+interface Post {
+    id: string;
+    texto: string;
+    likes?: string[];
+    comentarios?: number;
+    createdAt?: Timestamp;
+}
+
+interface Order {
+    id: string;
+    itens: number;
+    total: number;
+    status: string;
+    createdAt?: Timestamp;
+}
+
+interface Achievement {
+    id: string;
+    achievementTitle: string;
+    timestamp?: Timestamp;
+}
+
+interface Match {
+    id: string;
+    game: string;
+    result: 'win' | 'lose';
+}
+
+interface GymLog {
+    id: string;
+    local: string;
+    date: string;
+}
 
 export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -24,14 +78,14 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
   const { addToast } = useToast();
   
   // Estado Principal
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   
   // Estados de Dados
-  const [posts, setPosts] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [achievements, setAchievements] = useState<any[]>([]);
-  const [matches, setMatches] = useState<any[]>([]);
-  const [gymLogs, setGymLogs] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [gymLogs, setGymLogs] = useState<GymLog[]>([]);
   
   // Controle de UI
   const [activeTab, setActiveTab] = useState<TabType>("visao");
@@ -51,7 +105,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                   router.push('/admin/usuarios');
                   return;
               }
-              setUser({ id: userSnap.id, ...userSnap.data() });
+              setUser({ id: userSnap.id, ...userSnap.data() } as UserData);
 
               // B. Buscas Paralelas
               const [postsSnap, ordersSnap, achSnap, matchesSnap, gymSnap] = await Promise.all([
@@ -62,11 +116,11 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                   getDocs(query(collection(db, "gym_logs"), where("userId", "==", id), orderBy("date", "desc"), limit(30)))
               ]);
 
-              setPosts(postsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-              setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-              setAchievements(achSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-              setMatches(matchesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-              setGymLogs(gymSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+              setPosts(postsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post)));
+              setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+              setAchievements(achSnap.docs.map(d => ({ id: d.id, ...d.data() } as Achievement)));
+              setMatches(matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match)));
+              setGymLogs(gymSnap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog)));
 
           } catch (e) {
               console.error(e);
@@ -76,13 +130,14 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
           }
       };
       fetchDossier();
-  }, [id]);
+  }, [id, addToast, router]);
 
   // --- CÁLCULO LTV ---
   const ltv = useMemo(() => orders.reduce((acc, curr) => acc + (curr.total || 0), 0), [orders]);
 
   // --- AÇÃO: ATIVAR / DESATIVAR (Toggle Status) ---
   const handleToggleStatus = async () => {
+      if (!user) return;
       // Se estiver ativo, vira bloqueado (banned/suspenso). Se não, vira ativo.
       const newStatus = user.status === 'ativo' ? 'bloqueado' : 'ativo';
       const msg = newStatus === 'bloqueado' 
@@ -189,8 +244,14 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                 {/* Avatar & Badges */}
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative">
-                        <div className="w-36 h-36 rounded-full p-1 bg-gradient-to-br from-zinc-700 to-black shadow-2xl">
-                            <img src={user.foto || "https://github.com/shadcn.png"} className={`w-full h-full rounded-full object-cover border-4 border-[#050505] ${user.status !== 'ativo' ? 'grayscale' : ''}`}/>
+                        <div className="w-36 h-36 rounded-full p-1 bg-gradient-to-br from-zinc-700 to-black shadow-2xl overflow-hidden relative">
+                            <Image 
+                                src={user.foto || "https://github.com/shadcn.png"} 
+                                alt={user.nome}
+                                fill
+                                className={`rounded-full object-cover border-4 border-[#050505] ${user.status !== 'ativo' ? 'grayscale' : ''}`}
+                                unoptimized
+                            />
                         </div>
                         <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full border-4 border-[#050505] shadow-lg flex items-center gap-1">
                             LV {user.level || 1}
@@ -349,7 +410,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                     <div className="space-y-3">
                         {posts.map(post => (
                             <div key={post.id} className="p-3 bg-black/30 rounded-xl border border-zinc-800">
-                                <p className="text-xs text-zinc-300 italic mb-2">"{post.texto}"</p>
+                                <p className="text-xs text-zinc-300 italic mb-2">&quot;{post.texto}&quot;</p>
                                 <div className="flex gap-3 text-[10px] text-zinc-500 font-bold uppercase">
                                     <span>❤️ {post.likes?.length || 0} Likes</span>
                                     <span>💬 {post.comentarios || 0} Coments</span>

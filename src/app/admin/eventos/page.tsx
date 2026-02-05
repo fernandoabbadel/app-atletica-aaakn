@@ -2,10 +2,10 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { 
-  ArrowLeft, Plus, Edit, Trash2, Calendar, MapPin, 
+  ArrowLeft, Plus, Edit, Trash2, Calendar, 
   Image as ImageIcon, X, Tag, Users, 
   CheckCircle, Download, BarChart3, Lock, MoveVertical,
-  Star, MessageCircle, Check, RotateCcw, Loader2, Wallet, Phone, Landmark
+  Star, MessageCircle, Check, RotateCcw, Loader2, Wallet
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image"; 
@@ -30,35 +30,36 @@ interface Lote {
 }
 
 interface PollOption {
-    text: string;
-    votes: number;
-    creator?: string; 
-    creatorName?: string;
-    creatorAvatar?: string;
+  text: string;
+  votes: number;
+  creator?: string; 
+  creatorName?: string;
+  creatorAvatar?: string;
 }
 
 interface Poll {
-    id: string;
-    question: string;
-    options: PollOption[];
-    allowUserOptions: boolean;
-    voters: string[];
+  id: string;
+  question: string;
+  options: PollOption[];
+  allowUserOptions: boolean;
+  voters: string[];
 }
 
 interface Participante {
-    id: string; 
-    userId: string;
-    userName: string;
-    userAvatar: string;
-    userTurma: string;
-    status: "going" | "maybe" | "comprador"; 
-    pagamento?: "pago" | "pendente" | "analise"; 
-    lote?: string;
-    quantidade?: number;
-    valorTotal?: string;
-    dataAprovacao?: Timestamp | Date | null; 
-    aprovadoPor?: string | null; 
-    tipo: 'rsvp' | 'venda'; 
+  id: string; 
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userTurma: string;
+  status: "going" | "maybe" | "comprador"; 
+  pagamento?: "pago" | "pendente" | "analise"; 
+  lote?: string;
+  quantidade?: number;
+  valorTotal?: string;
+  dataAprovacao?: Timestamp | Date | null; 
+  aprovadoPor?: string | null; 
+  tipo: 'rsvp' | 'venda';
+  origemVenda?: boolean; // 🦈 Adicionado para evitar @ts-ignore
 }
 
 interface Evento {
@@ -183,19 +184,23 @@ export default function AdminEventosPage() {
 
               const map = new Map<string, Participante>();
 
-              rsvps.forEach((r: any) => {
-                  map.set(r.userId, {
-                      id: r.id, userId: r.userId, userName: r.userName, userAvatar: r.userAvatar,
-                      userTurma: r.userTurma, status: r.status, pagamento: "pendente",
+              // 🦈 Tipagem explícita para evitar 'any'
+              rsvps.forEach((r) => {
+                  const dadosRsvp = r as unknown as Participante; // Asserção segura baseada no map acima
+                  map.set(dadosRsvp.userId, {
+                      id: dadosRsvp.id, userId: dadosRsvp.userId, userName: dadosRsvp.userName, userAvatar: dadosRsvp.userAvatar,
+                      userTurma: dadosRsvp.userTurma, status: dadosRsvp.status, pagamento: "pendente",
                       lote: "-", valorTotal: "-", tipo: 'rsvp'
                   });
               });
 
-              vendas.forEach((v: any) => {
-                  const existing = map.get(v.userId);
-                  map.set(v.userId, {
-                      ...v, userAvatar: existing?.userAvatar || "https://github.com/shadcn.png", status: "going",
-                      // @ts-ignore
+              vendas.forEach((v) => {
+                  const dadosVenda = v as unknown as Participante;
+                  const existing = map.get(dadosVenda.userId);
+                  map.set(dadosVenda.userId, {
+                      ...dadosVenda, 
+                      userAvatar: existing?.userAvatar || "https://github.com/shadcn.png", 
+                      status: "going",
                       origemVenda: true 
                   });
               });
@@ -209,7 +214,7 @@ export default function AdminEventosPage() {
           }
       };
       fetchLista();
-  }, [showGestaoModal]);
+  }, [showGestaoModal, addToast]); // 🦈 Dependência addToast adicionada
 
   // GESTÃO ENQUETES
   useEffect(() => {
@@ -233,7 +238,7 @@ export default function AdminEventosPage() {
   const handleOpenCreate = () => {
       setNovoEvento({ 
           titulo: "", data: "", hora: "", local: "", tipo: "Festa", destaque: "", mapsUrl: "", imagem: "", descricao: "", lotes: [], imagePositionY: 50,
-          pixChave: "", pixBanco: "", pixTitular: "", contatoComprovante: "" // Reset novos campos
+          pixChave: "", pixBanco: "", pixTitular: "", contatoComprovante: ""
       });
       setEditingId(null);
       setIsEditing(false);
@@ -248,7 +253,6 @@ export default function AdminEventosPage() {
           imagePositionY: evento.imagePositionY ?? 50,
           data: isValidDate ? evento.data : "",
           hora: isValidTime ? evento.hora : "",
-          // Garantir que campos antigos não venham undefined
           pixChave: evento.pixChave || "",
           pixBanco: evento.pixBanco || "",
           pixTitular: evento.pixTitular || "",
@@ -285,7 +289,7 @@ export default function AdminEventosPage() {
             addToast("Evento criado!", "success");
         }
         setShowModal(false);
-    } catch (e) {
+    } catch (_) {
         addToast("Erro ao salvar.", "error");
     }
   };
@@ -295,7 +299,7 @@ export default function AdminEventosPage() {
       try {
           await deleteDoc(doc(db, "eventos", id));
           addToast("Evento cancelado.", "info");
-      } catch(e) {
+      } catch(_) {
           addToast("Erro ao excluir.", "error");
       }
     }
@@ -351,14 +355,14 @@ export default function AdminEventosPage() {
       try {
           await updateDoc(doc(db, "eventos", evento.id), { status: newStatus });
           addToast(`Evento marcado como ${newStatus}.`, "info");
-      } catch(e) { addToast("Erro ao atualizar status.", "error"); }
+      } catch(_) { addToast("Erro ao atualizar status.", "error"); }
   };
 
   const toggleLowStock = async (evento: Evento) => {
       try {
           await updateDoc(doc(db, "eventos", evento.id), { isLowStock: !evento.isLowStock });
           addToast(`Status de vagas ${!evento.isLowStock ? 'ATIVADO' : 'DESATIVADO'}`, "success");
-      } catch (e) {
+      } catch (_) {
           addToast("Erro ao atualizar.", "error");
       }
   };
@@ -412,7 +416,7 @@ export default function AdminEventosPage() {
           });
           setNovaEnquete({ question: "", allowUserOptions: true });
           addToast("Enquete criada!", "success");
-      } catch (e) { addToast("Erro ao criar enquete.", "error"); }
+      } catch (_) { addToast("Erro ao criar enquete.", "error"); }
   };
 
   const handleDeletePoll = async (pollId: string) => {
@@ -421,7 +425,7 @@ export default function AdminEventosPage() {
       try {
           await deleteDoc(doc(db, "eventos", showPollModal.id, "enquetes", pollId));
           addToast("Enquete excluída.", "info");
-      } catch (e) { addToast("Erro ao excluir.", "error"); }
+      } catch (_) { addToast("Erro ao excluir.", "error"); }
   };
 
   const handleDeleteOption = async (poll: Poll, optionIndex: number) => {
@@ -431,7 +435,7 @@ export default function AdminEventosPage() {
       try {
           await updateDoc(doc(db, "eventos", showPollModal.id, "enquetes", poll.id), { options: newOptions });
           addToast("Opção removida.", "info");
-      } catch (e) { addToast("Erro ao remover opção.", "error"); }
+      } catch (_) { addToast("Erro ao remover opção.", "error"); }
   };
 
   return (
@@ -536,7 +540,7 @@ export default function AdminEventosPage() {
       {/* MODAL ENQUETES (MANTIDO) */}
       {showPollModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={(e) => e.stopPropagation()}>
-              {/* Conteúdo do Modal de Enquetes (Igual ao anterior, abreviado para caber) */}
+              {/* Conteúdo do Modal de Enquetes */}
               <div className="bg-zinc-900 w-full max-w-lg rounded-2xl border border-zinc-800 flex flex-col h-[80vh]">
                   <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-black/40">
                       <div><h2 className="font-black text-white text-lg uppercase flex items-center gap-2"><MessageCircle size={20} className="text-purple-500"/> Enquetes</h2></div>

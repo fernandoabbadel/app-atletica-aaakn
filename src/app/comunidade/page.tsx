@@ -5,13 +5,14 @@ import {
   ArrowLeft, Heart, MessageCircle, MoreHorizontal, Flame, 
   Image as ImageIcon, ShieldCheck, Pin, X, Loader2, AlertTriangle, Send, Trash2, Flag,
   Crown, Star, Ghost, Lock, Zap, Gem, Trophy, Fish, User, 
-  Swords, Skull, Rocket, Medal, RefreshCw, ThumbsUp, LayoutGrid, UserPlus, Target
+  Swords, Skull, Rocket, Medal, ThumbsUp, LayoutGrid, UserPlus, Target
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { db, storage } from "../../lib/firebase";
 import { 
   collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, 
-  updateDoc, doc, arrayUnion, arrayRemove, limit, deleteDoc, Timestamp, increment, getDoc 
+  updateDoc, doc, arrayUnion, arrayRemove, limit, deleteDoc, Timestamp, increment 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext";
@@ -76,6 +77,13 @@ interface CommentData {
     createdAt: Timestamp | null;
 }
 
+// 🦈 Interface global para window (evitar any)
+declare global {
+    interface Window {
+        allPostsRaw: PostData[];
+    }
+}
+
 // --- CONSTANTES ---
 
 const CATEGORIAS_OFICIAIS = [
@@ -113,7 +121,8 @@ const formatCustomDate = (timestamp: Timestamp | null | undefined) => {
 
 // --- COMPONENTES ---
 
-const UserBadges = ({ userData }: { userData: any }) => {
+// 🦈 UserBadges tipado corretamente (Fim do any)
+const UserBadges = ({ userData }: { userData: Partial<PostData | CommentData> }) => {
     const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
     
     // 1. Definição dos Ícones
@@ -123,13 +132,10 @@ const UserBadges = ({ userData }: { userData: any }) => {
     const rawPatentIcon = userData?.patente_icon || 'fish';
     const patentIconName = String(rawPatentIcon).toLowerCase().trim();
     
-    // 2. Definição das Cores (SEPARADAS) 🦈 FIX CRÍTICO
-    
-    // Cor do Plano (Para o ícone do plano)
+    // 2. Definição das Cores
     const rawPlanColor = userData?.plano_cor || "text-zinc-400";
     const planColorClass = rawPlanColor.startsWith('text-') ? rawPlanColor : (PLAN_COLORS[rawPlanColor] || "text-zinc-400");
 
-    // Cor da Patente (Para o ícone da patente)
     const rawPatentColor = userData?.patente_cor || "text-zinc-400";
     const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
 
@@ -149,20 +155,14 @@ const UserBadges = ({ userData }: { userData: any }) => {
 
     return (
         <div className="flex items-center gap-1.5 ml-1 select-none" title={tooltipText}>
-            
-            {/* 1. Ícone de Admin */}
             {isAdmin && (
                 <span className="flex items-center bg-red-500/10 p-0.5 rounded border border-red-500/20">
                     <ShieldCheck size={10} className="text-red-500" />
                 </span>
             )}
-
-            {/* 2. Ícone do Plano (Usa a cor do Plano) */}
             <span className={`flex items-center opacity-80 ${planColorClass}`}>
                 <PlanIcon size={12} />
             </span>
-
-            {/* 3. Ícone da Patente (Usa a cor da Patente) */}
             {planIconName !== patentIconName && (
                 <span className={`flex items-center ${patentColorClass}`}> 
                     <PatentIcon size={14} className="drop-shadow-sm" />
@@ -178,7 +178,8 @@ export default function ComunidadePage() {
   
   const [activeTab, setActiveTab] = useState("Geral");
   const [activeFilter, setActiveFilter] = useState<"recent" | "likes" | "comments" | "hype">("recent");
-  const [modalidades, setModalidades] = useState<string[]>(CATEGORIAS_OFICIAIS);
+  // 🦈 Removido setModalidades não utilizado
+  const [modalidades] = useState<string[]>(CATEGORIAS_OFICIAIS);
   
   const [posts, setPosts] = useState<PostData[]>([]);
   const [config, setConfig] = useState<AppConfig>({});
@@ -218,7 +219,8 @@ export default function ComunidadePage() {
       }
       
       const filteredByTab = data.filter(p => p.categoria === activeTab);
-      let finalData = filteredByTab.slice(0, 20);
+      // 🦈 Correção de let -> const (prefer-const)
+      const finalData = filteredByTab.slice(0, 20);
 
       if (activeFilter === 'likes') finalData.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
       if (activeFilter === 'comments') finalData.sort((a, b) => (b.comentarios || 0) - (a.comentarios || 0));
@@ -234,7 +236,8 @@ export default function ComunidadePage() {
       });
       
       setPosts(finalData);
-      (window as any).allPostsRaw = data; 
+      // 🦈 Tipagem segura via declare global
+      window.allPostsRaw = data; 
       setLoading(false);
     });
     return () => unsubscribe();
@@ -244,7 +247,8 @@ export default function ComunidadePage() {
       if (!commentModal) return;
       const q = query(collection(db, `posts/${commentModal}/comments`), orderBy("createdAt", "asc"));
       const unsub = onSnapshot(q, (snap) => {
-          let comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as CommentData));
+          // 🦈 Correção de let -> const (prefer-const)
+          const comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as CommentData));
           comments.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
           setCommentsList(comments);
       });
@@ -252,13 +256,13 @@ export default function ComunidadePage() {
   }, [commentModal]);
 
   const getRecentCount = (cat: string) => {
-      const all: PostData[] = (window as any).allPostsRaw || [];
+      const all = window.allPostsRaw || [];
       return all.filter(p => p.categoria === cat && p.isRecent).length;
   };
 
   const handlePublish = async () => {
     if (!user) return addToast("Faça login!", "error");
-    if (isPublishing) return; // 🚫 TRAVA ANTI-SPAM
+    if (isPublishing) return;
 
     const securityCheck = await Security.canUserPost(user.uid);
     if (!securityCheck.allowed) return addToast(securityCheck.reason || "Aguarde...", "error");
@@ -338,7 +342,7 @@ export default function ComunidadePage() {
       if (!user) return addToast("Faça login!", "error");
       if (!newComment.trim()) return;
       if (!commentModal) return; 
-      if (isPostingComment) return; // 🚫 TRAVA ANTI-SPAM
+      if (isPostingComment) return;
 
       const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
       const myCommentsToday = commentsList.filter(c => 
@@ -504,7 +508,13 @@ export default function ComunidadePage() {
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
       {/* CAPA & HEADER */}
       <div className="h-48 w-full relative overflow-hidden group">
-          <img src={config.capaUrl || "/carteirinha-bg.jpg"} className="w-full h-full object-cover opacity-40 blur-sm scale-110 group-hover:scale-100 transition duration-1000" />
+          <Image 
+            src={config.capaUrl || "/carteirinha-bg.jpg"} 
+            fill
+            className="object-cover opacity-40 blur-sm scale-110 group-hover:scale-100 transition duration-1000" 
+            alt="Capa Comunidade"
+            unoptimized
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/50 to-transparent" />
           <div className="absolute top-4 left-4 z-20"><Link href="/dashboard" className="p-2 bg-black/50 rounded-full text-white hover:bg-emerald-500 hover:text-black transition"><ArrowLeft size={24}/></Link></div>
           <div className="absolute bottom-4 left-6 z-20">
@@ -544,7 +554,15 @@ export default function ComunidadePage() {
         {/* POSTAR */}
         <div className="p-4 border-b border-zinc-900 bg-zinc-900/20">
             <div className="flex gap-3">
-                <img src={user?.foto || "https://github.com/shadcn.png"} className="w-10 h-10 rounded-full shrink-0 object-cover" />
+                <div className="relative w-10 h-10 shrink-0">
+                    <Image 
+                        src={user?.foto || "https://github.com/shadcn.png"} 
+                        fill 
+                        className="rounded-full object-cover" 
+                        alt="Avatar"
+                        unoptimized
+                    />
+                </div>
                 <div className="flex-1 relative">
                     <textarea 
                         value={newPostText} 
@@ -561,7 +579,6 @@ export default function ComunidadePage() {
             <div className="flex justify-between items-center mt-3">
                 <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
                 
-                {/* 🦈 BOTÃO TRAVADO SE JÁ ESTIVER PUBLICANDO */}
                 <button 
                     onClick={handlePublish} 
                     disabled={isPublishing} 
@@ -580,7 +597,11 @@ export default function ComunidadePage() {
                     {post.blocked && <div className="bg-red-500/10 text-red-500 text-[10px] font-bold uppercase px-2 py-1 mb-2 rounded border border-red-500/20 inline-block">🚫 Post Bloqueado (Admin)</div>}
 
                     <div className="flex gap-3">
-                        <Link href={`/perfil/${post.userId}`}><img src={post.avatar} className="w-10 h-10 rounded-full border border-zinc-800 object-cover" /></Link>
+                        <Link href={`/perfil/${post.userId}`}>
+                            <div className="w-10 h-10 relative">
+                                <Image src={post.avatar} fill className="rounded-full border border-zinc-800 object-cover" alt={post.userName} unoptimized/>
+                            </div>
+                        </Link>
                         <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start">
                                 <div>
@@ -598,17 +619,21 @@ export default function ComunidadePage() {
                                 <button onClick={() => setMenuOpen(menuOpen === post.id ? null : post.id)} className="text-zinc-600 hover:text-white p-1"><MoreHorizontal size={16}/></button>
                                 {menuOpen === post.id && (
                                     <div className="absolute right-4 top-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-10 overflow-hidden min-w-[140px]">
-                                        {user?.role?.includes('admin') && <button onClick={() => updateDoc(doc(db, "posts", post.id), {fixado: !post.fixado})} className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-zinc-800 flex items-center gap-2"><Pin size={14}/> {post.fixado ? 'Desafixar' : 'Fixar'}</button>}
-                                        {(user?.uid === post.userId || user?.role?.includes('admin')) && (
-                                            <button onClick={() => handleDeletePost(post)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-zinc-800 flex items-center gap-2"><Trash2 size={14}/> Excluir</button>
-                                        )}
-                                        <button onClick={() => {setReportModal(post.id); setReportTargetType("post"); setMenuOpen(null)}} className="w-full text-left px-4 py-3 text-xs font-bold text-yellow-500 hover:bg-zinc-800 flex items-center gap-2"><Flag size={14}/> Denunciar</button>
+                                            {user?.role?.includes('admin') && <button onClick={() => updateDoc(doc(db, "posts", post.id), {fixado: !post.fixado})} className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-zinc-800 flex items-center gap-2"><Pin size={14}/> {post.fixado ? 'Desafixar' : 'Fixar'}</button>}
+                                            {(user?.uid === post.userId || user?.role?.includes('admin')) && (
+                                                <button onClick={() => handleDeletePost(post)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-zinc-800 flex items-center gap-2"><Trash2 size={14}/> Excluir</button>
+                                            )}
+                                            <button onClick={() => {setReportModal(post.id); setReportTargetType("post"); setMenuOpen(null)}} className="w-full text-left px-4 py-3 text-xs font-bold text-yellow-500 hover:bg-zinc-800 flex items-center gap-2"><Flag size={14}/> Denunciar</button>
                                     </div>
                                 )}
                             </div>
 
                             <p className="text-sm text-zinc-300 mt-2 whitespace-pre-line leading-relaxed break-words">{post.texto}</p>
-                            {post.imagem && <img src={post.imagem} className="mt-3 rounded-xl border border-zinc-800 w-full max-h-96 object-cover" />}
+                            {post.imagem && (
+                                <div className="mt-3 relative w-full h-64 sm:h-96 rounded-xl overflow-hidden border border-zinc-800">
+                                    <Image src={post.imagem} fill className="object-cover" alt="Post Image" unoptimized />
+                                </div>
+                            )}
                             
                             <div className="flex justify-between mt-4 max-w-xs text-zinc-500">
                                 <button onClick={() => setCommentModal(post.id)} className="flex items-center gap-1.5 hover:text-blue-400 transition">
@@ -644,7 +669,11 @@ export default function ComunidadePage() {
                       {commentsList.length === 0 && <p className="text-center text-zinc-600 text-xs py-10">Nenhum comentário ainda.</p>}
                       {commentsList.map(comment => (
                           <div key={comment.id} className="flex gap-3 group">
-                              <Link href={`/perfil/${comment.userId}`}><img src={comment.avatar} className="w-8 h-8 rounded-full object-cover border border-zinc-700"/></Link>
+                              <Link href={`/perfil/${comment.userId}`}>
+                                  <div className="w-8 h-8 relative">
+                                      <Image src={comment.avatar} fill className="rounded-full object-cover border border-zinc-700" alt={comment.userName} unoptimized/>
+                                  </div>
+                              </Link>
                               <div className="flex-1">
                                   <div className="bg-zinc-800/50 p-3 rounded-2xl rounded-tl-none border border-zinc-800/50 w-full">
                                       <div className="flex items-center justify-between">
@@ -679,7 +708,6 @@ export default function ComunidadePage() {
                   {!currentPostCommentsDisabled ? (
                       <div className="p-3 border-t border-zinc-800 bg-black flex gap-2 sm:rounded-b-3xl">
                           <input type="text" value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Escreva..." className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 text-sm text-white outline-none focus:border-emerald-500" onKeyDown={e => e.key === 'Enter' && handleComment()}/>
-                          {/* 🦈 BOTÃO TRAVADO NO COMENTÁRIO TAMBÉM */}
                           <button onClick={handleComment} disabled={!newComment.trim() || isPostingComment} className={`p-2.5 rounded-full text-white transition ${isPostingComment ? 'bg-zinc-700 opacity-50' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
                               {isPostingComment ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}
                           </button>

@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { 
   ArrowLeft, Search, Filter, ShieldAlert, 
   PlusCircle, Edit, Trash2, LogIn, AlertTriangle, Clock
 } from "lucide-react";
 import Link from "next/link";
-import { format } from "date-fns"; // Se não tiver, use JS puro (mostro abaixo)
+// 🦈 Removidos imports não utilizados (useEffect, format)
 
-// MOCK PARA VISUALIZAÇÃO (Depois trocamos pelo useEffect do Firebase)
+// MOCK PARA VISUALIZAÇÃO
 const LOGS_MOCK = [
   { id: 1, usuario: "Maria Master", acao: "CREATE", local: "Eventos", detalhe: "Criou o evento 'Intermed 2026'", data: new Date() },
   { id: 2, usuario: "João Gestor", acao: "UPDATE", local: "Loja", detalhe: "Alterou preço da Caneca para R$ 35,00", data: new Date(Date.now() - 3600000) },
@@ -17,7 +17,8 @@ const LOGS_MOCK = [
 ];
 
 export default function AdminLogsPage() {
-  const [logs, setLogs] = useState(LOGS_MOCK);
+  // 🦈 Removido setLogs pois logs são estáticos por enquanto
+  const [logs] = useState(LOGS_MOCK);
   const [busca, setBusca] = useState("");
 
   // Ícone baseado na ação

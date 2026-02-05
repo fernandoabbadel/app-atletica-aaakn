@@ -1,38 +1,44 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Ticket, ShoppingBag, CreditCard, Clock, CheckCircle, XCircle, Package } from "lucide-react";
+import { ArrowLeft, Ticket, ShoppingBag, CreditCard, Clock, CheckCircle, XCircle, Package, LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../../context/AuthContext";
 import { db } from "../../../lib/firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, Timestamp } from "firebase/firestore";
 
-// Componente de Aba
-function TabButton({ label, active, onClick, icon: Icon }: any) {
-    return (
-        <button 
-            onClick={onClick}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center justify-center gap-2 ${active ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
-        >
-            <Icon size={14}/> {label}
-        </button>
-    );
+// --- TIPAGEM ---
+interface TabButtonProps {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    icon: LucideIcon;
+}
+
+// Interface unificada para exibição
+interface PedidoUnificado {
+    id: string;
+    titulo: string;
+    subtitulo: string;
+    valor: number;
+    status: 'aprovado' | 'rejeitado' | 'pendente';
+    data: Date;
+    tipo: 'evento' | 'loja' | 'plano';
 }
 
 export default function MeusPedidosPage() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<'eventos' | 'loja' | 'planos'>('eventos');
-    const [pedidos, setPedidos] = useState<any[]>([]);
+    const [pedidos, setPedidos] = useState<PedidoUnificado[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user) return;
         setLoading(true);
 
-        // Define qual coleção buscar baseado na aba
         let collectionName = "solicitacoes_ingressos"; // Eventos (Default)
-        if (activeTab === 'loja') collectionName = "pedidos_loja";
-        if (activeTab === 'planos') collectionName = "adesoes_planos"; 
+        if (activeTab === 'loja') collectionName = "pedidos_loja"; // Nome da coleção no Firebase pode variar, ajuste se necessário (ex: 'store_orders')
+        if (activeTab === 'planos') collectionName = "solicitacoes_adesao"; // Ajustado para o nome correto usado em outros arquivos
 
         // 🦈 OTIMIZAÇÃO: Query simples (sem orderBy) para evitar erro de índice
         const q = query(
@@ -41,15 +47,47 @@ export default function MeusPedidosPage() {
         );
 
         const unsub = onSnapshot(q, (snap) => {
-            const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // 🦈 Normalização dos dados para interface unificada
+            const listaNormalizada: PedidoUnificado[] = rawList.map((item: any) => {
+                let titulo = "Item";
+                let subtitulo = "";
+                let valor = 0;
+                let data = new Date();
+
+                // Tratamento de Data
+                if (item.dataSolicitacao instanceof Timestamp) data = item.dataSolicitacao.toDate();
+                else if (item.createdAt instanceof Timestamp) data = item.createdAt.toDate();
+                else if (item.data) data = new Date(item.data);
+
+                if (activeTab === 'eventos') {
+                    titulo = item.eventoNome || "Ingresso";
+                    subtitulo = `${item.quantidade || 1}x ${item.loteNome || "Lote Único"}`;
+                    valor = item.valorTotal || 0;
+                } else if (activeTab === 'loja') {
+                    titulo = `Pedido #${item.id.slice(0,6).toUpperCase()}`;
+                    subtitulo = `${item.itens?.length || 0} itens`;
+                    valor = item.total || 0;
+                } else if (activeTab === 'planos') {
+                    titulo = item.planoNome || "Adesão";
+                    subtitulo = "Anuidade";
+                    valor = item.valor || 0;
+                }
+
+                return {
+                    id: item.id,
+                    titulo,
+                    subtitulo,
+                    valor,
+                    status: item.status || 'pendente',
+                    data,
+                    tipo: activeTab === 'eventos' ? 'evento' : activeTab === 'loja' ? 'loja' : 'plano'
+                };
+            });
             
             // 🦈 Ordenação via JavaScript (Client-side)
-            // Mais seguro e flexível para listas de usuário
-            const listaOrdenada = lista.sort((a: any, b: any) => {
-                const dateA = a.dataSolicitacao?.toDate ? a.dataSolicitacao.toDate() : new Date(0);
-                const dateB = b.dataSolicitacao?.toDate ? b.dataSolicitacao.toDate() : new Date(0);
-                return dateB.getTime() - dateA.getTime(); // Mais recente primeiro
-            });
+            const listaOrdenada = listaNormalizada.sort((a, b) => b.data.getTime() - a.data.getTime());
 
             setPedidos(listaOrdenada);
             setLoading(false);
@@ -57,6 +95,18 @@ export default function MeusPedidosPage() {
 
         return () => unsub();
     }, [user, activeTab]);
+
+    // Componente Interno para Botão de Aba
+    function TabButton({ label, active, onClick, icon: Icon }: TabButtonProps) {
+        return (
+            <button 
+                onClick={onClick}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center justify-center gap-2 ${active ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+            >
+                <Icon size={14}/> {label}
+            </button>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-[#050505] text-white pb-24 font-sans">
@@ -94,20 +144,20 @@ export default function MeusPedidosPage() {
                             <div className="flex justify-between items-start pl-2">
                                 <div>
                                     <h3 className="font-bold text-sm text-white">
-                                        {activeTab === 'eventos' ? (pedido.eventoNome || "Evento") : activeTab === 'loja' ? `Pedido #${pedido.id.slice(0,6).toUpperCase()}` : (pedido.planoNome || "Adesão")}
+                                        {pedido.titulo}
                                     </h3>
                                     <p className="text-xs text-zinc-400">
-                                        {activeTab === 'eventos' ? `${pedido.quantidade || 1}x ${pedido.loteNome || "Ingresso"}` : activeTab === 'loja' ? `${pedido.itens?.length || 0} itens` : "Adesão Anual"}
+                                        {pedido.subtitulo}
                                     </p>
                                 </div>
                                 <span className="font-mono font-bold text-emerald-400 text-sm">
-                                    R$ {pedido.valorTotal || pedido.total || pedido.valor || "0,00"}
+                                    R$ {pedido.valor.toFixed(2)}
                                 </span>
                             </div>
 
                             <div className="flex justify-between items-center mt-2 pl-2 border-t border-white/5 pt-2">
                                 <span className="text-[10px] text-zinc-500 font-medium">
-                                    {pedido.dataSolicitacao?.toDate ? pedido.dataSolicitacao.toDate().toLocaleDateString('pt-BR') : "Data desconhecida"}
+                                    {pedido.data.toLocaleDateString('pt-BR')}
                                 </span>
                                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded flex items-center gap-1 ${
                                     pedido.status === 'aprovado' ? 'bg-emerald-500/10 text-emerald-500' : 

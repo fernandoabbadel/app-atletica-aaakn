@@ -7,21 +7,22 @@ import { ShieldAlert, ArrowLeft } from "lucide-react";
 export default function SemPermissao() {
   const [frase, setFrase] = useState("Acesso Negado.");
 
-  // Frases de "Barreira" com humor médico/atlética
-  const frases = [
-    "Sem CRM para realizar essa cirurgia, doutor(a). 🚫",
-    "Você nadou fundo demais... volte para o raso. 🦈",
-    "Área de isolamento. Risco biológico (e de ban). ☣️",
-    "Acesso restrito apenas para Predadores Alfa.",
-    "Opa! Você bateu num recife de corais. Dê meia volta.",
-    "Nem o Harrison explica o que você tá fazendo aqui. 📚",
-    "Sua carteirinha não abre essa porta. Tente a Diretoria.",
-    "Calma, bixo! Você ainda não tem level para essa área.",
-    "Área estéril. Sua entrada contaminaria o ambiente. 😷",
-    "Acesso negado. O tubarão está de olho. 👀",
-  ];
-
   useEffect(() => {
+    // 🦈 CORREÇÃO: Movi a constante para dentro do useEffect
+    // Isso remove a necessidade de adicionar 'frases' no array de dependências
+    const frases = [
+      "Sem CRM para realizar essa cirurgia, doutor(a). 🚫",
+      "Você nadou fundo demais... volte para o raso. 🦈",
+      "Área de isolamento. Risco biológico (e de ban). ☣️",
+      "Acesso restrito apenas para Predadores Alfa.",
+      "Opa! Você bateu num recife de corais. Dê meia volta.",
+      "Nem o Harrison explica o que você tá fazendo aqui. 📚",
+      "Sua carteirinha não abre essa porta. Tente a Diretoria.",
+      "Calma, bixo! Você ainda não tem level para essa área.",
+      "Área estéril. Sua entrada contaminaria o ambiente. 😷",
+      "Acesso negado. O tubarão está de olho. 👀",
+    ];
+
     // Escolhe frase aleatória apenas uma vez na montagem
     const randomIndex = Math.floor(Math.random() * frases.length);
     setFrase(frases[randomIndex]);
@@ -57,8 +58,9 @@ export default function SemPermissao() {
             <div className="h-1 w-24 bg-orange-600 mx-auto rounded-full"></div>
         </div>
 
+        {/* 🦈 CORREÇÃO: Substituí aspas literais por &quot; */}
         <p className="text-zinc-400 text-lg font-medium italic leading-relaxed">
-          "{frase}"
+          &quot;{frase}&quot;
         </p>
 
         {/* BOTÃO DE VOLTAR */}

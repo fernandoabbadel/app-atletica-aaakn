@@ -29,7 +29,10 @@ export async function uploadImage(file: File, path: string): Promise<UploadResul
     const url = await getDownloadURL(snapshot.ref);
     
     return { url, error: null };
-  } catch (error: any) {
+  } catch (error: unknown) { 
+    // 🦈 CORREÇÃO: Trocamos 'any' por 'unknown'. 
+    // O TypeScript prefere que assumamos que não sabemos o que é o erro, 
+    // mas o console.error sabe lidar com ele.
     console.error("Erro Crítico no Upload:", error);
     return { url: null, error: "Falha ao subir imagem. Tente novamente." };
   }

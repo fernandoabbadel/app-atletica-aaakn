@@ -48,7 +48,9 @@ export const repairUserProfile = async (uid: string) => {
     }
 
     const currentData = userSnap.data();
-    const updates: any = {};
+    
+    // 🦈 CORREÇÃO: Substituindo 'any' por 'Record<string, unknown>'
+    const updates: Record<string, unknown> = {};
 
     console.log(`🔍 Diagnosticando paciente: ${currentData.email || uid}...`);
 

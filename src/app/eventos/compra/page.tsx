@@ -3,26 +3,48 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { ArrowLeft, MessageCircle, Loader2, Copy, Ticket, Minus, Plus, Wallet, Clock } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
-// 🦈 CORREÇÃO: Usando caminhos relativos para garantir compatibilidade
+import Image from "next/image"; // 🦈 Importando Image
+import { useSearchParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 
+// 🦈 Interfaces para tipagem forte (Fim do any)
+interface Lote {
+    id: string;
+    nome: string;
+    preco: string;
+    status: string;
+}
+
+interface EventoData {
+    id: string;
+    titulo: string;
+    imagem?: string;
+    lotes?: Lote[];
+    [key: string]: any; // Flexibilidade para outros campos do evento
+}
+
+interface PixData {
+    chave: string;
+    banco: string;
+    titular: string;
+    whatsapp?: string;
+}
+
 // Componente interno que usa useSearchParams
 function CompraContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { addToast } = useToast();
   const { user } = useAuth();
   
   const eventoId = searchParams.get('evento');
   const loteId = searchParams.get('lote');
 
-  const [evento, setEvento] = useState<any>(null);
-  const [lote, setLote] = useState<any>(null);
-  const [pixData, setPixData] = useState<any>({ chave: "Carregando...", banco: "...", titular: "..." });
+  const [evento, setEvento] = useState<EventoData | null>(null);
+  const [lote, setLote] = useState<Lote | null>(null);
+  const [pixData, setPixData] = useState<PixData>({ chave: "Carregando...", banco: "...", titular: "..." });
   
   const [quantidade, setQuantidade] = useState(1);
   const [step, setStep] = useState(1);
@@ -40,10 +62,10 @@ function CompraContent() {
               
               if (snap.exists()) {
                   const evtData = snap.data();
-                  setEvento({ id: snap.id, ...evtData });
+                  setEvento({ id: snap.id, ...evtData } as EventoData);
                   
                   // 2. Encontrar o Lote
-                  const foundLote = evtData.lotes?.find((l: any) => String(l.id) === String(loteId));
+                  const foundLote = evtData.lotes?.find((l: Lote) => String(l.id) === String(loteId));
                   if (foundLote) {
                       setLote(foundLote);
                   }
@@ -53,7 +75,7 @@ function CompraContent() {
               const configRef = doc(db, "app_config", "financeiro");
               const configSnap = await getDoc(configRef);
               if (configSnap.exists()) {
-                  setPixData(configSnap.data());
+                  setPixData(configSnap.data() as PixData);
               } else {
                   setPixData({
                       chave: "financeiro@aaakn.com.br",
@@ -70,7 +92,7 @@ function CompraContent() {
           }
       };
       loadData();
-  }, [eventoId, loteId]);
+  }, [eventoId, loteId, addToast]); // 🦈 Dependências corrigidas
 
   const handleFinish = async () => {
       if (!user || !evento || !lote) return;
@@ -128,16 +150,22 @@ function CompraContent() {
   if (fetching) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500"><Loader2 className="animate-spin"/></div>;
   if (!evento || !lote) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Lote ou Evento inválido.</div>;
 
-  const valorTotal = (parseFloat(lote.preco.replace(',', '.')) * quantidade).toFixed(2).replace('.', ',');
+  const valorTotalDisplay = (parseFloat(lote.preco.replace(',', '.')) * quantidade).toFixed(2).replace('.', ',');
 
   return (
     <div className="w-full max-w-lg bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 p-8 rounded-[2rem] shadow-2xl relative z-10 my-10 animate-in zoom-in-95 duration-300">
             
         {/* HEADER */}
         <div className="text-center mb-8">
-            <div className="w-20 h-20 mx-auto bg-black rounded-full border border-zinc-700 flex items-center justify-center mb-4 shadow-xl overflow-hidden">
+            <div className="w-20 h-20 mx-auto bg-black rounded-full border border-zinc-700 flex items-center justify-center mb-4 shadow-xl overflow-hidden relative">
                 {evento.imagem ? (
-                    <img src={evento.imagem} className="w-full h-full object-cover opacity-80"/>
+                    <Image 
+                        src={evento.imagem} 
+                        alt={evento.titulo} 
+                        fill
+                        className="object-cover opacity-80" 
+                        unoptimized
+                    />
                 ) : (
                     <Ticket size={32} className="text-purple-500"/>
                 )}
@@ -170,7 +198,7 @@ function CompraContent() {
 
                     <div className="border-t border-zinc-800 pt-3 flex justify-between items-center">
                         <span className="text-zinc-300 font-bold uppercase text-xs tracking-wider">Total a Pagar</span>
-                        <span className="text-purple-400 font-black text-2xl">R$ {valorTotal}</span>
+                        <span className="text-purple-400 font-black text-2xl">R$ {valorTotalDisplay}</span>
                     </div>
                 </div>
 
@@ -209,7 +237,7 @@ function CompraContent() {
                         </div>
                         <div className="bg-black/40 p-3 rounded-lg border border-zinc-800 mt-2 text-center">
                             <p className="text-[10px] text-zinc-500 uppercase font-bold">Valor exato</p>
-                            <p className="text-xl font-black text-emerald-400">R$ {valorTotal}</p>
+                            <p className="text-xl font-black text-emerald-400">R$ {valorTotalDisplay}</p>
                         </div>
                     </div>
                 </div>
@@ -251,7 +279,7 @@ function CompraContent() {
                     </div>
                 </div>
 
-                <button onClick={() => router.push('/menu')} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
+                <button onClick={() => window.location.href = '/menu'} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
                     Voltar ao Menu
                 </button>
             </div>

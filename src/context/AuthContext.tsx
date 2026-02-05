@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -18,6 +18,22 @@ import { DEFAULT_STATS, DEFAULT_USER_PROPS } from "../constants/userDefaults";
 // --- TIPAGEM ---
 export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master" | "vendas";
 export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused" | "bloqueado";
+
+// 🦈 Interfaces Auxiliares para Cache (Fim dos any)
+interface PatenteConfig {
+    titulo: string;
+    minXp: number;
+    iconName: string;
+    cor: string;
+}
+
+interface PlanoConfig {
+    nome: string;
+    cor: string;
+    icon: string;
+    descontoLoja: number;
+    xpMultiplier: number;
+}
 
 export interface UserStats {
     loginCount?: number;
@@ -125,9 +141,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const [isLocalGuest, setIsLocalGuest] = useState(false);
   
-  // 🦈 CACHES DE DADOS GLOBAIS
-  const [patentesCache, setPatentesCache] = useState<any[]>([]); 
-  const [planosCache, setPlanosCache] = useState<any[]>([]);
+  // 🦈 CACHES DE DADOS GLOBAIS (Tipados)
+  const [patentesCache, setPatentesCache] = useState<PatenteConfig[]>([]); 
+  const [planosCache, setPlanosCache] = useState<PlanoConfig[]>([]);
   
   // 🦈 REF DE CONTROLE (Evita loop de updates)
   const lastMaintenanceUid = useRef<string | null>(null);
@@ -145,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "desc"));
             const snapPatentes = await getDocs(qPatentes);
             if (!snapPatentes.empty) {
-                setPatentesCache(snapPatentes.docs.map(d => d.data()));
+                setPatentesCache(snapPatentes.docs.map(d => d.data() as PatenteConfig));
             } else {
                  // Fallback local se o banco estiver vazio
                  setPatentesCache([
@@ -160,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // B. Buscar Planos
             const snapPlanos = await getDocs(collection(db, "planos"));
             if (!snapPlanos.empty) {
-                setPlanosCache(snapPlanos.docs.map(d => d.data()));
+                setPlanosCache(snapPlanos.docs.map(d => d.data() as PlanoConfig));
             }
 
         } catch (e) { console.error("Erro ao carregar dados globais:", e); }
@@ -169,11 +185,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Helper: Calcula DADOS DA PATENTE com base no cache
-  const calculatePatenteData = (xp: number) => {
+  // 🦈 UseCallback para entrar na dep do useEffect sem loop
+  const calculatePatenteData = useCallback((xp: number) => {
       if (patentesCache.length === 0) return null;
       const found = patentesCache.find(p => xp >= p.minXp);
       return found || patentesCache[patentesCache.length - 1]; 
-  };
+  }, [patentesCache]);
 
   // 2. MONITORAR AUTH (SOMENTE LEITURA E SINCRONIA DE ESTADO)
   useEffect(() => {
@@ -252,7 +269,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastMaintenanceUid.current = user.uid;
         
         const userRef = doc(db, "users", user.uid);
-        const updates: any = {};
+        // 🦈 Correção de tipo: Record permite chaves dinâmicas sem 'any'
+        const updates: Record<string, unknown> = {};
         let hasUpdates = false;
 
         // A. AUTO-CURA (Verifica dados corrompidos/antigos)
@@ -320,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     runMaintenance();
-  }, [user?.uid, loading, patentesCache, planosCache]); // Dependências controladas
+  }, [user, loading, patentesCache, planosCache, isLocalGuest, calculatePatenteData]); // 🦈 Dependências corrigidas
 
   // 4. SEGURANÇA E REDIRECIONAMENTOS
   useEffect(() => {

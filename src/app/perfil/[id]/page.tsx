@@ -4,22 +4,67 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image"; // 🦈 Importado Next Image
 import { 
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
   UserPlus, UserCheck, X, PawPrint, Users, Lock, Heart,
-  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Dumbbell, Clock, CheckCircle, EyeOff
+  Zap, Gem, Trophy, ShoppingBag, Medal, Calendar, Clock, CheckCircle, EyeOff
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
   doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
-  addDoc, serverTimestamp, orderBy, onSnapshot, where, limit 
+  addDoc, serverTimestamp, onSnapshot, where, limit 
 } from "firebase/firestore";
 import Link from "next/link";
 
 // --- TIPAGEM ---
+
+// Interfaces auxiliares para remover 'any'
+interface PostItem {
+  id: string;
+  texto?: string;
+  likes?: string[];
+  comentarios?: number;
+  createdAt?: any; // Timestamp do Firestore
+  userId: string;
+}
+
+interface EventItem {
+  id: string;
+  titulo: string;
+  data?: string;
+  imagem?: string;
+  imagePositionY?: number;
+  interessados?: string[];
+}
+
+interface TreinoItem {
+  id: string;
+  modalidade: string;
+  imagem?: string;
+  dia: string;
+  horario: string;
+  local: string;
+  confirmados?: string[];
+}
+
+interface LigaItem {
+  id: string;
+  sigla?: string;
+  logoBase64?: string;
+  membrosIds?: string[];
+}
+
+interface PatenteData {
+    titulo: string;
+    minXp: number;
+    cor: string;
+    iconName: string;
+}
+
 interface UserProfile {
   uid: string;
   nome: string;
@@ -36,7 +81,7 @@ interface UserProfile {
   telefone?: string;
   esportes?: string[];
   role?: string;
-  status?: string; // 🦈 Adicionado para controle de pausa
+  status?: string; 
   
   plano?: string;        
   plano_cor?: string; 
@@ -59,7 +104,7 @@ interface UserProfile {
     [key: string]: number | undefined;
   };
   
-  [key: string]: string | number | boolean | undefined | null | object | string[];
+  [key: string]: unknown; // Substituído any por unknown para segurança
 }
 
 interface FollowData {
@@ -68,11 +113,6 @@ interface FollowData {
     foto: string;
     turma: string;
 }
-
-const PLAN_COLORS: Record<string, string> = {
-    yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
-    blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
-};
 
 const getSportInfo = (sport: string) => {
     const map: Record<string, { emoji: string, label: string, color: string }> = {
@@ -95,11 +135,11 @@ const getSportInfo = (sport: string) => {
 // --- COMPONENTES VISUAIS ---
 
 const LevelBadge = ({ xp }: { xp: number }) => {
-    const [patentes, setPatentes] = useState<any[]>([]);
+    const [patentes, setPatentes] = useState<PatenteData[]>([]);
     useEffect(() => {
         const q = query(collection(db, "patentes_config")); 
         const unsub = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(d => d.data());
+            const data = snap.docs.map(d => d.data() as PatenteData);
             data.sort((a, b) => a.minXp - b.minXp);
             if (data.length > 0) setPatentes(data);
             else setPatentes([{ titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
@@ -108,7 +148,9 @@ const LevelBadge = ({ xp }: { xp: number }) => {
     }, []);
     const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
     if (!currentBadge) return null;
-    const IconMap: any = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
+    
+    // 🦈 Tipagem correta para o mapa de ícones
+    const IconMap: Record<string, React.ElementType> = { Fish, Swords, Crown, Skull: Ghost, Rocket: Star, Star, Zap, Trophy, Medal, Heart };
     const IconComp = IconMap[currentBadge.iconName] || Fish;
     const colorClass = currentBadge.cor || "text-zinc-500";
     let borderClass = "border-zinc-700";
@@ -159,7 +201,7 @@ export default function PerfilPublicoPage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profileHidden, setProfileHidden] = useState(false); // 🦈 Estado para perfil oculto
+  const [profileHidden, setProfileHidden] = useState(false);
   
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
@@ -170,10 +212,10 @@ export default function PerfilPublicoPage() {
   const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
 
-  const [recentPosts, setRecentPosts] = useState<any[]>([]);
-  const [myEvents, setMyEvents] = useState<any[]>([]);
-  const [myTreinos, setMyTreinos] = useState<any[]>([]);
-  const [myLigas, setMyLigas] = useState<any[]>([]);
+  const [recentPosts, setRecentPosts] = useState<PostItem[]>([]);
+  const [myEvents, setMyEvents] = useState<EventItem[]>([]);
+  const [myTreinos, setMyTreinos] = useState<TreinoItem[]>([]);
+  const [myLigas, setMyLigas] = useState<LigaItem[]>([]);
 
   // Verifica se sou eu mesmo
   const isOwnProfile = user?.uid === params.id;
@@ -191,11 +233,10 @@ export default function PerfilPublicoPage() {
                 const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
 
                 // 🦈 VERIFICAÇÃO DE CONTA DESATIVADA 
-                // Se a conta tá desativada e NÃO sou eu, bloqueia a visualização
                 if ((data.role === 'inactive' || data.status === 'paused') && !isOwnProfile) {
                     setProfileHidden(true);
                     setLoading(false);
-                    return; // Para a execução aqui
+                    return; 
                 }
 
                 setProfile(data);
@@ -216,7 +257,7 @@ export default function PerfilPublicoPage() {
                 // 1. POSTS
                 const qPosts = query(collection(db, "posts"), where("userId", "==", uid), limit(20));
                 getDocs(qPosts).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostItem));
                     list.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
                     setRecentPosts(list.slice(0, 5));
                 });
@@ -224,19 +265,20 @@ export default function PerfilPublicoPage() {
                 // 2. EVENTOS
                 const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", uid), limit(20));
                 getDocs(qEvents).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EventItem));
+                    // Ordenação simples por data string (MVP)
                     list.sort((a, b) => { const da = a.data ? new Date(a.data).getTime() : 0; const db = b.data ? new Date(b.data).getTime() : 0; return da - db; });
                     setMyEvents(list.slice(0, 5));
                 });
 
                 // 3. LIGAS
                 const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", uid));
-                getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as LigaItem))));
 
                 // 4. TREINOS
                 const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", uid), limit(20));
                 getDocs(qTreinos).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TreinoItem));
                     setMyTreinos(list.slice(0, 5));
                 });
 
@@ -248,7 +290,7 @@ export default function PerfilPublicoPage() {
         finally { setLoading(false); }
     };
     fetchProfile();
-  }, [params.id, user, isOwnProfile]);
+  }, [params.id, user, isOwnProfile, addToast, router]); // 🦈 Dependências adicionadas
 
   const handleFollow = async () => {
       if (!user || !profile) return;
@@ -288,7 +330,7 @@ export default function PerfilPublicoPage() {
 
   if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
 
-  // 🦈 TELA DE PERFIL OCULTO (CONTA DESATIVADA)
+  // 🦈 TELA DE PERFIL OCULTO
   if (profileHidden) {
       return (
           <div className="min-h-screen bg-[#050505] text-zinc-500 font-sans flex flex-col items-center justify-center p-6 text-center">
@@ -321,18 +363,41 @@ export default function PerfilPublicoPage() {
       <div className="relative">
         <div className="h-48 w-full bg-zinc-900 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
-            <img src={turmaImage} onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438'} className="w-full h-full object-cover opacity-60 blur-[2px]"/>
+            {/* 🦈 Correção de Imagem: Capa */}
+            <Image 
+                src={turmaImage} 
+                alt="Capa da Turma"
+                fill
+                className="object-cover opacity-60 blur-[2px]"
+            />
             <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
         </div>
         
         <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
             
             <div className="relative mb-3 group">
-                {/* 🦈 AJUSTE VISUAL: Se pausado, foto em tons de cinza */}
-                <div className={`w-32 h-32 rounded-full p-1 bg-gradient-to-tr shadow-[0_0_40px_rgba(16,185,129,0.3)] ${profile.status === 'paused' ? 'from-zinc-600 via-zinc-800 to-zinc-900 grayscale opacity-80' : 'from-emerald-500 via-zinc-800 to-zinc-900'}`}>
-                    <img src={profile.foto || "https://github.com/shadcn.png"} className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
+                {/* 🦈 Correção de Imagem: Avatar */}
+                <div className={`w-32 h-32 rounded-full p-1 bg-gradient-to-tr shadow-[0_0_40px_rgba(16,185,129,0.3)] ${profile.status === 'paused' ? 'from-zinc-600 via-zinc-800 to-zinc-900 grayscale opacity-80' : 'from-emerald-500 via-zinc-800 to-zinc-900'} relative`}>
+                    <div className="w-full h-full rounded-full overflow-hidden relative border-4 border-[#050505]">
+                        <Image 
+                            src={profile.foto || "https://github.com/shadcn.png"} 
+                            alt={profile.nome}
+                            width={128}
+                            height={128}
+                            className="object-cover w-full h-full"
+                        />
+                    </div>
                 </div>
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden"><img src={turmaImage} className="w-full h-full object-cover"/></div>
+                {/* 🦈 Correção de Imagem: Badge da Turma Pequena */}
+                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden">
+                    <Image 
+                        src={turmaImage} 
+                        alt="Badge Turma"
+                        width={40}
+                        height={40}
+                        className="object-cover w-full h-full"
+                    />
+                </div>
             </div>
 
             <div className="text-center space-y-1 mb-4">
@@ -342,7 +407,6 @@ export default function PerfilPublicoPage() {
                 </h1>
                 <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{profile.nome}</p>
                 
-                {/* 🦈 INDICADOR PARA O PRÓPRIO DONO SE A CONTA TÁ PAUSADA */}
                 {profile.status === 'paused' && isOwnProfile && (
                     <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-red-900/30 border border-red-500/30 rounded-full text-[10px] font-bold text-red-400 uppercase tracking-wide">
                         <EyeOff size={10} /> Perfil Oculto (Conta Pausada)
@@ -356,7 +420,6 @@ export default function PerfilPublicoPage() {
             </div>
             
             <div className="flex items-center gap-6 mb-6 justify-center w-full">
-                {/* Badge Plano (Isolada) */}
                 <PlanBadge nome={badgeProps.nome} cor={badgeProps.cor} iconName={badgeProps.iconName} />
 
                 {isOwnProfile ? (
@@ -365,7 +428,6 @@ export default function PerfilPublicoPage() {
                     <button onClick={handleFollow} className={`px-8 py-2 rounded-full text-xs font-bold uppercase border transition shadow-lg flex items-center gap-2 ${isFollowing ? 'bg-zinc-900 border-zinc-700 text-zinc-400' : 'bg-emerald-600 border-emerald-500 text-white hover:scale-105'}`}>{isFollowing ? <UserCheck size={14}/> : <UserPlus size={14}/>} {isFollowing ? "Seguindo" : "Seguir"}</button>
                 )}
                 
-                {/* Badge Nível */}
                 <LevelBadge xp={profile.xp || 0} />
             </div>
 
@@ -375,15 +437,15 @@ export default function PerfilPublicoPage() {
                 <div className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex flex-col items-center"><span className="text-xl font-black text-white">{profile.xp || 0}</span><span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">XP Total</span></div>
             </div>
 
-            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">"{profile.bio}"</p></div>}
+            {profile.bio && <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm"><p className="text-sm text-zinc-300 text-center italic leading-relaxed">&quot;{profile.bio}&quot;</p></div>}
             
             <div className="flex gap-3 mb-8 justify-center w-full">
-                {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
+                {profile.instagram && <a href={`https://instagram.com/${profile.instagram.replace('@','')}`} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-purple-500/20"><Instagram size={24}/></a>}
                 <div className="relative">
                     {showWhatsapp ? (
-                         <a href={`https://wa.me/55${profile.telefone?.replace(/\D/g,'')}`} target="_blank" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
+                          <a href={`https://wa.me/55${profile.telefone?.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg hover:scale-110 transition hover:shadow-green-500/20"><MessageCircle size={24}/></a>
                     ) : (
-                         <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed"><Lock size={20}/></div>
+                          <div className="w-12 h-12 rounded-xl bg-zinc-900 flex items-center justify-center text-zinc-600 border border-zinc-800 cursor-not-allowed"><Lock size={20}/></div>
                     )}
                     {profile.whatsappPublico === false && isOwnProfile && <div className="absolute -top-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-700"><Lock size={10} className="text-zinc-400"/></div>}
                 </div>
@@ -402,18 +464,18 @@ export default function PerfilPublicoPage() {
                     {/* POSTS */}
                     {activeTab === 'posts' && (
                         recentPosts.length > 0 ? (
-                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">"{p.texto}"</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
+                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
                     )}
 
                     {/* EVENTOS */}
                     {activeTab === 'eventos' && (
                         myEvents.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><img src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
+                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><Image src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} alt={e.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum evento marcado.</div>
                     )}
 
-                    {/* LIGAS (ID 685: Visual Grande) */}
+                    {/* LIGAS */}
                     {activeTab === 'ligas' && (
                         myLigas.length > 0 ? (
                             <div className="grid grid-cols-3 gap-4 animate-in fade-in">
@@ -422,7 +484,7 @@ export default function PerfilPublicoPage() {
                                         <div className="w-24 h-24 rounded-full bg-black border-2 border-zinc-800 p-0.5 group-hover:border-emerald-500 group-hover:scale-105 transition-all shadow-lg">
                                             <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center relative">
                                                 {l.logoBase64 ? (
-                                                    <img src={l.logoBase64} className="w-full h-full object-cover" />
+                                                    <Image src={l.logoBase64} alt={l.sigla || "Liga"} fill className="object-cover" />
                                                 ) : (
                                                     <Users size={32} className="text-zinc-500"/>
                                                 )}
@@ -435,27 +497,27 @@ export default function PerfilPublicoPage() {
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Não participa de ligas.</div>
                     )}
 
-                    {/* TREINOS (CARD COM FOTO) */}
+                    {/* TREINOS */}
                     {activeTab === 'treinos' && (
                         myTreinos.length > 0 ? (
                              <div className="grid gap-3 animate-in fade-in">
                                 {myTreinos.map(t => (
                                     <Link href={`/treinos/${t.id}`} key={t.id} className="group flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg h-24">
-                                        <div className="w-24 h-full bg-zinc-800 relative overflow-hidden shrink-0">
-                                             <img src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"/>
-                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
-                                        </div>
-                                        <div className="flex-1 p-3 flex flex-col justify-center">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <p className="text-sm font-black text-white uppercase truncate">{t.modalidade}</p>
-                                                <div className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><CheckCircle size={8}/> Eu Vou</div>
+                                            <div className="w-24 h-full bg-zinc-800 relative overflow-hidden shrink-0">
+                                                 <Image src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"} alt={t.modalidade} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"/>
+                                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
                                             </div>
-                                            <div className="flex flex-col gap-1 text-[10px] text-zinc-400 font-bold uppercase">
-                                                <span className="flex items-center gap-1.5"><Calendar size={10} className="text-emerald-500"/> {t.dia}</span>
-                                                <span className="flex items-center gap-1.5"><Clock size={10} className="text-emerald-500"/> {t.horario}</span>
-                                                <span className="flex items-center gap-1.5"><MapPin size={10} className="text-emerald-500"/> {t.local}</span>
+                                            <div className="flex-1 p-3 flex flex-col justify-center">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <p className="text-sm font-black text-white uppercase truncate">{t.modalidade}</p>
+                                                    <div className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><CheckCircle size={8}/> Eu Vou</div>
+                                                </div>
+                                                <div className="flex flex-col gap-1 text-[10px] text-zinc-400 font-bold uppercase">
+                                                    <span className="flex items-center gap-1.5"><Calendar size={10} className="text-emerald-500"/> {t.dia}</span>
+                                                    <span className="flex items-center gap-1.5"><Clock size={10} className="text-emerald-500"/> {t.horario}</span>
+                                                    <span className="flex items-center gap-1.5"><MapPin size={10} className="text-emerald-500"/> {t.local}</span>
+                                                </div>
                                             </div>
-                                        </div>
                                     </Link>
                                 ))}
                              </div>
@@ -486,7 +548,7 @@ export default function PerfilPublicoPage() {
                       <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700"><img src={f.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700 relative"><Image src={f.foto || "https://github.com/shadcn.png"} alt={f.nome} fill className="object-cover"/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
                   </div>
               </div>
           </div>

@@ -5,9 +5,10 @@ import {
   ArrowLeft, Plus, Trophy, Calendar, Trash2, Medal, 
   ShieldAlert, CheckCircle2, XCircle, Dumbbell, Settings, 
   LayoutDashboard, AlertTriangle, Edit, BarChart3, PieChart,
-  X, ChevronDown, Undo2, ExternalLink, UploadCloud, Eye, Flag, Clock
+  X, ChevronDown, Undo2, ExternalLink, UploadCloud, Eye, Flag, Clock, Filter
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 
 // --- TIPAGEM ---
@@ -358,7 +359,9 @@ export default function AdminGymPage() {
                                         onClick={() => setSelectedShameProfile(profile)}
                                     >
                                         <div className="font-black text-red-700 w-4">#{i+1}</div>
-                                        <div className="w-8 h-8 rounded-full border border-red-500/30 overflow-hidden bg-zinc-900"><img src={profile.foto} className="w-full h-full object-cover"/></div>
+                                        <div className="w-8 h-8 rounded-full border border-red-500/30 overflow-hidden bg-zinc-900 relative">
+                                            <Image src={profile.foto} alt={profile.usuario} fill className="object-cover" unoptimized/>
+                                        </div>
                                         <div className="flex-1">
                                             <p className="text-xs font-bold text-red-200 group-hover:underline">{profile.usuario}</p>
                                             <p className="text-[9px] text-red-400/60">Ver dossiê completo</p>
@@ -377,7 +380,9 @@ export default function AdminGymPage() {
                         <div className="space-y-4">
                             {RANKING_TURMAS_MOCK.map((turma) => (
                                 <div key={turma.id} className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0"><img src={turma.logo} className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/></div>
+                                    <div className="w-10 h-10 rounded-full bg-black border border-zinc-700 overflow-hidden shrink-0 relative">
+                                        <Image src={turma.logo} alt={turma.nome} fill className="object-cover" unoptimized/>
+                                    </div>
                                     <div className="flex-1">
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="font-bold text-white">{turma.nome}</span>
@@ -410,7 +415,9 @@ export default function AdminGymPage() {
                                     <Link href={`/perfil/${user.handle}`} key={user.pos} className="flex items-center justify-between p-2 rounded-lg hover:bg-black/30 transition group">
                                         <div className="flex items-center gap-3">
                                             <span className={`text-sm font-black w-4 ${user.pos <= 3 ? 'text-yellow-500' : 'text-zinc-600'}`}>{user.pos}</span>
-                                            <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-700"><img src={user.avatar} className="w-full h-full object-cover"/></div>
+                                            <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-700 relative">
+                                                <Image src={user.avatar} alt={user.nome} fill className="object-cover" unoptimized/>
+                                            </div>
                                             <span className="text-xs font-bold text-zinc-300 group-hover:text-white transition">{user.nome}</span>
                                         </div>
                                         <span className="text-[10px] font-mono text-emerald-500">{user.xp} XP</span>
@@ -426,23 +433,37 @@ export default function AdminGymPage() {
         {/* --- 2. MODERAÇÃO --- */}
         {activeTab === 'moderacao' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                <div className="flex gap-4 border-b border-zinc-800 pb-2">
-                    <button onClick={() => setSubTabModeracao("pendentes")} className={`text-xs font-bold uppercase pb-2 px-2 transition ${subTabModeracao === 'pendentes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Pendentes ({itensPendentes.length})</button>
-                    <button onClick={() => setSubTabModeracao("arquivados")} className={`text-xs font-bold uppercase pb-2 px-2 transition ${subTabModeracao === 'arquivados' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Arquivados ({itensArquivados.length})</button>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-800 pb-2">
+                    <div className="flex gap-4">
+                        <button onClick={() => setSubTabModeracao("pendentes")} className={`text-xs font-bold uppercase pb-2 px-2 transition ${subTabModeracao === 'pendentes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Pendentes ({itensPendentes.length})</button>
+                        <button onClick={() => setSubTabModeracao("arquivados")} className={`text-xs font-bold uppercase pb-2 px-2 transition ${subTabModeracao === 'arquivados' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Arquivados ({itensArquivados.length})</button>
+                    </div>
+                    {/* 🦈 Filtro de Tipo (Usa a variável setFiltroTipoModeracao) */}
+                    <div className="flex bg-zinc-900 rounded-lg p-1 gap-1">
+                        <button onClick={() => setFiltroTipoModeracao("todos")} className={`text-[10px] font-bold uppercase px-3 py-1 rounded transition ${filtroTipoModeracao === 'todos' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'}`}>Todos</button>
+                        <button onClick={() => setFiltroTipoModeracao("denuncia")} className={`text-[10px] font-bold uppercase px-3 py-1 rounded transition ${filtroTipoModeracao === 'denuncia' ? 'bg-red-500/20 text-red-500' : 'text-zinc-500 hover:text-red-400'}`}>Denúncias</button>
+                        <button onClick={() => setFiltroTipoModeracao("validacao")} className={`text-[10px] font-bold uppercase px-3 py-1 rounded transition ${filtroTipoModeracao === 'validacao' ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-emerald-400'}`}>Validações</button>
+                    </div>
                 </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {(subTabModeracao === 'pendentes' ? itensPendentes : itensArquivados)
                         .filter(i => filtroTipoModeracao === 'todos' || i.tipo === filtroTipoModeracao)
                         .map(item => (
                         <div key={item.id} className={`bg-zinc-900 rounded-2xl border overflow-hidden flex flex-col ${item.tipo === 'denuncia' ? 'border-red-500 shadow-md' : 'border-zinc-800'}`}>
                             <div className="p-3 flex justify-between items-center border-b bg-black/40 border-zinc-800">
-                                <Link href={`/perfil/${item.usuarioHandle}`} className="flex items-center gap-2 group"><div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden"><img src={item.foto} className="w-full h-full object-cover"/></div><div><span className="text-xs font-bold text-white block group-hover:text-emerald-400 transition">{item.usuario}</span><span className="text-[9px] text-zinc-500 uppercase">{item.turma}</span></div></Link>
+                                <Link href={`/perfil/${item.usuarioHandle}`} className="flex items-center gap-2 group">
+                                    <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden relative">
+                                        <Image src={item.foto} alt="Avatar" fill className="object-cover" unoptimized/>
+                                    </div>
+                                    <div><span className="text-xs font-bold text-white block group-hover:text-emerald-400 transition">{item.usuario}</span><span className="text-[9px] text-zinc-500 uppercase">{item.turma}</span></div>
+                                </Link>
                                 <span className="text-[9px] text-zinc-500">{item.data}</span>
                             </div>
                             <div className="relative h-56 bg-black group cursor-zoom-in" onClick={() => setShowModalImage(item)}>
-                                <img src={item.foto} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition"/>
-                                {item.status !== 'pendente' && <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm"><span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${item.status === 'punido' || item.status === 'rejeitado' ? 'bg-red-500 text-white' : 'bg-emerald-500 text-black'}`}>{item.status}</span></div>}
-                                {item.motivoDenuncia && <div className="absolute bottom-0 left-0 w-full bg-red-900/90 backdrop-blur-md p-2 border-t border-red-500/50"><p className="text-[10px] text-red-200 font-bold uppercase mb-1">Motivo:</p><p className="text-xs text-white truncate">"{item.motivoDenuncia}"</p></div>}
+                                <Image src={item.foto} alt="Treino" fill className="object-cover opacity-90 group-hover:opacity-100 transition" unoptimized/>
+                                {item.status !== 'pendente' && <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm z-10"><span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${item.status === 'punido' || item.status === 'rejeitado' ? 'bg-red-500 text-white' : 'bg-emerald-500 text-black'}`}>{item.status}</span></div>}
+                                {item.motivoDenuncia && <div className="absolute bottom-0 left-0 w-full bg-red-900/90 backdrop-blur-md p-2 border-t border-red-500/50 z-10"><p className="text-[10px] text-red-200 font-bold uppercase mb-1">Motivo:</p><p className="text-xs text-white truncate">&quot;{item.motivoDenuncia}&quot;</p></div>}
                             </div>
                             <div className="p-3 flex gap-2 mt-auto border-t border-white/5">
                                 {item.status === 'pendente' ? (
@@ -466,7 +487,7 @@ export default function AdminGymPage() {
             <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
                 {champs.map(champ => (
                     <div key={champ.id} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
-                        {champ.fotoCapa && <div className="absolute inset-0 z-0 opacity-10"><img src={champ.fotoCapa} className="w-full h-full object-cover"/></div>}
+                        {champ.fotoCapa && <div className="absolute inset-0 z-0 opacity-10"><Image src={champ.fotoCapa} alt="Bg" fill className="object-cover" unoptimized/></div>}
                         <div className="flex items-start gap-4 relative z-10">
                             <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-black shadow-lg shrink-0 ${champ.status === 'ativo' ? 'bg-emerald-500' : 'bg-zinc-700 text-zinc-400'}`}><Trophy size={24} /></div>
                             <div>
@@ -513,11 +534,11 @@ export default function AdminGymPage() {
               <div className="w-full max-w-5xl bg-[#09090b] border border-zinc-800 rounded-[2rem] overflow-hidden flex flex-col md:flex-row shadow-2xl relative z-10 max-h-[90vh]">
                   
                   {/* COLUNA ESQUERDA: FOTO */}
-                  <div className="md:w-[60%] bg-black relative flex items-center justify-center">
-                      <img src={showModalImage.foto} className="w-full h-full object-cover" />
+                  <div className="md:w-[60%] bg-black relative flex items-center justify-center h-64 md:h-auto">
+                      <Image src={showModalImage.foto} alt="Prova" fill className="object-cover" unoptimized/>
                       
                       {/* Badge de Status (Admin) */}
-                      <div className={`absolute top-6 left-6 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wide flex items-center gap-2 shadow-lg ${
+                      <div className={`absolute top-6 left-6 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wide flex items-center gap-2 shadow-lg z-10 ${
                           showModalImage.tipo === 'denuncia' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
                       }`}>
                           {showModalImage.tipo === 'denuncia' ? <><AlertTriangle size={14}/> Denúncia</> : <><Clock size={14}/> Análise</>}
@@ -529,9 +550,9 @@ export default function AdminGymPage() {
                       
                       {/* Header Usuário */}
                       <div className="p-6 border-b border-zinc-800/50 flex items-center gap-4">
-                          <Link href={`/perfil/${showModalImage.usuarioHandle}`} className="group">
-                            <div className="w-12 h-12 rounded-full p-0.5 border border-zinc-700 group-hover:border-[#10b981] transition">
-                                <img src={showModalImage.foto} className="w-full h-full rounded-full object-cover"/>
+                          <Link href={`/perfil/${showModalImage.usuarioHandle}`} className="group relative w-12 h-12">
+                            <div className="absolute inset-0 rounded-full p-0.5 border border-zinc-700 group-hover:border-[#10b981] transition overflow-hidden">
+                                <Image src={showModalImage.foto} alt="Avatar" fill className="object-cover" unoptimized/>
                             </div>
                           </Link>
                           <div>
@@ -556,7 +577,7 @@ export default function AdminGymPage() {
                                   <h4 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                       <Flag size={12}/> Motivo da Denúncia
                                   </h4>
-                                  <p className="text-sm text-white font-medium">"{showModalImage.motivoDenuncia}"</p>
+                                  <p className="text-sm text-white font-medium">&quot;{showModalImage.motivoDenuncia}&quot;</p>
                               </div>
                           )}
 
@@ -611,12 +632,12 @@ export default function AdminGymPage() {
                       {selectedShameProfile.treinos.map((item, i) => (
                           <div key={i} className="flex items-center gap-4 p-4 bg-black/40 rounded-2xl border border-zinc-800">
                               <div className="w-12 h-12 rounded-xl bg-zinc-800 overflow-hidden shrink-0 cursor-zoom-in group relative" onClick={() => setShowModalImage(item)}>
-                                  <img src={item.foto} className="w-full h-full object-cover"/>
-                                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><Eye size={16}/></div>
+                                  <Image src={item.foto} alt="Prova" fill className="object-cover" unoptimized/>
+                                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition z-10"><Eye size={16}/></div>
                               </div>
                               <div className="flex-1">
                                   <p className="text-xs text-zinc-400 mb-1">{item.data} • {item.modalidade}</p>
-                                  <p className="text-xs text-red-400 font-bold">"{item.motivoDenuncia}"</p>
+                                  <p className="text-xs text-red-400 font-bold">&quot;{item.motivoDenuncia}&quot;</p>
                               </div>
                               <Link href={`/perfil/${item.usuarioHandle}`} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"><ExternalLink size={16}/></Link>
                           </div>
@@ -632,7 +653,7 @@ export default function AdminGymPage() {
               <div className="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-800 p-6 space-y-4">
                   <h2 className="font-bold text-white text-lg">{editingChamp.id ? 'Editar' : 'Novo'} Campeonato</h2>
                   <div onClick={() => fileInputRef.current?.click()} className="h-32 rounded-2xl border-2 border-dashed border-zinc-700 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-zinc-800/50 transition overflow-hidden relative">
-                      {editingChamp.fotoCapa ? <img src={editingChamp.fotoCapa} className="w-full h-full object-cover"/> : <><UploadCloud size={24} className="text-zinc-500 mb-2"/><span className="text-xs text-zinc-500 font-bold uppercase">Capa do Evento</span></>}
+                      {editingChamp.fotoCapa ? <Image src={editingChamp.fotoCapa} alt="Capa" fill className="object-cover" unoptimized/> : <><UploadCloud size={24} className="text-zinc-500 mb-2 relative z-10"/><span className="text-xs text-zinc-500 font-bold uppercase relative z-10">Capa do Evento</span></>}
                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                   </div>
                   <input type="text" placeholder="Título" className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={editingChamp.titulo || ""} onChange={e => setEditingChamp({...editingChamp, titulo: e.target.value})} />
@@ -642,7 +663,7 @@ export default function AdminGymPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                       <input type="number" placeholder="Bonus XP" className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={editingChamp.xpBonus || ""} onChange={e => setEditingChamp({...editingChamp, xpBonus: Number(e.target.value)})} />
-                      <select className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={editingChamp.status || "agendado"} onChange={e => setEditingChamp({...editingChamp, status: e.target.value as any})}><option value="agendado">Agendado</option><option value="ativo">Ativo</option><option value="encerrado">Encerrado</option></select>
+                      <select className="bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none" value={editingChamp.status || "agendado"} onChange={e => setEditingChamp({...editingChamp, status: e.target.value as "ativo" | "agendado" | "encerrado"})}><option value="agendado">Agendado</option><option value="ativo">Ativo</option><option value="encerrado">Encerrado</option></select>
                   </div>
                   <textarea rows={3} placeholder="Regras..." className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none resize-none" value={editingChamp.regras || ""} onChange={e => setEditingChamp({...editingChamp, regras: e.target.value})}></textarea>
                   <div className="flex gap-2 pt-2"><button onClick={() => setShowModalChamp(false)} className="flex-1 py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold text-xs uppercase hover:bg-zinc-800">Cancelar</button><button onClick={handleSaveChamp} className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase hover:bg-emerald-500">Salvar</button></div>

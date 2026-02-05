@@ -6,6 +6,7 @@ import {
   Download, ExternalLink, Loader2, Save, X, Ban, ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
@@ -125,7 +126,7 @@ export default function AdminUsuariosPage() {
             try {
                 await updateDoc(doc(db, "users", user.id), { status: newStatus });
                 addToast(`Usuário ${newStatus === 'bloqueado' ? 'bloqueado' : 'liberado'}!`, "info");
-            } catch (e) {
+            } catch (_) {
                 addToast("Erro ao alterar status.", "error");
             }
         }
@@ -136,7 +137,7 @@ export default function AdminUsuariosPage() {
             try {
                 await deleteDoc(doc(db, "users", id));
                 addToast("Usuário deletado.", "info");
-            } catch (e) {
+            } catch (_) {
                 addToast("Erro ao deletar.", "error");
             }
         }
@@ -237,7 +238,15 @@ export default function AdminUsuariosPage() {
                                         <tr key={user.id} className={`hover:bg-zinc-800/50 transition ${user.status === 'bloqueado' ? 'opacity-50' : ''}`}>
                                             <td className="p-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700 shrink-0"><img src={user.foto} className="w-full h-full object-cover" onError={(e) => e.currentTarget.src = "https://github.com/shadcn.png"}/></div>
+                                                    <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700 shrink-0 relative">
+                                                        <Image 
+                                                            src={user.foto || "https://github.com/shadcn.png"} 
+                                                            alt={user.nome} 
+                                                            fill 
+                                                            className="object-cover" 
+                                                            unoptimized 
+                                                        />
+                                                    </div>
                                                     <div>
                                                         <p className="font-bold text-white">{user.nome}</p>
                                                         {user.role === 'master' && <span className="text-[8px] font-black uppercase text-red-500 bg-red-900/10 px-1 rounded border border-red-900/30">Admin Master</span>}
@@ -282,7 +291,7 @@ export default function AdminUsuariosPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Plano</label>
-                                    <select className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" value={editingUser.plano} onChange={e => setEditingUser({...editingUser, plano: e.target.value as any})}>
+                                    <select className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" value={editingUser.plano} onChange={e => setEditingUser({...editingUser, plano: e.target.value as Usuario['plano']})}>
                                         <option value="lenda">Sócio Lenda</option>
                                         <option value="atleta">Sócio Atleta</option>
                                         <option value="cardume">Cardume</option>
@@ -291,7 +300,7 @@ export default function AdminUsuariosPage() {
                                 </div>
                                 <div>
                                     <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Status</label>
-                                    <select className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" value={editingUser.status} onChange={e => setEditingUser({...editingUser, status: e.target.value as any})}>
+                                    <select className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" value={editingUser.status} onChange={e => setEditingUser({...editingUser, status: e.target.value as Usuario['status']})}>
                                         <option value="ativo">Ativo</option>
                                         <option value="pendente">Pendente</option>
                                         <option value="inadimplente">Inadimplente</option>

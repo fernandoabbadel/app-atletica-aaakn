@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Loader2, Store, Lock, Mail } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react"; // 1. Removido 'Store' (unused)
+import Image from "next/image"; // 2. Importado Next Image
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
@@ -55,6 +56,7 @@ export default function EmpresaLoginPage() {
       }
 
       // 4. Sucesso -> Redireciona para a rota dinâmica
+      // 🦈 "Tubarões abriram o portão da base"
       addToast(`Bem-vindo, ${docData.nome}!`, "success");
       router.push(`/empresa/${empresaId}`);
 
@@ -67,13 +69,22 @@ export default function EmpresaLoginPage() {
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden font-sans text-white">
+        {/* Background Effects */}
         <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-emerald-600/15 blur-[120px] rounded-full pointer-events-none animate-pulse-slow"></div>
         
         <div className="w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 p-8 rounded-[2rem] shadow-2xl relative z-10">
             <div className="text-center mb-8">
                 <div className="relative w-24 h-24 mx-auto mb-4 group">
                    <div className="absolute inset-0 bg-emerald-500/30 blur-xl rounded-full group-hover:bg-emerald-500/50 transition duration-500"></div>
-                   <img src="/logo.png" alt="AAAKN" className="w-full h-full object-contain relative z-10 drop-shadow-2xl" />
+                   {/* 3. Substituição da tag <img> pelo componente <Image /> Otimizado */}
+                   <Image 
+                     src="/logo.png" 
+                     alt="AAAKN" 
+                     width={96} 
+                     height={96}
+                     className="w-full h-full object-contain relative z-10 drop-shadow-2xl"
+                     priority
+                   />
                 </div>
                 <h1 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">Portal Parceiro</h1>
                 <p className="text-zinc-400 text-xs font-medium">Área restrita para empresas conveniadas.</p>

@@ -119,7 +119,8 @@ export interface AchievementLog {
   achievementId: string;
   achievementTitle: string;
   xpEarned: number;
-  timestamp: any;
+  // 🦈 Correção: Tipagem para suportar Timestamp do Firebase ou ISO string
+  timestamp: Timestamp | string | number;
 }
 
 // ==========================================
@@ -295,7 +296,8 @@ export interface Reward {
   stock: number;
   image: string;
   active: boolean;
-  createdAt?: any;
+  // 🦈 Correção: createdAt tipado
+  createdAt?: Timestamp | string | number;
 }
 
 export interface FidelityConfig {
@@ -355,7 +357,8 @@ export interface AlbumConfig {
   capa: string;
   titulo: string;
   subtitulo: string;
-  updatedAt?: any;
+  // 🦈 Correção: updatedAt tipado
+  updatedAt?: Timestamp | string | number;
 }
 
 export interface CarteirinhaConfig {

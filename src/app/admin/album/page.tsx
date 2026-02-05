@@ -2,14 +2,40 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
-  ArrowLeft, Trophy, Users, Save, ImageIcon, 
+  ArrowLeft, Trophy, Save, ImageIcon, 
   Edit3, Layout, BarChart3, Loader2, UploadCloud, Link as LinkIcon 
 } from "lucide-react";
 import Link from "next/link";
-import { db, storage } from "../../../lib/firebase"; // 🦈 Certifique-se que storage está exportado
+import { db, storage } from "../../../lib/firebase"; 
 import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; // 🦈 Imports do Storage
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; 
 import Image from "next/image";
+
+// --- TIPAGENS ---
+interface Hunter {
+  id: string;
+  userId?: string;
+  nome: string;
+  foto?: string;
+  turma: string;
+  totalColetado: number;
+  scansT8?: number;
+}
+
+interface CMSData {
+  capa: string;
+  titulo: string;
+  subtitulo: string;
+}
+
+interface RankingSectionProps {
+  title: string;
+  data: Hunter[];
+  metricKey: keyof Hunter;
+  metricLabel: string;
+  color: string;
+  icon: React.ReactNode;
+}
 
 // Configuração inicial das turmas
 const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
@@ -23,12 +49,12 @@ const TURMA_LOGOS: Record<string, string> = {
 
 export default function AdminAlbumPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "cms">("dashboard");
-  const [hunters, setHunters] = useState<any[]>([]);
+  const [hunters, setHunters] = useState<Hunter[]>([]);
   const [loading, setLoading] = useState(true);
 
   // --- ESTADOS DO CMS ---
   const [cmsTurma, setCmsTurma] = useState("T8");
-  const [cmsData, setCmsData] = useState({ capa: "", titulo: "", subtitulo: "" });
+  const [cmsData, setCmsData] = useState<CMSData>({ capa: "", titulo: "", subtitulo: "" });
   const [savingCms, setSavingCms] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,7 +63,7 @@ export default function AdminAlbumPage() {
   useEffect(() => {
     const q = query(collection(db, "album_rankings"), orderBy("totalColetado", "desc"));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setHunters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setHunters(snap.docs.map(d => ({ id: d.id, ...d.data() } as Hunter)));
       setLoading(false);
     });
     return () => unsubscribe();
@@ -49,7 +75,7 @@ export default function AdminAlbumPage() {
         const docRef = doc(db, "album_config", cmsTurma);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-            setCmsData(snap.data() as any);
+            setCmsData(snap.data() as CMSData);
         } else {
             setCmsData({ capa: "", titulo: `TURMA ${cmsTurma} - Calouros`, subtitulo: "Álbum Oficial" });
         }
@@ -93,7 +119,6 @@ export default function AdminAlbumPage() {
   // --- LÓGICA DOS 3 RANKINGS ---
 
   // 1. Predadores de Bixos: Alunos (QUALQUER TURMA) que mais escanearam T8
-  // Precisa do campo 'scansT8' no banco. Se não tiver, assume 0.
   const rankingPredadoresT8 = useMemo(() => {
     return [...hunters].sort((a, b) => (b.scansT8 || 0) - (a.scansT8 || 0)).slice(0, 10);
   }, [hunters]);
@@ -250,7 +275,7 @@ export default function AdminAlbumPage() {
 }
 
 // 🦈 COMPONENTE DE RANKING REUTILIZÁVEL PARA LIMPAR O CÓDIGO
-function RankingSection({ title, data, metricKey, metricLabel, color, icon }: any) {
+function RankingSection({ title, data, metricKey, metricLabel, color, icon }: RankingSectionProps) {
     return (
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden">
             <div className="p-6 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center">
@@ -267,7 +292,7 @@ function RankingSection({ title, data, metricKey, metricLabel, color, icon }: an
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800">
-                        {data.map((h: any, i: number) => (
+                        {data.map((h, i) => (
                             <tr key={h.id} className="hover:bg-white/5 transition group">
                                 <td className="p-4">
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black italic text-xs ${i === 0 ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' : i === 1 ? 'bg-zinc-300 text-black' : i === 2 ? 'bg-amber-700 text-white' : 'bg-zinc-800 text-zinc-500'}`}>

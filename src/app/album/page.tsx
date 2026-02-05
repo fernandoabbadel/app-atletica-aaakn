@@ -1,18 +1,36 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { 
   ArrowLeft, QrCode, Camera, MapPin, 
-  Instagram, Lock, CheckCircle2, Heart, X, Sparkles, ScanLine, PawPrint
+  Instagram, Lock, CheckCircle2, Heart, X, Sparkles, PawPrint
 } from "lucide-react"; 
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, serverTimestamp, increment } from "firebase/firestore"; // 🦈 Increment Importado
+import { collection, onSnapshot, doc, setDoc, serverTimestamp, increment } from "firebase/firestore"; 
 import { QRCodeSVG } from "qrcode.react";
 import { Html5Qrcode } from "html5-qrcode";
-import Image from "next/image";
+
+// 🦈 Interfaces para tipagem forte (Fim do any)
+interface UserData {
+    id: string;
+    nome: string;
+    turma: string;
+    foto?: string;
+    apelido?: string;
+    dataNascimento?: string;
+    idadePublica?: boolean;
+    esportes?: string[];
+    pets?: string;
+    cidadeOrigem?: string;
+    relacionamentoPublico?: boolean;
+    statusRelacionamento?: string;
+    bio?: string;
+    instagram?: string;
+}
 
 // Configuração Visual das Turmas
 const TURMAS_DATA: Record<string, { nome: string, logo: string, capa: string }> = {
@@ -33,7 +51,7 @@ export default function AlbumPage() {
   const { addToast } = useToast();
   
   const [activeTab, setActiveTab] = useState("T8");
-  const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<UserData[]>([]);
   const [meuAlbum, setMeuAlbum] = useState<string[]>([]);
   const [showMyQr, setShowMyQr] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
@@ -42,7 +60,7 @@ export default function AlbumPage() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   // Helper: Cálculo de Idade
-  const calcularIdade = (dataNasc: string) => {
+  const calcularIdade = (dataNasc?: string) => {
     if (!dataNasc) return "??";
     const hoje = new Date();
     const nasc = new Date(dataNasc);
@@ -56,7 +74,7 @@ export default function AlbumPage() {
   useEffect(() => {
     if (!user) return;
     const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      setUsuarios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setUsuarios(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
     });
     const unsubAlbum = onSnapshot(collection(db, "users", user.uid, "albumColado"), (snap) => {
       setMeuAlbum(snap.docs.map(d => d.id));
@@ -65,8 +83,8 @@ export default function AlbumPage() {
     return () => { unsubUsers(); unsubAlbum(); };
   }, [user]);
 
-  // 2. Lógica de Colar (ATUALIZADA COM FOTO E INCREMENT)
-  const handleFoundUser = async (targetId: string) => {
+  // 2. Lógica de Colar (UseCallback para dependência correta)
+  const handleFoundUser = useCallback(async (targetId: string) => {
     if (!user) return;
     
     // Para o scanner se estiver rodando
@@ -83,7 +101,6 @@ export default function AlbumPage() {
     
     if (!targetUser) return addToast("Código inválido ou usuário não carregado!", "error");
 
-    // 🦈 AQUI ESTÁ A MÁGICA: Verifica se a pessoa escaneada é da T8
     const isBixo = targetUser.turma === "T8";
 
     try {
@@ -99,10 +116,9 @@ export default function AlbumPage() {
         userId: user.uid, 
         nome: user.nome, 
         turma: user.turma,
-        // 🔥 AQUI: Forçamos salvar sua foto e turma atuais no ranking
         foto: user.foto || "https://github.com/shadcn.png", 
-        totalColetado: meuAlbum.length + 1, // Soma no total geral
-        scansT8: isBixo ? increment(1) : increment(0), // 🦈 Se for Bixo, soma +1 aqui
+        totalColetado: meuAlbum.length + 1, 
+        scansT8: isBixo ? increment(1) : increment(0), 
         ultimoScan: serverTimestamp()
       }, { merge: true });
 
@@ -111,7 +127,7 @@ export default function AlbumPage() {
       console.error(e);
       addToast("Erro ao colar no banco de dados.", "error");
     }
-  };
+  }, [user, usuarios, meuAlbum, addToast]); // 🦈 Dependências corretas
 
   // 3. Scanner PRO
   useEffect(() => {
@@ -124,7 +140,7 @@ export default function AlbumPage() {
                     { facingMode: "environment" },
                     { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
                     (decodedText) => { handleFoundUser(decodedText); },
-                    (errorMessage) => { }
+                    () => { } // Error callback vazio intencional
                 );
             } catch (err) {
                 console.error(err);
@@ -142,7 +158,7 @@ export default function AlbumPage() {
             }).catch(console.error);
         }
     };
-  }, [showScanner]);
+  }, [showScanner, handleFoundUser, addToast]); // 🦈 Adicionado handleFoundUser e addToast
 
   // 4. Contadores
   const statsTurma = useMemo(() => {
@@ -172,27 +188,33 @@ export default function AlbumPage() {
         </div>
       </header>
 
-      {/* 🦈 SELETOR (AGORA SIM: COM T8 DOURADO E PISCANDO) 🦈 */}
+      {/* SELETOR */}
       <div className="flex overflow-x-auto gap-4 p-6 bg-zinc-950/50 sticky top-[81px] z-40 backdrop-blur-sm border-b border-white/5 custom-scrollbar">
         {LISTA_TURMAS.map(t => {
           const isT8 = t === "T8";
           return (
             <button key={t} onClick={() => setActiveTab(t)} className="flex flex-col items-center gap-2 shrink-0 group">
               <div className={`
-                w-14 h-14 rounded-full border-2 transition-all relative
+                w-14 h-14 rounded-full border-2 transition-all relative overflow-hidden
                 ${isT8 
-                    ? 'border-yellow-400 border-dashed animate-pulse shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10' // 👑 Destaque Dourado T8
+                    ? 'border-yellow-400 border-dashed animate-pulse shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10' 
                     : activeTab === t 
                         ? 'border-emerald-500 scale-110 shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
                         : 'border-zinc-800 grayscale opacity-60'
                 }
                 ${activeTab === t && isT8 ? 'scale-125 bg-yellow-400/10' : ''}
               `}>
-                 <Image src={TURMAS_DATA[t]?.logo} width={56} height={56} className="w-full h-full object-cover rounded-full" alt={t} unoptimized />
+                 <Image 
+                    src={TURMAS_DATA[t]?.logo} 
+                    alt={t} 
+                    fill 
+                    className="object-cover" 
+                    unoptimized 
+                 />
               </div>
               <span className={`text-[10px] font-black uppercase 
                 ${isT8 
-                    ? 'text-yellow-400 animate-pulse' // Texto Dourado T8
+                    ? 'text-yellow-400 animate-pulse' 
                     : activeTab === t ? 'text-emerald-500' : 'text-zinc-500'}
               `}>{t}</span>
             </button>
@@ -241,9 +263,15 @@ export default function AlbumPage() {
           return (
             <div key={u.id} className={`relative rounded-[2.5rem] border transition-all duration-500 overflow-hidden ${isColada ? 'bg-zinc-900/80 border-emerald-500/40 shadow-2xl' : 'bg-zinc-950 border-white/5 grayscale brightness-50 opacity-40'}`}>
               <div className="p-6 flex items-center gap-6">
-                <div className={`relative shrink-0 w-24 h-24 rounded-full border-4 transition-all duration-700 ${isColada ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)] scale-105' : 'border-zinc-800'}`}>
-                   <img src={u.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover rounded-full" />
-                   {isColada && <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full shadow-lg"><CheckCircle2 size={14} fill="white"/></div>}
+                <div className={`relative shrink-0 w-24 h-24 rounded-full border-4 transition-all duration-700 overflow-hidden ${isColada ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)] scale-105' : 'border-zinc-800'}`}>
+                   <Image 
+                        src={u.foto || "https://github.com/shadcn.png"} 
+                        alt={u.nome}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                   />
+                   {isColada && <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full shadow-lg z-10"><CheckCircle2 size={14} fill="white"/></div>}
                 </div>
                 
                 {/* --- BLOCO DE INFO --- */}
@@ -300,7 +328,8 @@ export default function AlbumPage() {
                   
                   {isColada ? (
                     <div className="mt-3">
-                        <p className="text-zinc-400 text-[11px] line-clamp-2 font-medium italic">"{u.bio || '...'}"</p>
+                        {/* 🦈 Correção de aspas aqui */}
+                        <p className="text-zinc-400 text-[11px] line-clamp-2 font-medium italic">&quot;{u.bio || '...'}&quot;</p>
                         {u.instagram && (
                             <a href={`https://instagram.com/${u.instagram.replace('@','')}`} target="_blank" className="inline-flex items-center gap-1.5 mt-2 text-pink-500 text-[10px] font-black uppercase hover:underline">
                                 <Instagram size={12}/> @{u.instagram.replace('@','')}
@@ -337,7 +366,15 @@ export default function AlbumPage() {
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-6" onClick={() => setShowMyQr(false)}>
               <div className="bg-zinc-900 w-full max-w-sm rounded-[3rem] p-8 border border-emerald-500/30 text-center relative shadow-[0_0_50px_rgba(16,185,129,0.2)]" onClick={e => e.stopPropagation()}>
                   <button onClick={() => setShowMyQr(false)} className="absolute top-6 right-6 text-zinc-500"><X size={24}/></button>
-                  <div className="w-24 h-24 rounded-full border-4 border-emerald-500 mx-auto mb-4 overflow-hidden shadow-xl"><img src={user?.foto} className="w-full h-full object-cover" /></div>
+                  <div className="w-24 h-24 rounded-full border-4 border-emerald-500 mx-auto mb-4 overflow-hidden shadow-xl relative">
+                    <Image 
+                        src={user?.foto || "https://github.com/shadcn.png"} 
+                        fill 
+                        className="object-cover" 
+                        alt="Meu Avatar"
+                        unoptimized
+                    />
+                  </div>
                   <h2 className="text-2xl font-black uppercase italic mb-1 text-white">Meu Shark Code</h2>
                   <div className="bg-white p-4 rounded-[2rem] inline-block my-6 shadow-inner"><QRCodeSVG value={user?.uid || ""} size={220} /></div>
                   <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-500/10 py-2 rounded-xl border border-emerald-500/20">ID: {user?.uid}</p>

@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  ArrowLeft, Swords, Trophy, Sparkles, Shield, Heart, Zap, Brain, User, Palette,
-  Gamepad2, Edit2, Save, Search, History, LogOut, Loader2,
-  XCircle, Eye, Info, ShoppingBag, Dumbbell, Target, Skull, Crown, WifiOff, AlertTriangle
+  ArrowLeft, Swords, Trophy, Sparkles, Heart, Zap, Brain, User, Palette,
+  Gamepad2, Edit2, Save, LogOut, Loader2,
+  Eye, ShoppingBag, Dumbbell, Target, Database, AlertTriangle, Wrench, Bot
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { useToast } from "../../context/ToastContext";
-import html2canvas from "html2canvas";
 import SharkAvatar from "../components/SharkAvatar";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
-import { collection, query, getDocs, limit, addDoc, serverTimestamp, updateDoc, doc, increment, where } from "firebase/firestore";
+import { collection, query, getDocs, limit, addDoc, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
 
 // ============================================================================
 // 1. CONFIGURAÇÕES & FÓRMULA OFICIAL 🦈
@@ -22,7 +22,7 @@ const MAX_SERVER_STAT = 999;
 const MAX_ROUNDS = 10;
 
 // Tipos de Personalidade da IA
-type AIType = "estrategista" | "zueiro" | "copao" | "lerdo" | "medio";
+type AIType = "estrategista" | "zueiro" | "copao" | "lerdo" | "medio" | string;
 
 interface HeroStats {
   inteligencia: number; forca: number; stamina: number; hp: number; ataque: number; defesa: number;
@@ -42,8 +42,8 @@ interface Combatant {
   profileImage: string;
   critCooldown: number;
   totalPower: number;
-  aiType: AIType; // 🦈 Personalidade
-  rewardXP: number; // 🦈 XP que vale
+  aiType: AIType; 
+  rewardXP: number; 
 }
 
 interface Move {
@@ -89,8 +89,7 @@ export const calculateUserStats = (user: any): HeroStats => {
     };
 };
 
-// 🦈 CORREÇÃO TS: Tipo 'desc' adicionado
-const STAT_CONFIG: Record<keyof HeroStats, { label: string; icon: any; color: string; source: string; desc: string }> = {
+const STAT_CONFIG: Record<keyof HeroStats, { label: string; icon: React.ElementType; color: string; source: string; desc: string }> = {
   forca: { label: "Força", icon: Dumbbell, color: "text-red-500", source: "Gym", desc: "Check-ins e Treinos." },
   defesa: { label: "Defesa", icon: ShoppingBag, color: "text-blue-500", source: "Loja", desc: "Compras e Seguidores." },
   inteligencia: { label: "Inteligência", icon: Brain, color: "text-purple-500", source: "Social", desc: "Posts e Álbum." },
@@ -106,6 +105,29 @@ const HERO_MOVES: Move[] = [
   { id: "m4", name: "Postura", type: "suporte", power: 0, accuracy: 100, staminaCost: 0, statScaling: "defesa", icon: "🛡️", color: "bg-blue-600" },
 ];
 
+interface FloatingEffect {
+    id: number;
+    type: string;
+    value: string | number;
+}
+
+// Interface auxiliar para os usuários carregados no ranking/oponentes
+interface GameUser {
+    id: string;
+    name: string;
+    apelido: string;
+    foto: string;
+    xp: number;
+    level: number;
+    wins: number;
+    losses: number;
+    stats: HeroStats;
+    power: number;
+    customColor: string;
+    customEyeColor: string;
+    isHigher?: boolean;
+}
+
 export default function SharkLegendsPage() {
   const { addToast } = useToast();
   const { user, updateUser } = useAuth();
@@ -120,29 +142,31 @@ export default function SharkLegendsPage() {
   // Estados de Jogo
   const [activeTab, setActiveTab] = useState<"arena" | "stats" | "ranking" | "visual">("arena");
   const [showOpponentList, setShowOpponentList] = useState(false);
-  const [showRules, setShowRules] = useState(false);
   const [opponents, setOpponents] = useState<Combatant[]>([]);
-  const [rankingList, setRankingList] = useState<any[]>([]);
+  const [rankingList, setRankingList] = useState<GameUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dailyBattles, setDailyBattles] = useState(5);
+  const [dailyBattles] = useState(5); 
   
   // Batalha
   const [battleState, setBattleState] = useState<"idle" | "combat" | "victory" | "defeat" | "draw">("idle");
   const [hero, setHero] = useState<Combatant | null>(null);
   const [enemy, setEnemy] = useState<Combatant | null>(null);
   const [battleLog, setBattleLog] = useState<string[]>([]);
-  const [floatingEffects, setFloatingEffects] = useState<any[]>([]);
+  const [floatingEffects, setFloatingEffects] = useState<FloatingEffect[]>([]);
   const [turn, setTurn] = useState<"player" | "enemy">("player");
   const [round, setRound] = useState(1);
-  const [isSharing, setIsSharing] = useState(false);
   
   const battleLogRef = useRef<HTMLDivElement>(null);
-  const resultCardRef = useRef<HTMLDivElement>(null);
 
   // Cálculos
   const myStats = useMemo(() => user ? calculateUserStats(user) : null, [user]);
   const myLevel = useMemo(() => user ? calculateLevel(user.xp || 0) : 1, [user]);
-  const myTotalPower = myStats ? Object.values(myStats).reduce((a, b) => a + b, 0) : 0;
+  
+  // 🦈 Correção de Tipagem no Reduce
+  const myTotalPower = useMemo(() => {
+      if (!myStats) return 0;
+      return Object.values(myStats).reduce((a, b) => (typeof a === 'number' && typeof b === 'number') ? a + b : 0, 0);
+  }, [myStats]);
   
   const xpNeeded = getNextLevelXP(myLevel);
   const currentXP = user?.xp || 0;
@@ -161,7 +185,7 @@ export default function SharkLegendsPage() {
 
   useEffect(() => {
       const savedState = localStorage.getItem("aaakn_battle_state");
-      if (savedState && battleState === 'idle') {
+      if (savedState) {
           try {
               const parsed = JSON.parse(savedState);
               if (Date.now() - parsed.timestamp < 86400000) {
@@ -169,22 +193,20 @@ export default function SharkLegendsPage() {
                   setTurn(parsed.turn); setRound(parsed.round || 1); setBattleState("combat");
                   addToast("Batalha restaurada! 🔄", "info");
               } else clearGameState();
-          } catch (e) { clearGameState(); }
+          } catch { clearGameState(); }
       }
       
       const handleOffline = () => addToast("⚠️ Sem conexão! Jogo salvo localmente.", "error");
       window.addEventListener('offline', handleOffline);
       return () => window.removeEventListener('offline', handleOffline);
-  }, []);
+  }, [addToast]); 
 
   // Inicialização
   useEffect(() => {
     if (user) {
         setHeroName(user.apelido || user.nome.split(' ')[0]);
         setTempName(user.apelido || user.nome.split(' ')[0]);
-        // Tenta carregar cor salva (se houver no futuro) ou gera baseado no ID
         const colors = ["#ef4444", "#3b82f6", "#eab308", "#a855f7", "#10b981", "#f97316"];
-        // Usa o ID para gerar sempre a mesma cor para o mesmo usuário se não tiver salvo
         const colorIndex = user.uid.charCodeAt(0) % colors.length;
         setHeroColor(colors[colorIndex]);
     }
@@ -192,16 +214,15 @@ export default function SharkLegendsPage() {
     const fetchData = async () => {
         if (!user) return;
         
-        // Pega todos os usuários para calcular o ranking real e matchmaking
         const usersRef = collection(db, "users");
         const qUsers = query(usersRef, limit(100)); 
         const usersSnap = await getDocs(qUsers);
         
-        const allUsers = usersSnap.docs.map(d => {
+        const allUsers: GameUser[] = usersSnap.docs.map(d => {
             const u = d.data();
             const s = calculateUserStats(u);
-            const p = Object.values(s).reduce((a: any, b: any) => a + b, 0);
-            const colorIdx = d.id.charCodeAt(0) % 6; // Mesma lógica de cor
+            const p = Object.values(s).reduce((a, b) => (typeof a === 'number' && typeof b === 'number') ? a + b : 0, 0);
+            const colorIdx = d.id.charCodeAt(0) % 6; 
             return {
                 id: d.id,
                 name: u.nome,
@@ -213,19 +234,16 @@ export default function SharkLegendsPage() {
                 losses: u.stats?.arenaLosses || 0,
                 stats: s, 
                 power: p,
-                // Cor consistente baseada no ID
                 customColor: ["#ef4444", "#3b82f6", "#eab308", "#a855f7", "#10b981", "#f97316"][colorIdx],
                 customEyeColor: "#000000",
             };
         });
 
-        // Ordena Ranking (Maior Poder/Wins Primeiro)
         allUsers.sort((a, b) => b.power - a.power || b.wins - a.wins);
         setRankingList(allUsers);
 
-        // --- MATCHMAKING 5 CIMA / 5 BAIXO ---
         const myIndex = allUsers.findIndex(u => u.id === user.uid);
-        let potentialTargets: any[] = [];
+        let potentialTargets: GameUser[] = [];
         
         if (myIndex !== -1) {
             const above = allUsers.slice(Math.max(0, myIndex - 5), myIndex).map(u => ({...u, isHigher: true}));
@@ -237,7 +255,7 @@ export default function SharkLegendsPage() {
              potentialTargets = allUsers.filter(u => u.id !== user.uid).slice(0, 5).map(u => ({...u, isHigher: false}));
         }
 
-        const formattedOpponents = potentialTargets.map(u => ({
+        const formattedOpponents: Combatant[] = potentialTargets.map(u => ({
             id: u.id,
             name: u.apelido,
             avatarName: "Rival",
@@ -308,6 +326,85 @@ export default function SharkLegendsPage() {
       setTimeout(() => setFloatingEffects(prev => prev.filter(e => e.id !== id)), 1000);
   };
 
+  const endBattle = useCallback(async (result: "victory" | "defeat" | "draw", finalHero: Combatant, finalEnemy: Combatant) => {
+    const finalResult: "victory" | "defeat" | "draw" = result === "draw" ? "victory" : result; 
+    setBattleState(finalResult);
+    clearGameState();
+    if (!user) return;
+
+    try {
+        await addDoc(collection(db, "arena_matches"), {
+            attackerId: user.uid, attackerName: user.nome, defenderId: finalEnemy.id, defenderName: finalEnemy.name,
+            result: finalResult, date: serverTimestamp(), rounds: round
+        });
+
+        if (finalResult === "victory") {
+            const xpGain = result === "draw" ? 10 : finalEnemy.rewardXP;
+            await updateDoc(doc(db, "users", user.uid), {
+                xp: increment(xpGain), "stats.arenaWins": increment(1), sharkCoins: increment(10)
+            });
+            addToast(`Vitória! +${xpGain} XP 🏆`, "success");
+        } else {
+            await updateDoc(doc(db, "users", user.uid), {
+                "stats.arenaLosses": increment(1), xp: increment(5)
+            });
+            addToast("Derrota... Ganhou 5 XP.", "error");
+            try { await updateDoc(doc(db, "users", finalEnemy.id), { xp: increment(10), "stats.arenaWins": increment(1) }); } catch(e){ console.error(e); }
+        }
+    } catch (e) { console.error(e); }
+  }, [user, addToast, round]);
+
+  const executeEnemyTurn = useCallback((lastPlayerMove: Move, currentHero: Combatant, currentEnemy: Combatant, currentLog: string[]) => {
+      let enemyMoveType = lastPlayerMove.type;
+      const staminaCost = lastPlayerMove.staminaCost;
+      const finalEnemy = { ...currentEnemy };
+      const finalHero = { ...currentHero };
+      const finalLog = [...currentLog];
+
+      if (finalEnemy.aiType === "zueiro" && Math.random() < 0.2) {
+          finalLog.push(`🤡 ${finalEnemy.name} está rindo!`);
+      } else {
+          if (finalEnemy.currentStamina < staminaCost) enemyMoveType = 'suporte';
+
+          if (enemyMoveType === 'suporte') {
+              const heal = Math.floor(finalEnemy.maxHp * 0.2);
+              finalEnemy.currentHp = Math.min(finalEnemy.maxHp, finalEnemy.currentHp + heal);
+              finalEnemy.currentStamina = Math.min(finalEnemy.maxStamina, finalEnemy.currentStamina + 40);
+              finalLog.push(`🛡️ ${finalEnemy.name} usou Postura!`);
+              spawnEffect('heal', `+${heal}`);
+          } else {
+              finalEnemy.currentStamina -= staminaCost;
+              const enemyStatVal = finalEnemy.stats[lastPlayerMove.statScaling]; 
+              const enemyRawDmg = lastPlayerMove.power + enemyStatVal;
+              const enemyFinalDmg = Math.max(5, Math.floor(enemyRawDmg - (finalHero.stats.defesa * 0.5)));
+
+              finalHero.currentHp = Math.max(0, finalHero.currentHp - enemyFinalDmg);
+              finalHero.expression = "pain";
+              finalLog.push(`💀 ${finalEnemy.name} revidou: -${enemyFinalDmg} HP`);
+              spawnEffect('dmg', enemyFinalDmg);
+          }
+      }
+
+      let nextRound = round;
+      if (turn === 'enemy') nextRound = round + 1;
+
+      setHero(finalHero); setEnemy(finalEnemy); setBattleLog(finalLog); setRound(nextRound);
+      saveGameState(finalHero, finalEnemy, finalLog, "player", nextRound);
+
+      setTimeout(() => {
+          if (finalHero.currentHp <= 0) {
+              endBattle("defeat", finalHero, finalEnemy);
+          } else if (nextRound > MAX_ROUNDS) {
+              if (finalHero.currentHp >= finalEnemy.currentHp) endBattle("draw", finalHero, finalEnemy);
+              else endBattle("defeat", finalHero, finalEnemy);
+          } else {
+              setTurn("player");
+              setHero(prev => prev ? {...prev, expression: "normal"} : null);
+              setEnemy(prev => prev ? {...prev, expression: "normal"} : null);
+          }
+      }, 1000);
+  }, [round, turn, endBattle]);
+
   // 4. ATAQUE PLAYER
   const handleAttack = async (playerMove: Move) => {
     if (!hero || !enemy) return;
@@ -316,9 +413,9 @@ export default function SharkLegendsPage() {
     }
 
     setTurn("enemy");
-    let nextHero = { ...hero };
-    let nextEnemy = { ...enemy };
-    let nextLog = [...battleLog];
+    const nextHero = { ...hero };
+    const nextEnemy = { ...enemy };
+    const nextLog = [...battleLog];
 
     if (playerMove.type === 'suporte') {
         const heal = Math.floor(nextHero.maxHp * 0.2);
@@ -364,100 +461,16 @@ export default function SharkLegendsPage() {
     }
   };
 
-  const executeEnemyTurn = (lastPlayerMove: Move, currentHero: Combatant, currentEnemy: Combatant, currentLog: string[]) => {
-      let enemyMoveType = lastPlayerMove.type;
-      let staminaCost = lastPlayerMove.staminaCost;
-      let finalEnemy = { ...currentEnemy };
-      let finalHero = { ...currentHero };
-      let finalLog = [...currentLog];
-
-      // IA: Zueiro pode não fazer nada
-      if (finalEnemy.aiType === "zueiro" && Math.random() < 0.2) {
-          finalLog.push(`🤡 ${finalEnemy.name} está rindo!`);
-      } else {
-          // IA: Se sem stamina, usa postura
-          if (finalEnemy.currentStamina < staminaCost) enemyMoveType = 'suporte';
-
-          if (enemyMoveType === 'suporte') {
-              const heal = Math.floor(finalEnemy.maxHp * 0.2);
-              finalEnemy.currentHp = Math.min(finalEnemy.maxHp, finalEnemy.currentHp + heal);
-              finalEnemy.currentStamina = Math.min(finalEnemy.maxStamina, finalEnemy.currentStamina + 40);
-              finalLog.push(`🛡️ ${finalEnemy.name} usou Postura!`);
-              spawnEffect('heal', `+${heal}`);
-          } else {
-              finalEnemy.currentStamina -= staminaCost;
-              // Inimigo usa o MESMO atributo (Espelho)
-              const enemyStatVal = finalEnemy.stats[lastPlayerMove.statScaling]; 
-              let enemyRawDmg = lastPlayerMove.power + enemyStatVal;
-              const enemyFinalDmg = Math.max(5, Math.floor(enemyRawDmg - (finalHero.stats.defesa * 0.5)));
-
-              finalHero.currentHp = Math.max(0, finalHero.currentHp - enemyFinalDmg);
-              finalHero.expression = "pain";
-              finalLog.push(`💀 ${finalEnemy.name} revidou: -${enemyFinalDmg} HP`);
-              spawnEffect('dmg', enemyFinalDmg);
-          }
-      }
-
-      let nextRound = round;
-      if (turn === 'enemy') nextRound = round + 1;
-
-      setHero(finalHero); setEnemy(finalEnemy); setBattleLog(finalLog); setRound(nextRound);
-      saveGameState(finalHero, finalEnemy, finalLog, "player", nextRound);
-
-      setTimeout(() => {
-          if (finalHero.currentHp <= 0) {
-              endBattle("defeat", finalHero, finalEnemy);
-          } else if (nextRound > MAX_ROUNDS) {
-              if (finalHero.currentHp >= finalEnemy.currentHp) endBattle("draw", finalHero, finalEnemy);
-              else endBattle("defeat", finalHero, finalEnemy);
-          } else {
-              setTurn("player");
-              setHero(prev => prev ? {...prev, expression: "normal"} : null);
-              setEnemy(prev => prev ? {...prev, expression: "normal"} : null);
-          }
-      }, 1000);
-  };
-
   const handleFlee = async () => {
     if (!hero || !enemy) return;
     setBattleState("defeat");
     clearGameState();
     addToast("Você fugiu! Covarde... 🐔", "error");
     
-    // Penalidade Fuga (Sem perda de ataque, mas oponente ganha XP)
     if (user) {
-        // Inimigo ganha XP pela "vitória por W.O" (5 XP)
-        try { await updateDoc(doc(db, "users", enemy.id), { xp: increment(5), "stats.arenaWins": increment(1) }); } catch(e){}
+        try { await updateDoc(doc(db, "users", enemy.id), { xp: increment(5), "stats.arenaWins": increment(1) }); } catch(e){ console.error(e); }
     }
     setHero(null); setEnemy(null);
-  };
-
-  const endBattle = async (result: "victory" | "defeat" | "draw", finalHero: Combatant, finalEnemy: Combatant) => {
-    let finalResult: any = result === "draw" ? "victory" : result; 
-    setBattleState(finalResult);
-    clearGameState();
-    if (!user) return;
-
-    try {
-        await addDoc(collection(db, "arena_matches"), {
-            attackerId: user.uid, attackerName: user.nome, defenderId: finalEnemy.id, defenderName: finalEnemy.name,
-            result: finalResult, date: serverTimestamp(), rounds: round
-        });
-
-        if (finalResult === "victory") {
-            const xpGain = result === "draw" ? 10 : finalEnemy.rewardXP;
-            await updateDoc(doc(db, "users", user.uid), {
-                xp: increment(xpGain), "stats.arenaWins": increment(1), sharkCoins: increment(10)
-            });
-            addToast(`Vitória! +${xpGain} XP 🏆`, "success");
-        } else {
-            await updateDoc(doc(db, "users", user.uid), {
-                "stats.arenaLosses": increment(1), xp: increment(5)
-            });
-            addToast("Derrota... Ganhou 5 XP.", "error");
-            try { await updateDoc(doc(db, "users", finalEnemy.id), { xp: increment(10), "stats.arenaWins": increment(1) }); } catch(e){}
-        }
-    } catch (e) { console.error(e); }
   };
 
   // 🦈 GRÁFICO RADAR HEXAGONAL PROFISSIONAL (SVG)
@@ -466,14 +479,13 @@ export default function SharkLegendsPage() {
     const size = 300; const center = size / 2; const radius = size * 0.4;
     const statsKeys = ["forca", "inteligencia", "defesa", "stamina", "hp", "ataque"];
     
-    // Normaliza os valores (0-100) para o gráfico não quebrar
     const normalize = (val: number, max: number) => Math.min(Math.max(val / max, 0.1), 1);
 
     const points = statsKeys.map((key, i) => {
       const angle = (Math.PI * 2 * i) / 6;
       let val = myStats[key as keyof HeroStats];
       let max = MAX_SERVER_STAT;
-      if(key === 'hp') max = 5000; // HP tem escala maior
+      if(key === 'hp') max = 5000; 
       
       const r = normalize(val, max) * radius;
       const x = center + r * Math.cos(angle - Math.PI / 2);
@@ -508,6 +520,7 @@ export default function SharkLegendsPage() {
       {battleState === "idle" && (
         <div className="flex border-b border-zinc-800 bg-black sticky top-[84px] z-20 overflow-x-auto shadow-md">
           {[{ id: "arena", icon: <Swords size={16} />, label: "Arena" }, { id: "visual", icon: <Palette size={16} />, label: "Visual" }, { id: "stats", icon: <Sparkles size={16} />, label: "Atributos" }, { id: "ranking", icon: <Trophy size={16} />, label: "Ranking" }].map((tab) => (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 min-w-[80px] py-4 flex flex-col items-center gap-1 text-[10px] font-bold uppercase transition ${activeTab === tab.id ? "text-emerald-400 border-b-2 border-emerald-400 bg-zinc-900" : "text-zinc-500"}`}>{tab.icon} {tab.label}</button>
           ))}
         </div>
@@ -532,8 +545,8 @@ export default function SharkLegendsPage() {
 
                 <div>
                     <div className="flex justify-between items-center mb-3">
-                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Target size={14} /> Oponentes (Matchmaking)</h3>
-                         <button onClick={() => setShowOpponentList(!showOpponentList)} className="text-[10px] text-emerald-500 underline">Atualizar Lista</button>
+                          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Target size={14} /> Oponentes (Matchmaking)</h3>
+                          <button onClick={() => setShowOpponentList(!showOpponentList)} className="text-[10px] text-emerald-500 underline">Atualizar Lista</button>
                     </div>
                     
                     {loading ? <div className="text-center py-10"><Loader2 className="animate-spin text-emerald-500 mx-auto"/></div> : (
@@ -595,14 +608,12 @@ export default function SharkLegendsPage() {
             </div>
         )}
 
-        {/* === ABA 3: STATUS (COM RADAR HEXAGONAL PROFISSIONAL) === */}
+        {/* === ABA 3: STATUS === */}
         {activeTab === "stats" && battleState === "idle" && myStats && (
             <div className="space-y-6 animate-in slide-in-from-right-8">
                 <div className="flex justify-center py-4 relative">
                     <div className="relative w-[300px] h-[300px]">
-                         {/* SVG Hexagono */}
                          <svg viewBox="0 0 300 300" className="w-full h-full overflow-visible drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                            {/* Grades de Fundo (Teia) */}
                             {[0.2, 0.4, 0.6, 0.8, 1].map((scale) => {
                                 const r = 120 * scale;
                                 const pts = [0, 1, 2, 3, 4, 5].map(i => {
@@ -612,7 +623,6 @@ export default function SharkLegendsPage() {
                                 return <polygon key={scale} points={pts} fill="none" stroke="#27272a" strokeWidth="1"/>
                             })}
                             
-                            {/* Área do Jogador */}
                             <polygon 
                                 points={calculateRadarPolygon()} 
                                 fill="rgba(16, 185, 129, 0.4)" 
@@ -621,7 +631,6 @@ export default function SharkLegendsPage() {
                                 className="transition-all duration-1000 ease-out"
                             />
 
-                            {/* Labels (Posicionados Corretamente) */}
                             <text x="150" y="20" textAnchor="middle" fill="#ef4444" fontSize="12" fontWeight="900">FOR</text>
                             <text x="270" y="80" textAnchor="middle" fill="#a855f7" fontSize="12" fontWeight="900">INT</text>
                             <text x="270" y="240" textAnchor="middle" fill="#3b82f6" fontSize="12" fontWeight="900">DEF</text>
@@ -659,9 +668,9 @@ export default function SharkLegendsPage() {
                         {rankingList.map((rankUser, index) => (
                             <Link href={`/perfil/${rankUser.id}`} key={rankUser.id} className="flex items-center p-4 hover:bg-zinc-800/20 transition cursor-pointer">
                                 <span className={`font-black w-8 text-center ${index < 3 ? 'text-yellow-500 text-lg' : 'text-zinc-600 text-sm'}`}>#{index+1}</span>
-                                {/* FOTO REAL */}
-                                <div className="w-10 h-10 rounded-full border border-zinc-700 bg-zinc-800 overflow-hidden shrink-0"><img src={rankUser.foto} className="w-full h-full object-cover"/></div>
-                                {/* MINI AVATAR */}
+                                <div className="w-10 h-10 rounded-full border border-zinc-700 bg-zinc-800 overflow-hidden shrink-0 relative">
+                                    <Image src={rankUser.foto} alt={rankUser.name} fill className="object-cover" unoptimized/>
+                                </div>
                                 <div className="w-8 h-8 rounded-full border border-zinc-700 bg-black overflow-hidden shrink-0 -ml-3 z-10 flex items-center justify-center">
                                     <div className="scale-[0.3]"><SharkAvatar size="sm" customColor={rankUser.customColor} /></div>
                                 </div>
@@ -680,22 +689,19 @@ export default function SharkLegendsPage() {
             </div>
         )}
 
-        {/* === TELA DE COMBATE (CORRIGIDA) === */}
+        {/* === TELA DE COMBATE === */}
         {battleState !== "idle" && (
             <div className="fixed inset-0 z-[9999] bg-black flex flex-col animate-in fade-in duration-300">
                 <div className="flex-1 relative bg-cover bg-center" style={{ backgroundImage: `url('/battle-forest.png')` }}>
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
                     <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-emerald-900/20 to-black z-0 mix-blend-overlay"></div>
 
-                    {/* RODADA */}
                     <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded-full border border-white/10 text-xs font-bold text-white z-20">Round {round}/{MAX_ROUNDS}</div>
 
-                    {/* EFEITOS */}
                     {floatingEffects.map((e, i) => (
                         <div key={i} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-4xl font-black text-white animate-bounce z-50 text-shadow-lg" style={{ color: e.type === 'crit' ? '#facc15' : e.type === 'miss' ? '#a1a1aa' : e.type === 'heal' ? '#10b981' : '#ef4444' }}>{e.type === 'miss' ? 'MISS' : e.value}</div>
                     ))}
                     
-                    {/* INIMIGO */}
                     {enemy && (
                         <div className="absolute top-[15%] right-[10%] flex flex-col items-center z-10">
                             <div className="flex justify-between w-32 mb-1"><span className="text-[12px] font-bold text-white">{enemy.name}</span><span className="text-[10px] font-bold text-red-500">Lv.{enemy.level}</span></div>
@@ -710,7 +716,6 @@ export default function SharkLegendsPage() {
                         </div>
                     )}
                     
-                    {/* HEROI */}
                     {hero && (
                         <div className="absolute bottom-[15%] left-[10%] flex flex-col items-center z-10">
                             <span className="mb-2 font-bold text-emerald-500 bg-black/50 px-2 py-1 rounded text-sm">{hero.name} <span className="text-white text-[10px]">Lv.{hero.level}</span></span>
@@ -742,7 +747,6 @@ export default function SharkLegendsPage() {
                                     <span className="text-[8px] bg-black/20 px-1.5 rounded mt-1 opacity-80">{move.staminaCost} STA</span>
                                 </button>
                             ))}
-                            {/* BOTÃO FUGIR */}
                             <button onClick={handleFlee} className="col-span-2 bg-zinc-800 text-zinc-400 p-2 rounded-xl border border-zinc-700 hover:bg-red-950/30 hover:text-red-500 transition text-[10px] font-bold uppercase flex items-center justify-center gap-2">
                                 <LogOut size={14}/> Fugir da Batalha
                             </button>

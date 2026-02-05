@@ -2,19 +2,20 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
-  ArrowLeft, Plus, Edit, Trash2, Calendar, MapPin, 
-  Dumbbell, Image as ImageIcon, CheckCircle, Clock, X, 
+  ArrowLeft, Plus, Edit, Trash2, 
+  Dumbbell, Image as ImageIcon, CheckCircle, X, 
   AlertTriangle, ChevronDown, ChevronUp, Save, 
-  Trophy, Users, Search, Download, Ban, LayoutDashboard, List, Loader2, Filter, ArrowUpDown, CalendarRange, User, Crown, UserCheck, ExternalLink, FileText
+  Trophy, Users, Search, Download, Ban, LayoutDashboard, List, Loader2, Filter, ArrowUpDown, CalendarRange, User, Crown, UserCheck, ExternalLink
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
 import { 
     collection, addDoc, updateDoc, deleteDoc, doc, 
-    onSnapshot, query, orderBy, serverTimestamp, setDoc, 
-    getDocs, getDoc, where, collectionGroup 
+    onSnapshot, query, serverTimestamp, setDoc, 
+    getDocs, getDoc, collectionGroup 
 } from "firebase/firestore";
 
 // --- TIPAGEM ---
@@ -37,6 +38,14 @@ interface AlunoChamada {
     pagamento?: "pago" | "pendente";
 }
 
+interface RSVP {
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    userTurma: string;
+    status: 'going' | 'not_going';
+}
+
 interface Treino {
   id: string;
   modalidade: string;
@@ -47,7 +56,7 @@ interface Treino {
   treinador: string;
   treinadorId?: string;
   treinadorAvatar?: string;
-  descricao?: string; // 🦈 NOVO CAMPO
+  descricao?: string;
   imagem: string;
   ordemDia: number;
   status: "ativo" | "cancelado";
@@ -118,7 +127,7 @@ export default function AdminTreinosPage() {
   
   // FUSÃO DE LISTAS
   const [chamadaReal, setChamadaReal] = useState<AlunoChamada[]>([]);
-  const [rsvpsAtuais, setRsvpsAtuais] = useState<any[]>([]);
+  const [rsvpsAtuais, setRsvpsAtuais] = useState<RSVP[]>([]);
   
   // Filtros
   const [filtroModalidade, setFiltroModalidade] = useState("Todas");
@@ -142,7 +151,7 @@ export default function AdminTreinosPage() {
     horario: "", 
     local: "", 
     treinador: "", 
-    descricao: "", // 🦈 Inicializado
+    descricao: "", 
     imagem: "", 
     ordemDia: 1, 
     status: "ativo"
@@ -160,7 +169,7 @@ export default function AdminTreinosPage() {
                 setModalidades(["Futsal", "Vôlei"]); 
                 setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
             }
-          } catch(e) { console.log("Configurações não encontradas."); }
+          } catch (_) { console.log("Configurações não encontradas."); }
       };
       fetchMods();
   }, []);
@@ -187,7 +196,7 @@ export default function AdminTreinosPage() {
           setChamadaReal(snap.docs.map(d => ({ id: d.id, ...d.data() } as AlunoChamada)));
       });
       const unsubRsvps = onSnapshot(collection(db, "treinos", expandedRow, "rsvps"), (snap) => {
-          setRsvpsAtuais(snap.docs.map(d => d.data()));
+          setRsvpsAtuais(snap.docs.map(d => d.data() as RSVP));
       });
       return () => { unsubChamada(); unsubRsvps(); };
   }, [expandedRow]);
@@ -331,7 +340,7 @@ export default function AdminTreinosPage() {
             addToast("Atualizado!", "success");
         } else {
             if (recurrenceDate) {
-                let current = new Date(novoTreino.dia + "T12:00:00");
+                const current = new Date(novoTreino.dia + "T12:00:00");
                 const stop = new Date(recurrenceDate + "T12:00:00");
                 let count = 0;
                 while (current <= stop && count < 20) {
@@ -347,7 +356,7 @@ export default function AdminTreinosPage() {
             }
         }
         setShowModal(false); setRecurrenceDate("");
-    } catch (e) { addToast("Erro ao salvar.", "error"); }
+    } catch (_) { addToast("Erro ao salvar.", "error"); }
   };
 
   const handleTogglePresenca = async (aluno: AlunoChamada) => {
@@ -374,7 +383,7 @@ export default function AdminTreinosPage() {
   const handleDeleteAluno = async (alunoId: string) => {
       if(!expandedRow) return;
       if(confirm("Remover da lista oficial?")) {
-          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch(e) { console.log("Removido visualmente ou apenas RSVP"); }
+          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch(_) { console.log("Removido visualmente ou apenas RSVP"); }
       }
   }
 
@@ -459,8 +468,8 @@ export default function AdminTreinosPage() {
                                 <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><Trophy size={64}/></div>
                                 <h3 className="text-lg font-black text-white uppercase italic">{mod}</h3>
                                 <div className="mt-4 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
-                                        {topPlayer ? <img src={topPlayer.avatar} className="w-full h-full object-cover"/> : <Users size={18} className="text-zinc-600"/>}
+                                    <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden relative">
+                                        {topPlayer ? <Image src={topPlayer.avatar} alt="Top Player" fill className="object-cover" unoptimized/> : <Users size={18} className="text-zinc-600"/>}
                                     </div>
                                     <div>
                                         <p className="text-[9px] text-zinc-500 uppercase font-bold">MVP</p>
@@ -483,7 +492,9 @@ export default function AdminTreinosPage() {
                             {listaVergonha.map((item, i) => (
                                 <div key={i} className="flex justify-between items-center p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/30 transition rounded-lg">
                                     <div className="flex items-center gap-3">
-                                        <img src={item.avatar || "https://github.com/shadcn.png"} className="w-8 h-8 rounded-full grayscale"/>
+                                        <div className="relative w-8 h-8 rounded-full overflow-hidden grayscale">
+                                            <Image src={item.avatar || "https://github.com/shadcn.png"} alt="Ghost" fill className="object-cover" unoptimized/>
+                                        </div>
                                         <div><p className="font-bold text-white text-sm">{item.nome}</p><p className="text-xs text-zinc-500">{item.treinoMod} • {item.treinoData}</p></div>
                                     </div>
                                     <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-1 rounded uppercase font-bold">Faltou</span>
@@ -534,7 +545,9 @@ export default function AdminTreinosPage() {
                                                     </div>
                                                 </td>
                                                 <td className="p-4 font-bold flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 overflow-hidden shrink-0">{treino.imagem ? <img src={treino.imagem} className="w-full h-full object-cover"/> : <Dumbbell className="p-1 text-zinc-600"/>}</div>
+                                                    <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 overflow-hidden shrink-0 relative">
+                                                        {treino.imagem ? <Image src={treino.imagem} alt={treino.modalidade} fill className="object-cover" unoptimized/> : <Dumbbell className="p-1 text-zinc-600"/>}
+                                                    </div>
                                                     {treino.modalidade}
                                                 </td>
                                                 <td className="p-4 text-zinc-400 text-xs">{treino.local}</td>
@@ -555,38 +568,41 @@ export default function AdminTreinosPage() {
                                                             {/* RESPONSÁVEL CARD */}
                                                             {treino.treinador && (
                                                                 <div className={`mb-4 p-3 rounded-xl bg-gradient-to-r ${getResponsibleColor(treino.treinadorId)} border border-white/10 flex items-center gap-4 shadow-lg w-fit`}>
-                                                                    <div className="relative">
-                                                                        <div className="w-12 h-12 rounded-full border-2 border-white/20 bg-black/30 overflow-hidden flex items-center justify-center">
-                                                                            {treino.treinadorAvatar ? <img src={treino.treinadorAvatar} className="w-full h-full object-cover"/> : <Crown size={20} className="text-white"/>}
+                                                                        <div className="relative">
+                                                                            <div className="w-12 h-12 rounded-full border-2 border-white/20 bg-black/30 overflow-hidden flex items-center justify-center relative">
+                                                                                {treino.treinadorAvatar ? <Image src={treino.treinadorAvatar} alt="Treinador" fill className="object-cover" unoptimized/> : <Crown size={20} className="text-white"/>}
+                                                                            </div>
+                                                                            <div className="absolute -bottom-1 -right-1 bg-white text-black p-0.5 rounded-full"><Crown size={10} fill="black"/></div>
                                                                         </div>
-                                                                        <div className="absolute -bottom-1 -right-1 bg-white text-black p-0.5 rounded-full"><Crown size={10} fill="black"/></div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <p className="text-[9px] font-black uppercase text-white/80 tracking-widest">Treinador Responsável</p>
-                                                                        <p className="text-sm font-bold text-white">{treino.treinador}</p>
-                                                                    </div>
+                                                                        <div>
+                                                                            <p className="text-[9px] font-black uppercase text-white/80 tracking-widest">Treinador Responsável</p>
+                                                                            <p className="text-sm font-bold text-white">{treino.treinador}</p>
+                                                                        </div>
                                                                 </div>
                                                             )}
 
                                                             <div className="flex justify-between items-center mb-4">
                                                                 <h3 className="font-bold text-white text-sm uppercase flex items-center gap-2"><CheckCircle size={16} className="text-emerald-500"/> Lista de Presença ({listaChamadaUnificada.length})</h3>
                                                                 <div className="flex gap-2 items-center">
-                                                                    <div className="relative">
-                                                                        <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg px-2">
-                                                                            <Search size={14} className="text-zinc-500"/>
-                                                                            <input type="text" placeholder="Adicionar aluno..." className="bg-transparent border-none text-xs text-white focus:ring-0 p-2 w-48 outline-none" value={buscaAluno} onChange={e => setBuscaAluno(e.target.value)} />
-                                                                        </div>
-                                                                        {resultadoBusca.length > 0 && (
-                                                                            <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 rounded-lg mt-1 shadow-xl z-50 overflow-hidden">
-                                                                                {resultadoBusca.map(u => (
-                                                                                    <button key={u.uid} onClick={() => handleAddUserToChamada(u)} className="w-full text-left p-2 hover:bg-zinc-800 flex items-center gap-2 border-b border-zinc-800/50 last:border-0 text-xs text-white">
-                                                                                        <img src={u.foto || "https://github.com/shadcn.png"} className="w-5 h-5 rounded-full"/><span>{u.nome}</span>
-                                                                                    </button>
-                                                                                ))}
+                                                                        <div className="relative">
+                                                                            <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg px-2">
+                                                                                <Search size={14} className="text-zinc-500"/>
+                                                                                <input type="text" placeholder="Adicionar aluno..." className="bg-transparent border-none text-xs text-white focus:ring-0 p-2 w-48 outline-none" value={buscaAluno} onChange={e => setBuscaAluno(e.target.value)} />
                                                                             </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <button onClick={handleExportCSV} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg" title="CSV"><Download size={16}/></button>
+                                                                            {resultadoBusca.length > 0 && (
+                                                                                <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 rounded-lg mt-1 shadow-xl z-50 overflow-hidden">
+                                                                                    {resultadoBusca.map(u => (
+                                                                                        <button key={u.uid} onClick={() => handleAddUserToChamada(u)} className="w-full text-left p-2 hover:bg-zinc-800 flex items-center gap-2 border-b border-zinc-800/50 last:border-0 text-xs text-white">
+                                                                                            <div className="w-5 h-5 rounded-full relative overflow-hidden">
+                                                                                                <Image src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} fill className="object-cover" unoptimized/>
+                                                                                            </div>
+                                                                                            <span>{u.nome}</span>
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <button onClick={handleExportCSV} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg" title="CSV"><Download size={16}/></button>
                                                                 </div>
                                                             </div>
                                                             
@@ -599,7 +615,9 @@ export default function AdminTreinosPage() {
                                                                         onClick={() => handleTogglePresenca(aluno)} // CLIQUE GERAL (TOGGLE)
                                                                     >
                                                                         <div className="flex items-center gap-2 w-full">
-                                                                            <img src={aluno.avatar || "https://github.com/shadcn.png"} className="w-6 h-6 rounded-full border border-white/10"/>
+                                                                            <div className="w-6 h-6 rounded-full border border-white/10 relative overflow-hidden">
+                                                                                <Image src={aluno.avatar || "https://github.com/shadcn.png"} alt={aluno.nome} fill className="object-cover" unoptimized/>
+                                                                            </div>
                                                                             <div className="flex flex-col">
                                                                                 <div className="flex items-center gap-2">
                                                                                     <p className="text-xs font-bold text-white">{aluno.nome}</p>
@@ -624,8 +642,8 @@ export default function AdminTreinosPage() {
                                                                             {/* Botão de Check/X Dependendo do status */}
                                                                             <button onClick={() => handleTogglePresenca(aluno)} title="Confirmar Presença/Falta">
                                                                                 {aluno.status === 'presente' ? <CheckCircle size={16} className="text-emerald-500"/> 
-                                                                                 : aluno.status === 'inscrito' ? <UserCheck size={16} className="text-yellow-500 animate-pulse"/> 
-                                                                                 : <X size={16} className="text-red-500"/>}
+                                                                                    : aluno.status === 'inscrito' ? <UserCheck size={16} className="text-yellow-500 animate-pulse"/> 
+                                                                                    : <X size={16} className="text-red-500"/>}
                                                                             </button>
                                                                             {/* Deletar */}
                                                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteAluno(aluno.id || aluno.userId); }} className="text-zinc-600 hover:text-red-500 p-1"><Trash2 size={14}/></button>
@@ -661,7 +679,9 @@ export default function AdminTreinosPage() {
                       {rankings[showRankingModal]?.map((item, idx) => (
                           <div key={item.userId} className="flex items-center gap-3 p-3 bg-zinc-950 rounded-xl border border-zinc-800">
                               <span className={`text-lg font-black w-6 text-center ${idx === 0 ? 'text-yellow-500' : idx === 1 ? 'text-zinc-300' : idx === 2 ? 'text-orange-700' : 'text-zinc-600'}`}>{idx + 1}</span>
-                              <img src={item.avatar} className="w-8 h-8 rounded-full bg-zinc-800"/>
+                              <div className="w-8 h-8 rounded-full bg-zinc-800 relative overflow-hidden">
+                                <Image src={item.avatar} alt={item.nome} fill className="object-cover" unoptimized/>
+                              </div>
                               <div className="flex-1"><p className="text-sm font-bold text-white">{item.nome}</p><p className="text-[10px] text-zinc-500">{item.turma}</p></div>
                               <div className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-xs font-bold">{item.count}xp</div>
                           </div>
@@ -677,9 +697,9 @@ export default function AdminTreinosPage() {
           <div className="bg-zinc-950 w-full max-w-lg rounded-2xl border border-zinc-800 p-6 space-y-4">
             <h2 className="font-bold text-white text-lg flex items-center gap-2"><Dumbbell size={20} className="text-emerald-500"/> {isEditing ? "Editar" : "Novo"} Treino</h2>
             <div className="flex gap-4">
-                <div onClick={() => fileInputRef.current?.click()} className="w-24 h-24 border-2 border-dashed border-zinc-700 rounded-xl flex items-center justify-center cursor-pointer hover:border-emerald-500 transition bg-black/20 shrink-0 relative group">
+                <div onClick={() => fileInputRef.current?.click()} className="w-24 h-24 border-2 border-dashed border-zinc-700 rounded-xl flex items-center justify-center cursor-pointer hover:border-emerald-500 transition bg-black/20 shrink-0 relative group overflow-hidden">
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
-                    {novoTreino.imagem ? <img src={novoTreino.imagem} className="w-full h-full object-cover rounded-lg"/> : <ImageIcon className="text-zinc-600"/>}
+                    {novoTreino.imagem ? <Image src={novoTreino.imagem} alt="Capa Treino" fill className="object-cover" unoptimized/> : (uploading ? <Loader2 className="animate-spin text-emerald-500"/> : <ImageIcon className="text-zinc-600"/>)}
                 </div>
                 <div className="flex-1 space-y-3">
                     <select className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white outline-none" value={novoTreino.modalidade} onChange={(e) => setNovoTreino({ ...novoTreino, modalidade: e.target.value })}>
@@ -707,7 +727,10 @@ export default function AdminTreinosPage() {
                             <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 rounded-lg mt-1 shadow-xl z-50 overflow-hidden">
                                 {resultadoTreinador.map(u => (
                                     <button key={u.uid} onClick={() => handleSelectTreinador(u)} className="w-full text-left p-2 hover:bg-zinc-800 flex items-center gap-2 border-b border-zinc-800/50 last:border-0 text-xs text-white">
-                                        <img src={u.foto || "https://github.com/shadcn.png"} className="w-5 h-5 rounded-full"/><span>{u.nome}</span>
+                                        <div className="w-5 h-5 rounded-full relative overflow-hidden">
+                                            <Image src={u.foto || "https://github.com/shadcn.png"} alt={u.nome} fill className="object-cover" unoptimized/>
+                                        </div>
+                                        <span>{u.nome}</span>
                                     </button>
                                 ))}
                             </div>

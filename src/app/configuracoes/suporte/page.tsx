@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Lock, Key } from "lucide-react";
+import { ArrowLeft, Key } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { getAuth, onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from "firebase/auth";
-import { app } from "../../../lib/firebase"; // Garante inicialização
+import { app } from "../../../lib/firebase";
 
 export default function SecurityPage() {
   const { addToast } = useToast();
@@ -15,17 +15,14 @@ export default function SecurityPage() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // 🦈 Monitora Auth State para evitar crash se der F5
   useEffect(() => {
     const auth = getAuth(app);
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUserEmail(u.email);
-      } else {
-        // Se deslogar, força saida (opcional, mas seguro)
-        // window.location.href = "/login";
+      if (!u) {
+        // Se deslogar, o middleware ou o contexto geralmente cuidam do redirect
+        // Mas deixamos o listener ativo para garantir integridade
       }
     });
     return () => unsub();
@@ -84,9 +81,12 @@ export default function SecurityPage() {
       setConfirmNewPassword("");
 
       addToast("Senha atualizada com sucesso! 🔒", "success");
-    } catch (e: any) {
-      console.error("Erro ao mudar senha:", e);
-      const msg = String(e?.code || e?.message || "");
+    } catch (error: unknown) {
+      console.error("Erro ao mudar senha:", error);
+      
+      // 🦈 Tratamento seguro de erro sem 'any'
+      const err = error as { code?: string; message?: string };
+      const msg = String(err?.code || err?.message || "");
       
       if (msg.includes("auth/wrong-password")) {
         addToast("A senha atual está incorreta.", "error");
@@ -163,14 +163,6 @@ export default function SecurityPage() {
             >
               {saving ? "Processando..." : "Atualizar Senha"}
             </button>
-          </div>
-
-          {/* CARD 2FA (PLACEHOLDER) */}
-          <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 opacity-60">
-            <h3 className="font-bold text-zinc-400 mb-2 flex items-center gap-2">
-              <Lock size={18} /> Autenticação em Dois Fatores
-            </h3>
-            <p className="text-xs text-zinc-500">Recurso de segurança avançada em breve disponível para todos os sócios.</p>
           </div>
 
         </div>

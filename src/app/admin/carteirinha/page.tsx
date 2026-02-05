@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Save, Upload, Image as ImageIcon, 
+  ArrowLeft, Save, Image as ImageIcon, 
   CreditCard, Calendar, Loader2, CheckCircle2, Info
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image component
 import { useToast } from "../../../context/ToastContext";
 import { db, storage } from "../../../lib/firebase"; 
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -39,7 +40,7 @@ export default function AdminCarteirinhaPage() {
                   setConfig(snap.data() as CarteirinhaConfig);
               }
           } catch (error) {
-              console.error(error);
+              console.error("Erro ao carregar config:", error); // 🦈 Usando a variável error
           } finally {
               setLoading(false);
           }
@@ -63,6 +64,7 @@ export default function AdminCarteirinhaPage() {
           }));
           addToast(`Fundo da ${turma} personalizado!`, "success");
       } catch (error) {
+          console.error("Erro no upload:", error); // 🦈 Usando a variável error
           addToast("Erro ao enviar imagem.", "error");
       } finally {
           setUploadingTurma(null);
@@ -75,6 +77,7 @@ export default function AdminCarteirinhaPage() {
           await setDoc(doc(db, "app_config", "carteirinha"), config);
           addToast("Configurações salvas!", "success");
       } catch (error) {
+          console.error("Erro ao salvar:", error); // 🦈 Usando a variável error
           addToast("Erro ao salvar.", "error");
       } finally {
           setSaving(false);
@@ -134,7 +137,13 @@ export default function AdminCarteirinhaPage() {
                           
                           <div className="relative h-32 w-full rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700 mb-3">
                               {config.backgrounds[turma] ? (
-                                  <img src={config.backgrounds[turma]} className="w-full h-full object-cover"/>
+                                  <Image 
+                                    src={config.backgrounds[turma]} 
+                                    alt={`Background ${turma}`}
+                                    fill
+                                    className="object-cover"
+                                    unoptimized // 🦈 Para evitar erro de domínio
+                                  />
                               ) : (
                                   <div className="w-full h-full flex items-center justify-center text-zinc-700 text-[10px] font-bold uppercase text-center p-2 opacity-50">
                                       Usando<br/>Logo Padrão
@@ -142,7 +151,7 @@ export default function AdminCarteirinhaPage() {
                               )}
                               
                               {uploadingTurma === turma && (
-                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm z-10">
                                       <Loader2 className="animate-spin text-emerald-500"/>
                                   </div>
                               )}

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Users, User, Crown, Trophy, Loader2 } from "lucide-react";
+import { ArrowLeft, Users, User, Crown, Loader2 } from "lucide-react"; // 🦈 Removido 'Trophy' não utilizado
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image do Next.js
 import { db } from "../../lib/firebase";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
@@ -34,7 +35,7 @@ export default function RankingPage() {
   useEffect(() => {
     async function fetchRanking() {
       try {
-        // 🦈 Busca os top 100 usuários ordenados por XP (aumentei o limite pra pegar mais dados pras turmas)
+        // 🦈 Busca os top 100 usuários ordenados por XP
         const q = query(
           collection(db, "users"), 
           orderBy("xp", "desc"), 
@@ -66,7 +67,7 @@ export default function RankingPage() {
                     nome: `${turmaKey}`,
                     pontos: 0,
                     membros: 0,
-                    logo: `/turma${turmaKey.replace(/\D/g, "")}.jpeg` // Tenta adivinhar a logo ex: T5 -> turma5.jpeg
+                    logo: `/turma${turmaKey.replace(/\D/g, "")}.jpeg`
                 };
             }
             turmasMap[turmaKey].pontos += user.xp;
@@ -91,6 +92,17 @@ export default function RankingPage() {
   const dataList = activeTab === "individual" ? users : turmas;
   const top3 = dataList.slice(0, 3);
   const restList = dataList.slice(3);
+
+  // 🦈 Helper para pegar imagem segura
+  const getImageSrc = (item: RankingUser | RankingTurma) => {
+    if (activeTab === "individual") return (item as RankingUser).foto;
+    return (item as RankingTurma).logo;
+  };
+
+  // 🦈 Helper para pegar o fallback de imagem no erro
+  const getFallbackImage = () => {
+    return activeTab === "individual" ? "https://github.com/shadcn.png" : "/logo.png";
+  };
 
   if (loading) {
       return (
@@ -155,10 +167,14 @@ export default function RankingPage() {
                     <div className="flex flex-col items-center">
                         <div className="relative">
                         <Link href={activeTab === "individual" ? `/perfil/${top3[1]?.id}` : `/ranking/${top3[1]?.id}`}>
-                            <img
-                            src={activeTab === "individual" ? (top3[1] as RankingUser).foto : (top3[1] as RankingTurma).logo}
-                            className="w-16 h-16 rounded-full border-4 border-zinc-400 object-cover cursor-pointer hover:scale-105 transition bg-zinc-800"
-                            onError={(e) => (e.currentTarget.src = activeTab === "individual" ? "https://github.com/shadcn.png" : "/logo.png")}
+                            <Image
+                                src={getImageSrc(top3[1])}
+                                alt="2º Lugar"
+                                width={64}
+                                height={64}
+                                unoptimized // 🦈 Evita erro de domínio externo
+                                className="rounded-full border-4 border-zinc-400 object-cover cursor-pointer hover:scale-105 transition bg-zinc-800"
+                                onError={(e) => (e.currentTarget.src = getFallbackImage())}
                             />
                         </Link>
                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-zinc-400 text-black text-[10px] font-black px-2 py-0.5 rounded-full border border-black shadow-lg">2º</div>
@@ -175,10 +191,14 @@ export default function RankingPage() {
                     <div className="relative">
                     <Crown size={28} className="text-yellow-500 absolute -top-9 left-1/2 -translate-x-1/2 animate-bounce drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]" fill="currentColor" />
                     <Link href={activeTab === "individual" ? `/perfil/${top3[0].id}` : `/ranking/${top3[0].id}`}>
-                        <img
-                        src={activeTab === "individual" ? (top3[0] as RankingUser).foto : (top3[0] as RankingTurma).logo}
-                        className="w-24 h-24 rounded-full border-4 border-yellow-500 object-cover shadow-[0_0_40px_rgba(234,179,8,0.4)] cursor-pointer hover:scale-105 transition bg-zinc-800"
-                        onError={(e) => (e.currentTarget.src = activeTab === "individual" ? "https://github.com/shadcn.png" : "/logo.png")}
+                        <Image
+                            src={getImageSrc(top3[0])}
+                            alt="1º Lugar"
+                            width={96}
+                            height={96}
+                            unoptimized
+                            className="rounded-full border-4 border-yellow-500 object-cover shadow-[0_0_40px_rgba(234,179,8,0.4)] cursor-pointer hover:scale-105 transition bg-zinc-800"
+                            onError={(e) => (e.currentTarget.src = getFallbackImage())}
                         />
                     </Link>
                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs font-black px-3 py-0.5 rounded-full border-2 border-black shadow-lg">1º</div>
@@ -194,10 +214,14 @@ export default function RankingPage() {
                     <div className="flex flex-col items-center">
                     <div className="relative">
                         <Link href={activeTab === "individual" ? `/perfil/${top3[2].id}` : `/ranking/${top3[2].id}`}>
-                        <img
-                            src={activeTab === "individual" ? (top3[2] as RankingUser).foto : (top3[2] as RankingTurma).logo}
-                            className="w-16 h-16 rounded-full border-4 border-amber-700 object-cover cursor-pointer hover:scale-105 transition bg-zinc-800"
-                            onError={(e) => (e.currentTarget.src = activeTab === "individual" ? "https://github.com/shadcn.png" : "/logo.png")}
+                        <Image
+                            src={getImageSrc(top3[2])}
+                            alt="3º Lugar"
+                            width={64}
+                            height={64}
+                            unoptimized
+                            className="rounded-full border-4 border-amber-700 object-cover cursor-pointer hover:scale-105 transition bg-zinc-800"
+                            onError={(e) => (e.currentTarget.src = getFallbackImage())}
                         />
                         </Link>
                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-amber-700 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-black shadow-lg">3º</div>
@@ -220,17 +244,22 @@ export default function RankingPage() {
                     className="flex items-center gap-4 bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50 hover:bg-zinc-800 transition active:scale-95"
                     >
                     <span className="text-sm font-black text-zinc-600 w-6 text-center">{index + 4}º</span>
-                    <img
-                        src={activeTab === "individual" ? (item as RankingUser).foto : (item as RankingTurma).logo}
-                        className="w-10 h-10 rounded-full object-cover bg-zinc-800"
-                        onError={(e) => (e.currentTarget.src = activeTab === "individual" ? "https://github.com/shadcn.png" : "/logo.png")}
+                    <Image
+                        src={getImageSrc(item)}
+                        alt={`Foto de ${item.nome}`}
+                        width={40}
+                        height={40}
+                        unoptimized
+                        className="rounded-full object-cover bg-zinc-800 w-10 h-10" // Forçando w/h no css também
+                        onError={(e) => (e.currentTarget.src = getFallbackImage())}
                     />
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-white truncate">{activeTab === "individual" ? (item as RankingUser).nome : item.nome}</p>
                         <p className="text-[10px] text-zinc-500 font-bold uppercase">
+                        {/* 🦈 Correção da tipagem aqui: Cast explícito para evitar 'any' */}
                         {activeTab === "individual"
-                            ? `Turma ${(item as any).turma}`
-                            : `${(item as any).membros} Membros`}
+                            ? `Turma ${(item as RankingUser).turma}`
+                            : `${(item as RankingTurma).membros} Membros`}
                         </p>
                     </div>
                     <div className="text-right">

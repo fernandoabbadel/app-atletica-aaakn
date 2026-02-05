@@ -1,3 +1,4 @@
+// src/app/historico/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -82,7 +83,11 @@ export default function HistoricoPage() {
           {/* Imagem de Capa do Banco */}
           {config.fotoCapa && (
             <div className="absolute inset-0 z-0">
-               <img src={config.fotoCapa} className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-1000" alt="Capa" />
+               <img 
+                  src={config.fotoCapa} 
+                  className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-1000" 
+                  alt="Capa da página de histórico" 
+               />
             </div>
           )}
           
@@ -133,7 +138,7 @@ export default function HistoricoPage() {
                                       <div className="h-40 w-full overflow-hidden relative bg-black">
                                           <img 
                                             src={event.foto || "https://via.placeholder.com/400x200?text=Sem+Foto"} 
-                                            alt={event.titulo}
+                                            alt={`Foto do evento ${event.titulo}`}
                                             className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
                                             onError={(e) => e.currentTarget.src = "/logo.png"}
                                           />

@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image"; // 🦈 Importação do Image
 import {
   Home, Calendar, Dumbbell, CreditCard, Menu, X, Wallet,
   Trophy, Gamepad2, ShoppingBag, Settings, HelpCircle, LogOut,
@@ -13,9 +13,15 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 
 // --- TIPAGEM ATUALIZADA 🦈 ---
+
+// Interface auxiliar para datas do Firestore
+interface FirestoreTimestamp {
+    toDate: () => Date;
+}
+
 interface UserData {
     uid: string;
     nome: string;
@@ -41,7 +47,7 @@ interface Notification {
     message: string;
     link?: string;
     read: boolean;
-    createdAt: any;
+    createdAt: FirestoreTimestamp | Date | null;
 }
 
 interface NavItemProps {
@@ -54,6 +60,12 @@ interface NavItemProps {
     badge?: string;
 }
 
+interface BannerProps {
+    tier: string;
+    closeMenu: () => void;
+    router: ReturnType<typeof useRouter>;
+}
+
 // Mapa de Turmas
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
@@ -61,7 +73,7 @@ const TURMA_IMAGENS: Record<string, string> = {
     "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
 };
 
-// 🦈 CONSTANTE DE CORES (Igual Comunidade)
+// 🦈 CONSTANTE DE CORES
 const PLAN_COLORS: Record<string, string> = {
     yellow: "text-yellow-400",
     emerald: "text-emerald-400",
@@ -71,7 +83,7 @@ const PLAN_COLORS: Record<string, string> = {
     zinc: "text-zinc-400"
 };
 
-// 🦈 COMPONENTE VISUAL INTELIGENTE (Igual Comunidade)
+// 🦈 COMPONENTE VISUAL INTELIGENTE
 const UserBadges = ({ userData }: { userData: UserData }) => {
     // Verifica Admin
     const isAdmin = userData?.role === 'master' || userData?.role === 'admin_geral' || userData?.role === 'admin_gestor';
@@ -91,8 +103,8 @@ const UserBadges = ({ userData }: { userData: UserData }) => {
     const rawPatentColor = userData?.patente_cor || "text-zinc-400";
     const patentColorClass = rawPatentColor.startsWith('text-') ? rawPatentColor : (PLAN_COLORS[rawPatentColor] || "text-zinc-400");
 
-    // Mapa Visual Completo
-    const icons: any = { 
+    // Mapa Visual Completo Tipado
+    const icons: Record<string, React.ElementType> = { 
         ghost: Ghost, star: Star, crown: Crown, fish: Fish, 
         trophy: Trophy, gem: Gem, zap: Zap, swords: Swords, 
         skull: Skull, rocket: Rocket, medal: Medal, heart: Heart,
@@ -131,7 +143,7 @@ const UserBadges = ({ userData }: { userData: UserData }) => {
     );
 };
 
-// Ícone de Nível (Gamification) - Mantido para mostrar nível numérico
+// Ícone de Nível (Gamification)
 const LevelIcon = ({ level }: { level: number }) => {
     if (level === 1) return <Fish className="text-orange-400" size={12} />; 
     if (level === 2) return <Swords className="text-blue-400" size={12} />;
@@ -140,7 +152,7 @@ const LevelIcon = ({ level }: { level: number }) => {
 };
 
 // Banner Dourado
-const SocioGrowthBanner = ({ tier, closeMenu, router }: any) => {
+const SocioGrowthBanner = ({ tier, closeMenu, router }: BannerProps) => {
     if (tier === 'lenda') return null;
     return (
         <button onClick={() => { closeMenu(); router.push('/planos'); }} className="w-full group relative overflow-hidden rounded-2xl mb-4 transition-all duration-300 transform hover:scale-[1.02] active:scale-95 shadow-xl border border-yellow-400/30">
@@ -192,8 +204,8 @@ export default function BottomNavbar() {
       const unsub = onSnapshot(q, (snap) => {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notification));
           list.sort((a, b) => {
-              const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-              const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+              const dateA = (a.createdAt && 'toDate' in a.createdAt) ? a.createdAt.toDate().getTime() : 0;
+              const dateB = (b.createdAt && 'toDate' in b.createdAt) ? b.createdAt.toDate().getTime() : 0;
               return dateB - dateA;
           });
           setNotifications(list.slice(0, 20)); 
@@ -218,9 +230,9 @@ export default function BottomNavbar() {
       if (notif.link) { router.push(notif.link); setShowNotifications(false); setIsSidebarOpen(false); }
   };
 
-  const formatTimeAgo = (ts: any) => {
+  const formatTimeAgo = (ts: FirestoreTimestamp | Date | null | undefined) => {
       if (!ts) return "";
-      const date = ts.toDate ? ts.toDate() : new Date(ts);
+      const date = (ts && 'toDate' in ts) ? ts.toDate() : new Date(ts as Date);
       const diff = Math.floor((new Date().getTime() - date.getTime()) / 60000);
       if (diff < 1) return "agora";
       if (diff < 60) return `${diff}min`;
@@ -282,8 +294,8 @@ export default function BottomNavbar() {
         {/* HEADER: LOGO AAAKN + NOTIFICAÇÕES */}
         <div className="p-6 pb-4 border-b border-zinc-800 bg-black/40 backdrop-blur-sm flex justify-between items-center">
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/20">
-                    <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain"/>
+                <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/20 relative">
+                    <Image src="/logo.png" alt="Logo" fill className="object-contain p-1" unoptimized/>
                 </div>
                 <div>
                     <h2 className="text-lg font-black italic uppercase text-white leading-none">AAAKN</h2>
@@ -331,12 +343,12 @@ export default function BottomNavbar() {
                     <div onClick={() => handleNavigation('/perfil')} className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-2xl border border-zinc-800 mb-4 cursor-pointer hover:bg-zinc-900 hover:border-emerald-500/30 transition group">
                         {/* Foto */}
                         <div className="relative">
-                            <div className="w-12 h-12 rounded-full bg-black overflow-hidden border-2 border-zinc-700 group-hover:border-emerald-500 transition">
-                                <img src={currentUser.foto || "https://github.com/shadcn.png"} className="w-full h-full object-cover"/>
+                            <div className="w-12 h-12 rounded-full bg-black overflow-hidden border-2 border-zinc-700 group-hover:border-emerald-500 transition relative">
+                                <Image src={currentUser.foto || "https://github.com/shadcn.png"} alt="User" fill className="object-cover" unoptimized/>
                             </div>
                             {userTurmaImg && (
-                                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-zinc-900 overflow-hidden shadow-sm" title={`Turma ${currentUser.turma}`}>
-                                    <img src={userTurmaImg} className="w-full h-full object-cover"/>
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-zinc-900 overflow-hidden shadow-sm relative" title={`Turma ${currentUser.turma}`}>
+                                    <Image src={userTurmaImg} alt="Turma" fill className="object-cover" unoptimized/>
                                 </div>
                             )}
                         </div>

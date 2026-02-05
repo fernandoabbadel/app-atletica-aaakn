@@ -1,25 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Loader2, ArrowLeft, Mail, Lock } from "lucide-react";
+import React, { useState } from "react";
+import { Loader2, Mail, Lock } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
-import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
 export default function EmpresaLoginPage() {
   const router = useRouter();
   const { addToast } = useToast();
-  const { user } = useAuth(); 
   
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Se já estiver logado (opcional, depende do seu AuthContext)
-  // useEffect(() => { if (user?.role === 'partner') router.push('/empresa/SEU_ID_AQUI'); }, [user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +52,7 @@ export default function EmpresaLoginPage() {
 
       // 3. SUCESSO: Redireciona para a página ESPECÍFICA deste ID
       addToast(`Bem-vindo, ${docData.nome}!`, "success");
-      router.push(`/empresa/${docId}`); // <--- O PULO DO GATO
+      router.push(`/empresa/${docId}`);
 
     } catch (error) {
       console.error("Erro no login:", error);
@@ -73,7 +69,13 @@ export default function EmpresaLoginPage() {
             <div className="text-center mb-8">
                 <div className="relative w-24 h-24 mx-auto mb-4 group">
                    <div className="absolute inset-0 bg-emerald-500/30 blur-xl rounded-full group-hover:bg-emerald-500/50 transition duration-500"></div>
-                   <img src="/logo.png" alt="AAAKN" className="w-full h-full object-contain relative z-10 drop-shadow-2xl" />
+                   <Image 
+                     src="/logo.png" 
+                     alt="AAAKN" 
+                     fill
+                     className="object-contain relative z-10 drop-shadow-2xl" 
+                     unoptimized
+                   />
                 </div>
                 <h1 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">Área do Parceiro</h1>
                 <p className="text-zinc-400 text-xs font-medium">Gerencie seus cupons e métricas.</p>

@@ -8,6 +8,7 @@ import {
   AlertTriangle, Settings, Zap, UserX
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
@@ -93,6 +94,15 @@ const RAW_PAGES = [
 // ID 002: Ordenação Alfabética Rigorosa
 const PAGES = RAW_PAGES.sort((a, b) => a.path.localeCompare(b.path));
 
+// Tipagem
+interface UserData {
+    id: string;
+    nome: string;
+    email: string;
+    foto?: string;
+    role?: string;
+}
+
 export default function AdminPermissoesPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
@@ -100,7 +110,7 @@ export default function AdminPermissoesPage() {
 
   const [activeTab, setActiveTab] = useState<'users' | 'matrix'>('matrix');
   const [loading, setLoading] = useState(true);
-  const [usersList, setUsersList] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<UserData[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [savingMatrix, setSavingMatrix] = useState(false);
@@ -116,7 +126,7 @@ export default function AdminPermissoesPage() {
       const fetchData = async () => {
           try {
               const snapUsers = await getDocs(collection(db, "users"));
-              setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() })));
+              setUsersList(snapUsers.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
 
               const docRef = doc(db, "settings", "permissions");
               const docSnap = await getDoc(docRef);
@@ -147,7 +157,7 @@ export default function AdminPermissoesPage() {
           
           await logActivity(
             user?.uid || 'sistema',
-            user?.nome || 'Admin Master',
+            user?.displayName || 'Admin Master',
             "UPDATE",
             "Permissões - Usuários",
             `Alterou cargo do usuário ${targetUserId} para ${newRole}`
@@ -183,7 +193,7 @@ export default function AdminPermissoesPage() {
           
           await logActivity(
             user?.uid || 'sistema',
-            user?.nome || 'Admin Master',
+            user?.displayName || 'Admin Master',
             "UPDATE",
             "Permissões - Matriz",
             "Atualizou a Matriz de Acesso Global"
@@ -230,7 +240,7 @@ export default function AdminPermissoesPage() {
                       <div>
                           <h3 className="text-sm font-bold text-yellow-500 uppercase">Atenção, Master!</h3>
                           <p className="text-xs text-zinc-400 mt-1">
-                              Esta matriz controla quem pode ver o quê. <b>Lembre-se de liberar a rota '/configuracoes' para o cargo 'Inativo'!</b>
+                              Esta matriz controla quem pode ver o quê. <b>Lembre-se de liberar a rota &apos;/configuracoes&apos; para o cargo &apos;Inativo&apos;!</b>
                           </p>
                       </div>
                   </div>
@@ -333,7 +343,9 @@ export default function AdminPermissoesPage() {
                         filteredUsers.map(u => (
                           <div key={u.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 group hover:border-zinc-700 transition">
                               <div className="flex items-center gap-4 w-full md:w-auto">
-                                  <img src={u.foto || "https://github.com/shadcn.png"} alt="User" className="w-12 h-12 rounded-full bg-zinc-800 object-cover border-2 border-zinc-800"/>
+                                  <div className="w-12 h-12 rounded-full border-2 border-zinc-800 overflow-hidden relative">
+                                    <Image src={u.foto || "https://github.com/shadcn.png"} alt="User" fill className="object-cover" unoptimized/>
+                                  </div>
                                   <div>
                                       <p className="font-bold text-sm text-white flex items-center gap-2">
                                           {u.nome || "Sem Nome"}

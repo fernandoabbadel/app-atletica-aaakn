@@ -1,3 +1,4 @@
+// src/app/gym/checkin/page.tsx
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -40,9 +41,14 @@ export default function CheckinPage() {
 
   useEffect(() => {
     startCamera();
+
+    // 🦈 CORREÇÃO: Capturamos a referência atual do elemento de vídeo
+    // Isso garante que a limpeza (return) use o elemento correto, mesmo se o ref mudar.
+    const videoElement = videoRef.current;
+
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
+      if (videoElement && videoElement.srcObject) {
+        const stream = videoElement.srcObject as MediaStream;
         stream.getTracks().forEach((track) => track.stop());
       }
     };

@@ -1,201 +1,257 @@
 "use client";
 
-// 1. IMPORTAÇÕES
-import { useAuth } from "@/context/AuthContext"; 
-import { db } from "@/lib/firebase"; 
+// ============================================================================
+// 1. IMPORTAÇÕES & CONSTANTES
+// ============================================================================
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import SharkLoader from "./SharkLoader"; 
+import SharkLoader from "./SharkLoader";
 import { usePathname, useRouter } from "next/navigation";
+// 🦈 CORREÇÃO: Removido 'useMemo' que não estava sendo usado
 import { useEffect, useState } from "react";
 
 // Mude para false quando for para produção
-const SHOW_DEBUG_ON_SCREEN = false; 
+const SHOW_DEBUG_ON_SCREEN = false; // process.env.NODE_ENV === 'development';
+
+// 🦈 ZONA SEGURA (Rotas Públicas)
+const PUBLIC_PATHS = [
+  "/login",
+  "/",
+  "/historico",
+  "/cadastro",
+  "/termos",
+  "/empresa/cadastro",
+  "/recuperar-senha",
+];
+
+// 🦈 ZONA DE DEGUSTAÇÃO (O que o visitante anônimo pode ver)
+const GUEST_ALLOWED_PATHS = [
+  "/dashboard",
+  "/perfil",
+  "/loja",
+  "/games",
+  "/ranking",
+  "/treinos",
+];
+
+interface PermissionMatrix {
+  [path: string]: string[];
+}
 
 export default function RouteGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  
+
   const [authorized, setAuthorized] = useState(false);
-  const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]> | null>(null);
-  const [loadingRules, setLoadingRules] = useState(true);
+  const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix | null>(null);
+  const [rulesLoading, setRulesLoading] = useState(true);
 
   // Debug Info
   const [debugInfo, setDebugInfo] = useState({
     role: "...",
     path: "",
-    decision: "..."
+    decision: "...",
   });
 
-  // ------------------------------------------------------------------
-  // 1. CARREGA AS REGRAS (CACHE + FIREBASE)
-  // ------------------------------------------------------------------
+  // ============================================================================
+  // 2. BUSCA DE REGRAS (CACHE + FIREBASE COM FAIL-SAFE)
+  // ============================================================================
   useEffect(() => {
-    const fetchRules = async () => {
-        const cachedRules = localStorage.getItem("shark_permissions");
-        if (cachedRules) {
-            try {
-                setPermissionMatrix(JSON.parse(cachedRules));
-                setLoadingRules(false);
-            } catch (e) { console.error(e); }
-        }
+    let isMounted = true;
 
+    const fetchRules = async () => {
+      // 1. Tenta Cache Local (Velocidade do Tubarão)
+      const cachedRules = localStorage.getItem("shark_permissions");
+      if (cachedRules) {
         try {
-            const docSnap = await getDoc(doc(db, "settings", "permissions"));
-            if (docSnap.exists()) {
-                const liveRules = docSnap.data() as Record<string, string[]>;
-                if (JSON.stringify(liveRules) !== cachedRules) {
-                    setPermissionMatrix(liveRules);
-                    localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
-                }
-            }
-        } catch (error) {
-            console.error("Erro regras:", error);
-        } finally {
-            setLoadingRules(false);
+          if (isMounted) {
+            setPermissionMatrix(JSON.parse(cachedRules));
+            setRulesLoading(false); // Libera rápido
+          }
+        } catch (e) {
+          console.error("Erro ao ler cache de regras:", e);
         }
+      }
+
+      // 2. Busca Atualização no Oceano (Firebase)
+      try {
+        const docSnap = await getDoc(doc(db, "settings", "permissions"));
+        if (docSnap.exists() && isMounted) {
+          const liveRules = docSnap.data() as PermissionMatrix;
+          
+          // Só atualiza se mudou (evita re-render desnecessário)
+          if (JSON.stringify(liveRules) !== cachedRules) {
+            setPermissionMatrix(liveRules);
+            localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
+          }
+        }
+      } catch (error) {
+        console.error("🚨 Erro crítico ao buscar regras:", error);
+        // Em caso de erro, mantemos o cache ou vazio, mas NÃO travamos o app
+      } finally {
+        if (isMounted) setRulesLoading(false);
+      }
     };
+
     fetchRules();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // ------------------------------------------------------------------
-  // 2. O GUARDA: A LÓGICA REFINADA 🦈
-  // ------------------------------------------------------------------
+  // ============================================================================
+  // 3. O GUARDA: LÓGICA DE SEGURANÇA
+  // ============================================================================
   useEffect(() => {
-    if (loading || loadingRules) return;
+    // Se ainda está carregando Auth ou Regras, o Tubarão espera.
+    if (authLoading || rulesLoading) return;
 
-    const path = pathname ? pathname.split("?")[0] : "/"; 
-    
-    // 🦈 DEFINIÇÃO DE ROLE INTELIGENTE
-    let userRole = 'visitante';
+    const currentPath = pathname ? pathname.split("?")[0] : "/";
+
+    // 🦈 DEFINIÇÃO DE ROLE
+    let userRole = "visitante";
     if (user) {
-        if (user.isAnonymous) {
-            userRole = 'guest'; // É visitante anônimo
-        } else {
-            userRole = (user.role || 'user').toLowerCase();
-        }
+      if (user.isAnonymous) {
+        userRole = "guest_anon"; // Visitante Anônimo (Firebase Anon)
+      } else {
+        userRole = (user.role || "user").toLowerCase();
+      }
     }
 
     // --- A. ROTAS PÚBLICAS (LIBERADAS GERAL) ---
-    const publicPaths = ["/login", "/", "/historico", "/cadastro", "/termos", "/empresa/cadastro", "/recuperar-senha"];
-    if (publicPaths.includes(path) || path.startsWith("/public")) {
-        setAuthorized(true);
-        return;
+    const isPublic = PUBLIC_PATHS.some(p => currentPath === p || currentPath.startsWith("/public"));
+    if (isPublic) {
+      setAuthorized(true);
+      return;
     }
 
     // --- B. NÃO LOGADO (MANDA PRO LOGIN) ---
     if (!user) {
-        setAuthorized(false);
-        router.push("/login"); 
-        return;
+      setAuthorized(false);
+      // Evita loop se já estiver indo pro login
+      if (currentPath !== "/login") {
+        router.replace("/login"); // 'replace' é melhor que 'push' para login
+      }
+      return;
     }
 
     // --- C. BANIDOS (JAULA) ---
-    if ((user.status === 'banned' || user.status === 'bloqueado') && path !== '/banned') {
-        router.push("/banned");
-        return;
+    if ((user.status === "banned" || user.status === "bloqueado") && currentPath !== "/banned") {
+      setAuthorized(false);
+      router.replace("/banned");
+      return;
     }
 
-    // --- D. TRATAMENTO DO VISITANTE ANÔNIMO (DEGUSTAÇÃO) 🦈 ---
-    if (userRole === 'guest' && user.isAnonymous) {
-        // O que o visitante pode ver?
-        const allowedGuestPaths = [
-            '/dashboard', 
-            '/perfil', 
-            '/loja', 
-            '/games', 
-            '/ranking',
-            '/treinos' // Deixamos ver a lista, mas não interagir (controlar dentro da pag)
-        ]; 
-        
-        const isAllowed = allowedGuestPaths.some(p => path === p || path.startsWith(p + '/'));
+    // --- D. VISITANTE ANÔNIMO (DEGUSTAÇÃO) ---
+    if (userRole === "guest_anon") {
+      const isAllowed = GUEST_ALLOWED_PATHS.some((p) =>
+        currentPath === p || currentPath.startsWith(p + "/")
+      );
 
-        // Se tentar acessar Admin ou Financeiro -> Joga pro Dashboard
-        if (!isAllowed && path !== '/dashboard') {
-             router.push("/dashboard");
-             return;
-        }
-        
-        // Se for permitido, segue o fluxo (vai cair no final authorized=true)
+      if (!isAllowed) {
+        setAuthorized(false);
+        router.replace("/dashboard"); // Manda pra casa segura
+        return;
+      }
+      // Se permitido, segue o fluxo para aprovação final
     }
 
-    // --- E. TRATAMENTO DO GUEST COM LOGIN GOOGLE (FALTA CADASTRO) ---
-    // Se a role é guest mas NÃO é anônimo, ele precisa terminar o cadastro
-    if (userRole === 'guest' && !user.isAnonymous && path !== '/cadastro') {
-        router.push("/cadastro");
-        return;
+    // --- E. GUEST COM LOGIN GOOGLE (FALTA CADASTRO) ---
+    // Se o cara logou com Google mas não tem role definida ou é 'guest' (não anonimo)
+    if ((userRole === "guest" || !user.role) && !user.isAnonymous && currentPath !== "/cadastro") {
+       // Permite logout ou cadastro
+       setAuthorized(false);
+       router.replace("/cadastro");
+       return;
     }
 
     // --- F. MATRIZ DE PERMISSÕES (ADMIN E OUTROS) ---
     if (permissionMatrix) {
-        if (userRole === 'master') {
-            setAuthorized(true);
-            return;
+      // MASTER: O Tubarão Rei acessa tudo
+      if (userRole === "master") {
+        setAuthorized(true);
+        setDebugInfo({ role: userRole, path: currentPath, decision: "👑 MASTER PASS" });
+        return;
+      }
+
+      // Encontra a regra mais específica para o caminho atual
+      const matchedRulePath = Object.keys(permissionMatrix)
+        .filter((rulePath) => currentPath === rulePath || currentPath.startsWith(rulePath + "/"))
+        .sort((a, b) => b.length - a.length)[0]; // Pega a string mais longa (mais específica)
+
+      if (matchedRulePath) {
+        const allowedRoles = permissionMatrix[matchedRulePath].map((r) => r.toLowerCase());
+        const isRoleAllowed = allowedRoles.includes(userRole);
+
+        setDebugInfo({
+          role: userRole,
+          path: currentPath,
+          decision: isRoleAllowed ? "✅ PERMITIDO" : "⛔ BLOQUEADO",
+        });
+
+        if (!isRoleAllowed) {
+          setAuthorized(false);
+          // Redirecionamento inteligente
+          if (user.isAnonymous) {
+            router.replace("/dashboard");
+          } else {
+            router.replace("/sem-permissao");
+          }
+          return;
         }
-
-        const matchedPath = Object.keys(permissionMatrix)
-            .filter(rulePath => path === rulePath || path.startsWith(rulePath + '/'))
-            .sort((a, b) => b.length - a.length)[0];
-
-        if (matchedPath) {
-            const allowedRoles = permissionMatrix[matchedPath].map(r => r.toLowerCase());
-            
-            setDebugInfo({ 
-                role: userRole, 
-                path: path, 
-                decision: allowedRoles.includes(userRole) ? "✅ OK" : `⛔ BLOQ` 
-            });
-
-            if (!allowedRoles.includes(userRole)) {
-                // Se for Visitante e for bloqueado, manda pro Dashboard, senão, sem permissão
-                if (user.isAnonymous) {
-                    router.push("/dashboard");
-                } else {
-                    router.push("/sem-permissao");
-                }
-                setAuthorized(false);
-                return;
-            }
-        }
+      }
     }
 
     // --- G. EMPRESAS (SEGURANÇA EXTRA) ---
-    if (userRole === 'empresa' && !path.startsWith('/empresa') && path !== '/dashboard' && path !== '/perfil') {
-        router.push("/empresa");
-        return;
+    if (userRole === "empresa" && !currentPath.startsWith("/empresa") && currentPath !== "/dashboard" && currentPath !== "/perfil") {
+       setAuthorized(false);
+       router.replace("/empresa");
+       return;
     }
 
-    // LIBERADO! 🚀
+    // SE PASSOU POR TUDO: LIBERADO! 🚀
     setAuthorized(true);
 
-  }, [user, loading, loadingRules, pathname, router, permissionMatrix]);
+  }, [user, authLoading, rulesLoading, pathname, router, permissionMatrix]);
 
-  // ------------------------------------------------------------------
-  // 3. RENDERIZAÇÃO
-  // ------------------------------------------------------------------
-  if (loading || loadingRules) return <SharkLoader />;
-
-  // Se não autorizado e tem user (está redirecionando), segura o loader
-  if (!authorized && user) return <SharkLoader />;
+  // ============================================================================
+  // 4. RENDERIZAÇÃO
+  // ============================================================================
   
-  // Rota pública e user deslogado -> Renderiza a tela (ex: Login)
-  if (!authorized && !user) {
-      const path = pathname ? pathname.split("?")[0] : "/";
-      const publicPaths = ["/login", "/", "/historico", "/cadastro", "/termos", "/empresa/cadastro", "/recuperar-senha"];
-      if (publicPaths.includes(path)) return <>{children}</>;
+  // 1. Carregando dados vitais? Mostra Spinner.
+  if (authLoading || rulesLoading) return <SharkLoader />;
+
+  // 2. Se o usuário está sendo redirecionado (não autorizado e tem user), segura o spinner.
+  //    MAS, se a rota for pública, renderiza logo (ex: Login) para evitar travamento.
+  const currentPath = pathname ? pathname.split("?")[0] : "/";
+  const isPublicRenderCheck = PUBLIC_PATHS.includes(currentPath);
+
+  if (!authorized && !isPublicRenderCheck && user) {
+    return <SharkLoader />;
+  }
+
+  // 3. Se não autorizado e sem usuário, mostra loader enquanto o useEffect joga pro login.
+  //    (A menos que já esteja numa rota pública, aí mostra o conteúdo, ex: tela de login)
+  if (!authorized && !user && !isPublicRenderCheck) {
       return <SharkLoader />;
   }
 
   return (
     <>
-        {children}
-        {SHOW_DEBUG_ON_SCREEN && user?.role !== 'master' && (
-            <div className="fixed bottom-1 right-1 bg-black/90 text-[10px] font-mono text-emerald-500 p-2 rounded-lg z-[10000] opacity-80">
-               Role: {debugInfo.role} <br/>
-               Path: {debugInfo.path} <br/>
-               {debugInfo.decision}
-            </div>
-        )}
+      {children}
+      
+      {/* PAINEL DE DEPURAÇÃO (Visível apenas em DEV ou flag ativada) */}
+      {SHOW_DEBUG_ON_SCREEN && user?.role !== "master" && (
+        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] font-mono text-emerald-400 p-3 rounded-lg z-[99999] shadow-2xl backdrop-blur-sm pointer-events-none">
+          <div className="font-bold text-white mb-1">🦈 SHARK GUARD</div>
+          <div><span className="text-zinc-500">Role:</span> {debugInfo.role}</div>
+          <div><span className="text-zinc-500">Path:</span> {debugInfo.path}</div>
+          <div className="mt-1 font-bold">{debugInfo.decision}</div>
+        </div>
+      )}
     </>
   );
 }

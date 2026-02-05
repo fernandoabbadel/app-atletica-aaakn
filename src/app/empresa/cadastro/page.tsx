@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Store, Mail, Lock, FileText, Phone, Tag, Image as ImageIcon, 
+  ArrowLeft, Store, Mail, Lock, FileText, Phone, Tag, 
   CheckCircle, ChevronRight, Crown, Star, Shield, User, CreditCard, Loader2 
 } from "lucide-react";
-import Link from "next/link";
+// 🦈 Link removido pois não estava em uso (usamos router.push)
+import Image from "next/image"; // 🦈 Importando Image
 import { useRouter } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
@@ -41,7 +42,7 @@ export default function CompanyRegisterPage() {
           addToast("Você já está logado!", "info");
           router.push("/empresa");
       }
-  }, [user]);
+  }, [user, addToast, router]); // 🦈 Dependências adicionadas
 
   // ID 79: Lógica do Botão Voltar
   const handleBack = (e: React.MouseEvent) => {
@@ -114,6 +115,7 @@ export default function CompanyRegisterPage() {
           setTimeout(() => router.push("/empresa"), 1500);
           
       } catch (err) {
+          console.error(err); // 🦈 Log do erro
           addToast("Erro ao salvar cadastro.", "error");
       } finally {
           setIsLoading(false);
@@ -136,7 +138,13 @@ export default function CompanyRegisterPage() {
             <div className="text-center mb-8">
                 <div className="relative w-24 h-24 mx-auto mb-4 group animate-float-slow">
                     <div className="absolute inset-0 bg-emerald-500/30 blur-xl rounded-full group-hover:bg-emerald-500/50 transition duration-500"></div>
-                    <img src="/logo.png" alt="AAAKN" className="w-full h-full object-contain relative z-10 drop-shadow-2xl transition transform group-hover:scale-105" />
+                    <Image 
+                        src="/logo.png" 
+                        alt="AAAKN" 
+                        fill
+                        className="object-contain relative z-10 drop-shadow-2xl transition transform group-hover:scale-105" 
+                        unoptimized
+                    />
                 </div>
                 <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Parceria Tubarão</h1>
                 

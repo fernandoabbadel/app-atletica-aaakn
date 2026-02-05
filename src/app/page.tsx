@@ -1,3 +1,4 @@
+// src/app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -37,10 +38,18 @@ const useCounter = (end: number, duration: number = 2000) => {
 };
 
 // --- COMPONENTE: Card de Estatística ---
-const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: any) => {
+interface StatCardProps {
+    icon: React.ElementType;
+    value: number;
+    label: string;
+    color: 'emerald' | 'blue' | 'amber';
+    suffix?: string;
+}
+
+const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: StatCardProps) => {
   const count = useCounter(value);
 
-  const styles: any = {
+  const styles = {
     emerald: {
       border: "hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]",
       iconBg: "bg-emerald-500/10 group-hover:bg-emerald-500/20",
@@ -74,7 +83,14 @@ const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: any) => {
 };
 
 // --- COMPONENTE: Card de Depoimento ---
-const ReviewCard = ({ name, role, text, img }: any) => (
+interface ReviewCardProps {
+    name: string;
+    role: string;
+    text: string;
+    img: string;
+}
+
+const ReviewCard = ({ name, role, text, img }: ReviewCardProps) => (
   <div className="flex flex-col gap-4 p-6 bg-zinc-900/80 border border-zinc-800 rounded-2xl min-w-[300px] max-w-[300px] hover:border-emerald-500/30 hover:translate-y-[-5px] transition-all shadow-lg hover:shadow-emerald-900/20">
     <div className="flex items-center gap-3">
         <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-emerald-500/30 bg-zinc-800">
@@ -88,12 +104,20 @@ const ReviewCard = ({ name, role, text, img }: any) => (
     <div className="flex gap-1">
       {[1,2,3,4,5].map(i => <Star key={i} size={12} className="fill-amber-400 text-amber-400" />)}
     </div>
-    <p className="text-zinc-300 text-xs italic leading-relaxed line-clamp-4">"{text}"</p>
+    <p className="text-zinc-300 text-xs italic leading-relaxed line-clamp-4">&quot;{text}&quot;</p>
   </div>
 );
 
 // --- COMPONENTE: Card de Planos ---
-const PlanCard = ({ title, price, features, recommended = false, onClick }: any) => (
+interface PlanCardProps {
+    title: string;
+    price: string;
+    features: string[];
+    recommended?: boolean;
+    onClick: () => void;
+}
+
+const PlanCard = ({ title, price, features, recommended = false, onClick }: PlanCardProps) => (
     <div className={`relative p-6 rounded-3xl border flex flex-col h-full transition-all duration-300 hover:-translate-y-2 ${recommended ? 'bg-zinc-900/80 border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.15)]' : 'bg-zinc-950/50 border-zinc-800 hover:border-zinc-700'}`}>
         {recommended && (
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full text-[10px] font-black uppercase tracking-wider text-white shadow-lg">
@@ -142,7 +166,7 @@ export default function LandingPage() {
             if (realUsers > 0) {
                 setStats(prev => ({ ...prev, users: realUsers }));
             }
-        } catch (error) {
+        } catch {
             console.log("Usando stats base.");
         }
     };
@@ -150,7 +174,7 @@ export default function LandingPage() {
   }, []);
 
   const handleGoogleLogin = async () => {
-    try { await loginGoogle(); } catch (e) { addToast("Erro no login Google", "error"); }
+    try { await loginGoogle(); } catch { addToast("Erro no login Google", "error"); }
   };
 
   const handleGuest = () => {
@@ -389,12 +413,12 @@ export default function LandingPage() {
 
                 {/* Infos Legais */}
                 <div>
-                     <h4 className="text-white font-bold mb-4 uppercase text-xs tracking-wider">Legal</h4>
-                     <ul className="space-y-2 text-xs text-zinc-500">
+                      <h4 className="text-white font-bold mb-4 uppercase text-xs tracking-wider">Legal</h4>
+                      <ul className="space-y-2 text-xs text-zinc-500">
                         <li className="hover:text-white cursor-pointer">Termos de Uso</li>
                         <li className="hover:text-white cursor-pointer">Privacidade</li>
                         <li className="hover:text-white cursor-pointer">LGPD</li>
-                     </ul>
+                      </ul>
                 </div>
             </div>
 

@@ -1,18 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  ArrowLeft, User, Bell, Shield, LogOut, ChevronRight, HelpCircle,
-  FileText, Smartphone, Volume2, MessageSquarePlus, Settings,
-  Trash2, Lock, Power, PowerOff, AlertTriangle, Loader2,
-  Crown, Wallet, Trophy, Gift, ShoppingBag, Map, History
+  ArrowLeft, Bell, LogOut, ChevronRight,
+  FileText, Smartphone,
+  Trash2, Power, PowerOff, AlertTriangle, Loader2,
+  Crown, Shield, History
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importado para otimização
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { db, auth } from "../../lib/firebase";
-import { doc, onSnapshot, updateDoc, deleteField } from "firebase/firestore";
+import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { deleteUser } from "firebase/auth";
 import { logActivity } from "../../lib/logger";
 
@@ -95,10 +96,10 @@ export default function SettingsPage() {
             linkedin: deleteField()
         });
         await logActivity(user.uid, "Ex-Usuário", "DELETE", "Conta", "Excluiu a própria conta (Soft Delete)");
-        try { await deleteUser(auth.currentUser); } catch (authError: any) { console.warn("Erro ao deletar do Auth:", authError); }
+        try { await deleteUser(auth.currentUser); } catch (authError) { console.warn("Erro ao deletar do Auth:", authError); }
         addToast("Sua conta foi excluída. Até logo! 👋", "info");
         router.push("/login");
-    } catch (error: any) {
+    } catch (error) {
         console.error(error);
         addToast("Erro ao processar exclusão.", "error");
     } finally {
@@ -125,10 +126,16 @@ export default function SettingsPage() {
         <section className="relative overflow-hidden bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-[2rem] p-5">
             <div className="flex items-center gap-4 relative z-10">
                 <div className="relative">
-                    <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-emerald-500 to-emerald-900">
-                        <img src={user.foto || "https://github.com/shadcn.png"} alt="Perfil" className="w-full h-full rounded-full object-cover border-4 border-[#050505]"/>
+                    <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-emerald-500 to-emerald-900 relative">
+                        <Image 
+                            src={user.foto || "https://github.com/shadcn.png"} 
+                            alt="Perfil" 
+                            fill
+                            className="object-cover rounded-full border-4 border-[#050505]"
+                            unoptimized
+                        />
                     </div>
-                    <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full border-4 border-[#050505]">
+                    <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full border-4 border-[#050505] z-10">
                         <Crown size={12} strokeWidth={3} />
                     </div>
                 </div>
@@ -155,32 +162,12 @@ export default function SettingsPage() {
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[50px] rounded-full pointer-events-none"></div>
         </section>
 
-        {/* 2. ATALHOS RÁPIDOS */}
-        <section className="grid grid-cols-4 gap-2">
-            <Link href="/conquistas" className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group">
-                <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 group-hover:scale-110 transition"><Trophy size={18} /></div>
-                <span className="text-[9px] font-bold text-zinc-300">Conquistas</span>
-            </Link>
-            <Link href="/fidelidade" className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition"><Gift size={18} /></div>
-                <span className="text-[9px] font-bold text-zinc-300">Fidelidade</span>
-            </Link>
-            <Link href="/loja" className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group">
-                <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:scale-110 transition"><ShoppingBag size={18} /></div>
-                <span className="text-[9px] font-bold text-zinc-300">Loja</span>
-            </Link>
-            <Link href="/guia" className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group">
-                <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500 group-hover:scale-110 transition"><Map size={18} /></div>
-                <span className="text-[9px] font-bold text-zinc-300">Guia</span>
-            </Link>
-        </section>
-
         {/* 3. MENU DE NAVEGAÇÃO */}
         <div className="space-y-6">
             <div className="space-y-2">
                 <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">Minha Conta</h3>
                 <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-                    <MenuItem href="/perfil" icon={<User size={18} />} label="Dados Pessoais" desc="Atualizar cadastro" />
+                    <MenuItem href="/perfil" icon={<FileText size={18} />} label="Dados Pessoais" desc="Atualizar cadastro" />
                     {/* 🦈 Link para Nova Página de Pedidos (ID 16) */}
                     <MenuItem href="/configuracoes/pedidos" icon={<History size={18} />} label="Meus Pedidos" desc="Acompanhar compras" badge="Novo" />
                     <MenuItem href="/configuracoes/seguranca" icon={<Shield size={18} />} label="Segurança & Senha" desc="Proteger conta" />

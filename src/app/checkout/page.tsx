@@ -5,8 +5,11 @@ import {
   ArrowLeft, CreditCard, Lock, User, Mail, Smartphone, 
   QrCode, ShieldCheck, Loader2, CheckCircle 
 } from "lucide-react";
-import Link from "next/link";
+// 🦈 Link removido pois não estava em uso
 import { useRouter } from "next/navigation";
+
+// Tipo para o Router (Evita any)
+type AppRouter = ReturnType<typeof useRouter>;
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -179,7 +182,7 @@ export default function CheckoutPage() {
 }
 
 // TELA DE SUCESSO
-function SuccessScreen({ router }: { router: any }) {
+function SuccessScreen({ router }: { router: AppRouter }) {
     return (
         <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
             <div className="max-w-sm w-full text-center">

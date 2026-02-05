@@ -13,8 +13,9 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image"; // 🦈 Importando Image
 import { useRouter } from "next/navigation";
-import { useToast } from "../../context/ToastContext"; // <--- NOVO
+import { useToast } from "../../context/ToastContext";
 
 interface CartItem {
   id: number;
@@ -27,7 +28,7 @@ interface CartItem {
 
 export default function CarrinhoPage() {
   const router = useRouter();
-  const { addToast } = useToast(); // <--- NOVO
+  const { addToast } = useToast();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   const [items, setItems] = useState<CartItem[]>([
@@ -69,15 +70,15 @@ export default function CarrinhoPage() {
 
   const removeItem = (id: number) => {
     setItems(items.filter((item) => item.id !== id));
-    addToast("Item removido do carrinho", "info"); // <--- TOAST AQUI
+    addToast("Item removido do carrinho", "info");
   };
 
   const aplicarCupom = () => {
     if (cupom.toUpperCase() === "TUBA10") {
       setDesconto(10);
-      addToast("Cupom de 10% aplicado!", "success"); // <--- TOAST AQUI
+      addToast("Cupom de 10% aplicado!", "success");
     } else {
-      addToast("Cupom inválido ou expirado", "error"); // <--- TOAST AQUI
+      addToast("Cupom inválido ou expirado", "error");
     }
   };
 
@@ -91,7 +92,7 @@ export default function CarrinhoPage() {
   // --- LÓGICA DE CHECKOUT ---
   const handleCheckout = () => {
     setIsCheckingOut(true);
-    // Redireciona para a página de pagamento que criamos
+    // Redireciona para a página de pagamento
     router.push("/checkout");
   };
 
@@ -122,11 +123,14 @@ export default function CarrinhoPage() {
                 key={item.id}
                 className="flex gap-4 p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800"
               >
-                <div className="w-20 h-20 rounded-xl overflow-hidden bg-zinc-800 shrink-0">
-                  <img
+                <div className="w-20 h-20 rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative">
+                  {/* 🦈 Imagem Otimizada */}
+                  <Image
                     src={item.imagem}
-                    className="w-full h-full object-cover"
                     alt={item.nome}
+                    fill
+                    className="object-cover"
+                    unoptimized
                   />
                 </div>
                 <div className="flex-1 flex flex-col justify-between">

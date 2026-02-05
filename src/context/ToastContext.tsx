@@ -1,12 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { X, CheckCircle, AlertTriangle, Info, Syringe, Stethoscope, Trophy } from "lucide-react";
+import { X, Syringe, Stethoscope, Trophy } from "lucide-react";
 
 type ToastType = "success" | "error" | "info";
 
 interface Toast {
-  id: string; // Mudado para string para garantir unicidade
+  id: string;
   title: string;
   message: string;
   type: ToastType;
@@ -33,8 +33,13 @@ function getRandomTitle(type: ToastType) {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // 🦈 1. Defini o removeToast PRIMEIRO para poder ser usado no addToast sem erro
+  const removeToast = useCallback((id: string) => {
+    setToasts((state) => state.filter((toast) => toast.id !== id));
+  }, []);
+
+  // 🦈 2. Agora o addToast conhece o removeToast e o inclui nas dependências
   const addToast = useCallback((message: string, type: ToastType = "success") => {
-    // 🦈 CORREÇÃO: ID Único Garantido
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const title = getRandomTitle(type);
     
@@ -45,11 +50,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => {
       removeToast(id);
     }, 4000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((state) => state.filter((toast) => toast.id !== id));
-  }, []);
+  }, [removeToast]); // Dependência adicionada corretamente
 
   return (
     <ToastContext.Provider value={{ addToast, removeToast }}>

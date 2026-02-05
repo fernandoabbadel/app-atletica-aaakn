@@ -3,6 +3,8 @@
 import React, { use, useEffect, useState } from "react";
 import { ArrowLeft, Users, Trophy, Loader2 } from "lucide-react";
 import Link from "next/link";
+// 🦈 1. Importar o componente Image
+import Image from "next/image";
 import { db } from "../../../lib/firebase";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 
@@ -32,7 +34,6 @@ export default function TurmaRankingPage({
       async function fetchTurmaData() {
           try {
               // 🦈 Query com Índice Composto Necessário!
-              // Se der erro, verifique o console para criar o índice no Firebase
               const q = query(
                   collection(db, "users"),
                   where("turma", "==", turmaReal),
@@ -93,11 +94,15 @@ export default function TurmaRankingPage({
         <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 text-center relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-[#4ade80]/5 to-transparent"></div>
           <div className="relative z-10">
-            <div className="w-20 h-20 mx-auto bg-white rounded-full p-1 mb-3">
-              <img
+            <div className="w-20 h-20 mx-auto bg-white rounded-full p-1 mb-3 relative overflow-hidden">
+              {/* 🦈 2. Substituição por Image Otimizada (Local) */}
+              <Image
                 src={`/turma${turmaReal.replace(/\D/g, "")}.jpeg`}
-                className="w-full h-full rounded-full object-cover"
-                onError={(e) => (e.currentTarget.src = "/logo.png")}
+                alt={`Brasão da Turma ${turmaReal}`}
+                width={80}
+                height={80}
+                className="rounded-full object-cover"
+                onError={(e) => (e.currentTarget.srcset = "/logo.png")} // Fallback simples
               />
             </div>
             <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white">
@@ -141,20 +146,27 @@ export default function TurmaRankingPage({
                 >
                   {index + 1}º
                 </span>
-                <img
-                  src={item.foto}
-                  className={`w-10 h-10 rounded-full object-cover bg-zinc-800 ${
-                    index === 0 ? "border-2 border-yellow-500" : ""
-                  }`}
-                  onError={(e) => (e.currentTarget.src = "https://github.com/shadcn.png")}
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-white">{item.apelido || item.nome}</p>
+                
+                {/* 🦈 3. Substituição por Image com Unoptimized (Externo) */}
+                <div className="relative w-10 h-10 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+                    <Image
+                      src={item.foto}
+                      alt={`Foto de ${item.nome}`}
+                      width={40}
+                      height={40}
+                      className={`object-cover ${index === 0 ? "border-2 border-yellow-500" : ""}`}
+                      unoptimized // Importante para evitar erro de configuração de domínio
+                      onError={(e) => (e.currentTarget.srcset = "https://github.com/shadcn.png")}
+                    />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{item.apelido || item.nome}</p>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">
                     Atleta da {item.turma}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="text-sm font-black text-[#4ade80]">
                     {item.xp}
                   </p>

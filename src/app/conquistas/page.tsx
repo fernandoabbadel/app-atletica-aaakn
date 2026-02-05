@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   ArrowLeft, Lock, CheckCircle2, ChevronLeft, ChevronRight, 
-  Trophy, Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
+  Fish, Rocket, Swords, Skull, ShoppingBag, Gem, PartyPopper, 
   Beer, Ticket, BookOpen, DollarSign, HeartHandshake, Heart, Megaphone, 
   ShieldAlert, Crown, Activity, Dumbbell, Flame, Zap, Wallet, Timer, MessageCircle, Gamepad2,
   ThumbsUp, LayoutGrid, UserPlus, Target, Star, Ghost, Medal,
@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
-import { useToast } from "../../context/ToastContext"; // Import Toast
+import { useToast } from "../../context/ToastContext"; 
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
-// ICONMAP (Mantido igual)
-const IconMap: any = {
+// 🦈 Tipagem Segura para o Mapa de Ícones
+const IconMap: Record<string, React.ReactElement> = {
     Fish: <Fish />, Rocket: <Rocket />, Swords: <Swords />, Skull: <Skull />, 
     ShoppingBag: <ShoppingBag />, Gem: <Gem />, PartyPopper: <PartyPopper />, 
     Beer: <Beer />, Ticket: <Ticket />, BookOpen: <BookOpen />, DollarSign: <DollarSign />, 
@@ -30,7 +30,35 @@ const IconMap: any = {
     Briefcase: <Briefcase />, GraduationCap: <GraduationCap />, Beiceps: <Dumbbell />
 };
 
-const DEFAULT_BADGES = [
+// 🦈 Interfaces para eliminar any
+interface AchievementConfig {
+    id: string;
+    titulo: string;
+    desc: string;
+    xp: number;
+    target: number;
+    statKey: string;
+    cat: AchievementCategory;
+    iconName: string;
+}
+
+interface AchievementDisplay extends AchievementConfig {
+    progress: number;
+    isUnlocked: boolean;
+    keyExists: boolean;
+}
+
+interface BadgeConfig {
+    id: string;
+    titulo: string;
+    minXp: number;
+    cor: string;
+    bg: string;
+    border: string;
+    iconName: string;
+}
+
+const DEFAULT_BADGES: BadgeConfig[] = [
     { id: "p1", titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", iconName: "Fish" },
     { id: "p2", titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", iconName: "Fish" },
     { id: "p3", titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", iconName: "Swords" },
@@ -44,21 +72,24 @@ export default function ConquistasPage() {
   const { addToast } = useToast();
   const [filtro, setFiltro] = useState<AchievementCategory | "Todas">("Todas");
   
-  const [catalog, setCatalog] = useState<any[]>(ACHIEVEMENTS_CATALOG);
-  const [badgesList, setBadgesList] = useState<any[]>(DEFAULT_BADGES);
+  const [catalog, setCatalog] = useState<AchievementConfig[]>(ACHIEVEMENTS_CATALOG);
+  const [badgesList, setBadgesList] = useState<BadgeConfig[]>(DEFAULT_BADGES);
   
   const [debugMode, setDebugMode] = useState(false);
-  const isAdmin = user?.role === 'master' || user?.role?.includes('admin');
+  
+  // 🦈 Verificação segura de role
+  const role = typeof user?.role === 'string' ? user.role : '';
+  const isAdmin = role === 'master' || role.includes('admin');
 
   useEffect(() => {
       const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
-          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AchievementConfig));
           if (data.length > 0) setCatalog(data);
       });
 
       const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
       const unsubPatentes = onSnapshot(qPatentes, (snap) => {
-          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeConfig));
           if (data.length > 0) setBadgesList(data);
       });
 
@@ -67,14 +98,16 @@ export default function ConquistasPage() {
 
   const userStats = user?.stats || {}; 
   
+  // 🦈 useMemo otimizado e seguro
   const calculatedAchievements = useMemo(() => {
       let unlockedCount = 0;
       let totalXp = 0;
-      let missingKeys: string[] = [];
+      const missingKeys: string[] = []; // 🦈 Const aqui (array mutável é ok)
 
       const processed = catalog.map(ach => {
-          const keyExists = userStats.hasOwnProperty(ach.statKey);
-          const userValue = userStats[ach.statKey] || 0;
+          const keyExists = userStats && Object.prototype.hasOwnProperty.call(userStats, ach.statKey);
+          // 🦈 Acesso seguro ao userStats com index signature implícita
+          const userValue = userStats ? (userStats[ach.statKey] || 0) : 0;
           const isUnlocked = userValue >= ach.target;
           
           if (!keyExists && !missingKeys.includes(ach.statKey)) {
@@ -92,11 +125,10 @@ export default function ConquistasPage() {
       processed.sort((a, b) => (a.isUnlocked === b.isUnlocked ? 0 : a.isUnlocked ? -1 : 1));
 
       return { list: processed, unlockedCount, totalXp, missingKeys };
-  }, [userStats, catalog]);
+  }, [catalog, JSON.stringify(userStats)]); // 🦈 Dependência estável via stringify
 
   const displayXp = Math.max(user?.xp || 0, calculatedAchievements.totalXp);
 
-  // 🦈 FUNÇÃO GERADORA DE PROMPT IA
   const generateIAPrompt = () => {
       const missing = calculatedAchievements.missingKeys;
       if (missing.length === 0) {
@@ -117,7 +149,6 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
       addToast("Prompt copiado! Cole no Gemini. 🤖", "success");
   };
 
-  // ... (Lógica de Carrossel e Navegação Mantida) ...
   const currentBadgeIndex = badgesList.slice().reverse().findIndex(b => displayXp >= b.minXp);
   const realCurrentIndex = currentBadgeIndex === -1 ? 0 : badgesList.length - 1 - currentBadgeIndex;
   const [viewIndex, setViewIndex] = useState(realCurrentIndex);
@@ -157,7 +188,8 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
 
   const renderBadgeIcon = (iconName: string, isLocked: boolean) => {
       const Icon = IconMap[iconName] || <Fish />;
-      return React.cloneElement(Icon, { size: 64, className: isLocked ? 'opacity-50 blur-[2px]' : '' });
+      // 🦈 CloneElement seguro
+      return React.cloneElement(Icon as React.ReactElement<any>, { size: 64, className: isLocked ? 'opacity-50 blur-[2px]' : '' });
   };
 
   return (
@@ -174,7 +206,6 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
             </p>
         </div>
         
-        {/* 🦈 BOTÕES DE DEBUG (SÓ ADMIN) */}
         {isAdmin && (
             <div className="flex gap-2">
                 {debugMode && (
@@ -216,9 +247,8 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
             </div>
         )}
 
-        {/* CARROSSEL DE NÍVEL (Mantido) */}
+        {/* CARROSSEL DE NÍVEL */}
         <section className={`relative overflow-hidden rounded-3xl border ${displayedBadge.border || 'border-zinc-800'} ${displayedBadge.bg || 'bg-zinc-900'} p-6 text-center shadow-2xl transition-colors duration-500`}>
-            {/* ... (Código do carrossel identico ao anterior) ... */}
             <button onClick={handlePrev} disabled={viewIndex === 0} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronLeft size={32}/></button>
             <button onClick={handleNext} disabled={viewIndex === badgesList.length - 1} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white disabled:opacity-20 transition"><ChevronRight size={32}/></button>
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent pointer-events-none"></div>
@@ -266,7 +296,7 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
                     return (
                         <div key={item.id} className={`relative overflow-hidden rounded-2xl border p-4 transition-all duration-300 group ${cardBg} ${cardBorder}`}>
                             
-                            {/* 🦈 DEBUG INFO OVERLAY */}
+                            {/* DEBUG INFO OVERLAY */}
                             {debugMode && (
                                 <div className="absolute top-2 right-2 text-[9px] font-mono text-right z-20">
                                     <div className={`flex items-center gap-1 ${isError ? 'text-red-400 font-bold' : 'text-zinc-500'}`}>

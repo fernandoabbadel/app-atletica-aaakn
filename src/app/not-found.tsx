@@ -1,8 +1,9 @@
+// src/app/not-found.tsx
 "use client";
 
 import React from "react";
 import Link from "next/link";
-import { ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
   return (
@@ -32,7 +33,7 @@ export default function NotFound() {
         Tubarão Perdido
       </h2>
       <p className="text-zinc-400 text-sm font-medium italic max-w-xs mx-auto mb-10 leading-relaxed">
-        "Nadamos, nadamos e... nada. Essa página foi engolida pelo mar."
+        &quot;Nadamos, nadamos e... nada. Essa página foi engolida pelo mar.&quot;
       </p>
 
       {/* BOTÃO VOLTAR */}

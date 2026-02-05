@@ -1,15 +1,29 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight, Loader2, ShoppingBag, Check, Zap, Gem, Trophy, Fish } from "lucide-react";
+import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight, Loader2, ShoppingBag, Check, Zap, Gem, Trophy, Fish, LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 
-// Mapa expandido de ícones para garantir compatibilidade com o Admin
-const ICONS_MAP: any = {
+// 🦈 1. Interface para o Objeto Plano
+interface Plano {
+  id: string;
+  nome: string;
+  preco: string;
+  precoVal: number;
+  icon: string;
+  cor: string;
+  descricao: string;
+  parcelamento?: string;
+  beneficios: string[];
+  destaque?: boolean;
+}
+
+// 🦈 2. Tipagem Correta do Mapa de Ícones
+const ICONS_MAP: Record<string, LucideIcon> = {
   ghost: Ghost,
   star: Star,
   crown: Crown,
@@ -23,13 +37,16 @@ const ICONS_MAP: any = {
 export default function PlanosPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [planos, setPlanos] = useState<any[]>([]);
+  
+  // 🦈 3. Estado Tipado (Adeus 'any[]')
+  const [planos, setPlanos] = useState<Plano[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const q = query(collection(db, "planos"), orderBy("precoVal", "asc")); 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Cast forçado 'as Plano' para garantir a estrutura
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plano));
       setPlanos(data);
       setLoading(false);
     });
@@ -72,14 +89,18 @@ export default function PlanosPage() {
                   
                   // Lógica do Plano Ativo
                   const isFree = plano.precoVal === 0;
+                  
+                  // Cast seguro para acessar propriedades dinâmicas do usuário
+                  const safeUser = user as any;
+                  
                   // Se o usuário não tem 'plano_badge' definido, assume que ele é Free (Bicho Solto)
-                  const userHasNoPlan = !user?.plano_badge && !user?.plano; 
+                  const userHasNoPlan = !safeUser?.plano_badge && !safeUser?.plano; 
                   
                   // Verifica correspondência exata pelo nome do plano
                   const isMyPlan = 
                     (userHasNoPlan && isFree) || 
-                    (user?.plano_badge === plano.nome) || 
-                    (user?.plano === plano.nome);
+                    (safeUser?.plano_badge === plano.nome) || 
+                    (safeUser?.plano === plano.nome);
 
                   // 🦈 CORREÇÃO: Passa apenas a cor do banco, sem o nome para evitar override
                   const styles = getColorClasses(plano.cor); 
