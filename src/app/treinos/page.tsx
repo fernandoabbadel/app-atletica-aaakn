@@ -70,7 +70,7 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
     const { addToast } = useToast();
     // 🦈 Router removido pois não era usado (navegação via Link)
     
-    const [userRsvp, setUserRsvp] = useState<"going" | null>(null);
+    const [userRsvp, setUserRsvp] = useState<"going" | "not_going" | null>(null);
     const [stats, setStats] = useState({ 
         confirmados: 0, 
         avatares: [] as string[], 

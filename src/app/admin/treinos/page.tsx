@@ -169,7 +169,7 @@ export default function AdminTreinosPage() {
                 setModalidades(["Futsal", "Vôlei"]); 
                 setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
             }
-          } catch (_) { console.log("Configurações não encontradas."); }
+          } catch { console.log("Configurações não encontradas."); }
       };
       fetchMods();
   }, []);
@@ -356,7 +356,7 @@ export default function AdminTreinosPage() {
             }
         }
         setShowModal(false); setRecurrenceDate("");
-    } catch (_) { addToast("Erro ao salvar.", "error"); }
+    } catch { addToast("Erro ao salvar.", "error"); }
   };
 
   const handleTogglePresenca = async (aluno: AlunoChamada) => {
@@ -383,7 +383,7 @@ export default function AdminTreinosPage() {
   const handleDeleteAluno = async (alunoId: string) => {
       if(!expandedRow) return;
       if(confirm("Remover da lista oficial?")) {
-          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch(_) { console.log("Removido visualmente ou apenas RSVP"); }
+          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch { console.log("Removido visualmente ou apenas RSVP"); }
       }
   }
 

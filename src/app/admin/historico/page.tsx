@@ -197,6 +197,7 @@ export default function AdminHistoricoPage() {
       
       // Remove id from payload
       const { id, ...dataToSave } = eventData;
+      void id;
 
       if (editingEvent.id) {
         await updateDoc(doc(db, "historic_events", editingEvent.id), dataToSave);

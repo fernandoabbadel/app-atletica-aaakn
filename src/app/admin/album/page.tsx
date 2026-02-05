@@ -11,6 +11,11 @@ import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc } from "fir
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; 
 import Image from "next/image";
 
+// 🦈 IMPORTS DO SISTEMA (Contextos & Utils)
+import { useToast } from "../../../context/ToastContext";
+import { useAuth } from "../../../context/AuthContext";
+import { logActivity } from "../../../lib/logger";
+
 // --- TIPAGENS ---
 interface Hunter {
   id: string;
@@ -40,7 +45,7 @@ interface RankingSectionProps {
 // Configuração inicial das turmas
 const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
 
-// Mapeamento de Logos (Hardcoded ou vindo do banco se preferir)
+// Mapeamento de Logos
 const TURMA_LOGOS: Record<string, string> = {
   "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
   "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -51,6 +56,10 @@ export default function AdminAlbumPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "cms">("dashboard");
   const [hunters, setHunters] = useState<Hunter[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 🦈 HOOKS DO SISTEMA
+  const { addToast } = useToast();
+  const { user } = useAuth();
 
   // --- ESTADOS DO CMS ---
   const [cmsTurma, setCmsTurma] = useState("T8");
@@ -72,32 +81,51 @@ export default function AdminAlbumPage() {
   // 2. Carregar Config da Turma (CMS)
   useEffect(() => {
     const fetchConfig = async () => {
-        const docRef = doc(db, "album_config", cmsTurma);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-            setCmsData(snap.data() as CMSData);
-        } else {
-            setCmsData({ capa: "", titulo: `TURMA ${cmsTurma} - Calouros`, subtitulo: "Álbum Oficial" });
+        try {
+            const docRef = doc(db, "album_config", cmsTurma);
+            const snap = await getDoc(docRef);
+            if (snap.exists()) {
+                setCmsData(snap.data() as CMSData);
+            } else {
+                setCmsData({ capa: "", titulo: `TURMA ${cmsTurma} - Calouros`, subtitulo: "Álbum Oficial" });
+            }
+        } catch (error) {
+            console.error("Erro ao carregar config:", error);
+            addToast("Erro ao carregar dados da turma.", "error");
         }
     };
     fetchConfig();
-  }, [cmsTurma]);
+  }, [cmsTurma, addToast]);
 
   // 3. Upload de Imagem (Capa)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
+    
+    // Validação de tipo/tamanho básica
+    if (!file.type.startsWith("image/")) {
+        addToast("Apenas imagens são permitidas!", "error");
+        return;
+    }
+
     setUploadingImg(true);
 
     try {
         const storageRef = ref(storage, `capas_turmas/${cmsTurma}_${Date.now()}`);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
+        
         setCmsData(prev => ({ ...prev, capa: url }));
-        alert("Capa enviada para a nuvem! Não esqueça de Salvar a página.");
+        addToast("Capa enviada! Não esqueça de Salvar.", "success");
+        
+        // Log da ação de upload
+        if (user) {
+            await logActivity(user.uid, user.nome, "UPDATE", "Album Admin", `Upload de capa para ${cmsTurma}`);
+        }
+
     } catch (error) {
         console.error(error);
-        alert("Erro no upload da imagem.");
+        addToast("Erro no upload da imagem.", "error");
     } finally {
         setUploadingImg(false);
     }
@@ -108,9 +136,17 @@ export default function AdminAlbumPage() {
     setSavingCms(true);
     try {
         await setDoc(doc(db, "album_config", cmsTurma), { ...cmsData, updatedAt: new Date() });
-        alert(`Página da ${cmsTurma} atualizada com sucesso! 🦈`);
+        
+        addToast(`Página da ${cmsTurma} atualizada!`, "success");
+        
+        // Log da ação de salvar
+        if (user) {
+            await logActivity(user.uid, user.nome, "UPDATE", "Album Admin", `Atualizou config da ${cmsTurma}`);
+        }
+
     } catch (e) {
-        alert("Erro ao salvar config.");
+        console.error(e);
+        addToast("Erro ao salvar configurações.", "error");
     } finally {
         setSavingCms(false);
     }
@@ -274,7 +310,7 @@ export default function AdminAlbumPage() {
   );
 }
 
-// 🦈 COMPONENTE DE RANKING REUTILIZÁVEL PARA LIMPAR O CÓDIGO
+// 🦈 COMPONENTE DE RANKING REUTILIZÁVEL E TIPADO
 function RankingSection({ title, data, metricKey, metricLabel, color, icon }: RankingSectionProps) {
     return (
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden">
@@ -306,7 +342,6 @@ function RankingSection({ title, data, metricKey, metricLabel, color, icon }: Ra
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-bold text-sm text-white truncate max-w-[120px] md:max-w-xs">{h.nome}</span>
-                                            {/* 🦈 LINK CORRIGIDO PARA O ADMIN USUARIOS */}
                                             <Link href={`/admin/usuarios/${h.userId || h.id}`} className="text-[10px] text-zinc-500 hover:text-emerald-500 flex items-center gap-1 uppercase font-bold mt-0.5">
                                                 <LinkIcon size={10}/> Ver Perfil
                                             </Link>

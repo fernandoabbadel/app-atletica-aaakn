@@ -14,7 +14,7 @@ import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-  query, orderBy, serverTimestamp, increment
+  query, orderBy, serverTimestamp, increment, Timestamp
 } from "firebase/firestore";
 
 // --- TIPAGEM ---
@@ -34,12 +34,12 @@ interface Pedido {
     id: string;
     userId: string; userName: string; productId: string; productName: string;
     price: number; status: 'pendente' | 'approved' | 'rejected';
-    createdAt: any; approvedBy?: string;
+    createdAt?: Timestamp | null; approvedBy?: string;
 }
 
 interface Review {
     id: string; productId: string; userId: string; userName: string;
-    rating: number; comment: string; approved: boolean; createdAt: any;
+    rating: number; comment: string; approved: boolean; createdAt?: Timestamp | null;
     status: 'pending' | 'approved' | 'rejected';
 }
 
@@ -78,6 +78,12 @@ export default function AdminLojaPage() {
   const [showModalCategoria, setShowModalCategoria] = useState(false);
   const [categoriaNome, setCategoriaNome] = useState("");
   const [savingCategoria, setSavingCategoria] = useState(false);
+  const tabs = [
+    { id: 'dashboard', label: 'Visão Geral', icon: PieChart },
+    { id: 'produtos', label: 'Produtos', icon: Package },
+    { id: 'pedidos', label: 'Pedidos Pendentes', icon: ShoppingBag },
+    { id: 'reviews', label: 'Avaliações', icon: MessageSquare },
+  ] as const;
 
   // FETCH DATA
   useEffect(() => {
@@ -183,7 +189,7 @@ export default function AdminLojaPage() {
           else await addDoc(collection(db,"produtos"), {...payload, createdAt: serverTimestamp(), vendidos: 0, cliques: 0});
           setShowModalProduto(false);
           addToast("Salvo com sucesso!", "success");
-      } catch(e) { addToast("Erro ao salvar.", "error"); }
+      } catch { addToast("Erro ao salvar.", "error"); }
       setSaving(false);
   };
 
@@ -237,13 +243,8 @@ export default function AdminLojaPage() {
 
       <main className="p-6 space-y-8">
         <div className="flex border-b border-zinc-800 gap-4 overflow-x-auto">
-          {[
-              { id: 'dashboard', label: 'Visão Geral', icon: PieChart },
-              { id: 'produtos', label: 'Produtos', icon: Package },
-              { id: 'pedidos', label: 'Pedidos Pendentes', icon: ShoppingBag },
-              { id: 'reviews', label: 'Avaliações', icon: MessageSquare },
-          ].map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-3 text-sm font-bold border-b-2 transition capitalize flex items-center gap-2 ${activeTab === tab.id ? "border-emerald-500 text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
+          {tabs.map((tab) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-3 text-sm font-bold border-b-2 transition capitalize flex items-center gap-2 ${activeTab === tab.id ? "border-emerald-500 text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
               <tab.icon size={16} /> {tab.label}
             </button>
           ))}

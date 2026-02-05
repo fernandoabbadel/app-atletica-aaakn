@@ -90,8 +90,7 @@ export default function PlanosPage() {
                   // Lógica do Plano Ativo
                   const isFree = plano.precoVal === 0;
                   
-                  // Cast seguro para acessar propriedades dinâmicas do usuário
-                  const safeUser = user as any;
+                  const safeUser = user as { plano_badge?: string; plano?: string } | null;
                   
                   // Se o usuário não tem 'plano_badge' definido, assume que ele é Free (Bicho Solto)
                   const userHasNoPlan = !safeUser?.plano_badge && !safeUser?.plano; 

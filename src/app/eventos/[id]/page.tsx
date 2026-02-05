@@ -241,6 +241,13 @@ export default function DetalhesEventoPage() {
   const [meusPedidos, setMeusPedidos] = useState<PedidoIngresso[]>([]);
   // Usando Record<string, unknown> para evitar 'any'
   const [globalFinanceiro, setGlobalFinanceiro] = useState<Record<string, unknown> | null>(null);
+  const contatoFinanceiro = (() => {
+      const telefones = globalFinanceiro?.telefones;
+      if (typeof telefones === "string") return telefones;
+      const whatsapp = globalFinanceiro?.whatsapp;
+      if (typeof whatsapp === "string") return whatsapp;
+      return undefined;
+  })();
 
   // --- SINC INICIAL ---
   useEffect(() => {
@@ -449,8 +456,8 @@ export default function DetalhesEventoPage() {
       addToast("Opção adicionada!", "success");
   };
 
-  const handleReportPoll = async (_pollId: string) => { if(!user) return; addToast("Enquete reportada à moderação.", "info"); };
-  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; addToast(`Opção "${optionText}" denunciada.`, "info"); };
+  const handleReportPoll = async (_pollId: string) => { if(!user) return; void _pollId; addToast("Enquete reportada à moderação.", "info"); };
+  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; void _pollId; addToast(`Opção "${optionText}" denunciada.`, "info"); };
 
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
@@ -559,7 +566,7 @@ export default function DetalhesEventoPage() {
                             <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-xs">
                                 <p className="text-zinc-400 mb-1 flex items-center gap-1"><Phone size={12}/> Envie o comprovante para:</p>
                                 <p className="text-white font-mono">
-                                    {evento.contatoComprovante || (globalFinanceiro as any)?.telefones || (globalFinanceiro as any)?.whatsapp || "(Consulte a diretoria)"}
+                                    {evento.contatoComprovante || contatoFinanceiro || "(Consulte a diretoria)"}
                                 </p>
                             </div>
                         )}

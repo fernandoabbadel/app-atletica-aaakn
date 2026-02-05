@@ -124,7 +124,7 @@ export default function AdminConfiguracoesPage() {
           addToast("Menu do App atualizado para todos! 📲", "success");
           setSections(newSections);
           setIsModalOpen(false);
-      } catch (_) {
+      } catch {
           addToast("Erro ao salvar menu.", "error");
       } finally {
           setSavingMenu(false);
@@ -176,7 +176,7 @@ export default function AdminConfiguracoesPage() {
               updatedAt: serverTimestamp()
           });
           addToast("Documento salvo e publicado! 📜", "success");
-      } catch(_) { addToast("Erro ao salvar.", "error"); }
+      } catch { addToast("Erro ao salvar.", "error"); }
       finally { setSavingDoc(false); }
   };
 

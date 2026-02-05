@@ -172,11 +172,12 @@ export default function TreinoDetalhesPage() {
                   // 🦈 Remove do array global para o perfil saber
                   t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
               } else {
+                  const userWithTurma = user as { turma?: string };
                   t.set(rsvpRef, {
                       userId: user.uid,
                       userName: user.displayName || "Atleta", // Ajustado para displayName padrão
                       userAvatar: user.photoURL || "",       // Ajustado para photoURL padrão
-                      userTurma: (user as any).turma || "Geral", // Cast temporário se a prop não existir no tipo base
+                      userTurma: typeof userWithTurma.turma === "string" ? userWithTurma.turma : "Geral",
                       status: 'going',
                       timestamp: serverTimestamp()
                   });

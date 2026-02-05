@@ -6,10 +6,9 @@ import {
   Dumbbell, ShoppingBag, MessageCircle, 
   LayoutGrid, Activity, Award, 
   Gamepad2, Coins, ShieldAlert, GraduationCap, Loader2,
-  Trophy, DollarSign, Calendar, Mail, Phone, Lock,
+  Trophy, DollarSign, Calendar, Mail, Phone, Lock, CreditCard,
   Zap, Power, Trash2, PowerOff
 } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../../../context/ToastContext"; 
@@ -35,7 +34,7 @@ interface UserData {
     tier?: string;
     patente?: string;
     createdAt?: Timestamp;
-    [key: string]: any; // Flexibilidade para outros campos
+    [key: string]: unknown; // Flexibilidade para outros campos
 }
 
 interface Post {
@@ -89,6 +88,13 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
   
   // Controle de UI
   const [activeTab, setActiveTab] = useState<TabType>("visao");
+  const tabs: Array<{ id: TabType; label: string; icon: React.ElementType }> = [
+    { id: 'visao', label: 'Visão 360º', icon: LayoutGrid },
+    { id: 'financeiro', label: 'Loja & Financeiro', icon: DollarSign },
+    { id: 'social', label: 'Comunidade & Gym', icon: MessageCircle },
+    { id: 'games', label: 'Gamification', icon: Trophy },
+    { id: 'seguranca', label: 'Auth & Segurança', icon: ShieldAlert },
+  ];
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -150,7 +156,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
               await updateDoc(doc(db, "users", id), { status: newStatus });
               setUser({ ...user, status: newStatus });
               addToast(newStatus === 'bloqueado' ? "Conta desativada." : "Conta reativada!", newStatus === 'bloqueado' ? "info" : "success");
-          } catch (e) {
+          } catch {
               addToast("Erro ao atualizar status.", "error");
           } finally {
               setActionLoading(false);
@@ -301,14 +307,8 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
 
         {/* --- NAVEGAÇÃO (ABAS) --- */}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide border-b border-zinc-800">
-            {[
-                { id: 'visao', label: 'Visão 360º', icon: LayoutGrid },
-                { id: 'financeiro', label: 'Loja & Financeiro', icon: DollarSign },
-                { id: 'social', label: 'Comunidade & Gym', icon: MessageCircle },
-                { id: 'games', label: 'Gamification', icon: Trophy },
-                { id: 'seguranca', label: 'Auth & Segurança', icon: ShieldAlert },
-            ].map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase transition border-b-2 ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500 bg-zinc-900/50' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}>
+            {tabs.map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase transition border-b-2 ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500 bg-zinc-900/50' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}>
                     <tab.icon size={16}/> {tab.label}
                 </button>
             ))}

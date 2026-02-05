@@ -5,7 +5,6 @@ import {
   QrCode, Ticket, Edit, Calendar, Store,
   Camera, LogOut, Loader2, X
 } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
@@ -160,11 +159,12 @@ export default function EmpresaDashboard() {
 
   const handleSaveProfile = async () => {
       try {
-          await updateDoc(doc(db, "parceiros", empresaId), editForm);
+          const editPayload: Record<string, unknown> = { ...editForm };
+          await updateDoc(doc(db, "parceiros", empresaId), editPayload);
           setPartner(prev => prev ? ({...prev, ...editForm}) : null);
           setShowEditModal(false);
           addToast("Perfil atualizado!", "success");
-      } catch(e) {
+      } catch {
           addToast("Erro ao salvar.", "error");
       }
   };

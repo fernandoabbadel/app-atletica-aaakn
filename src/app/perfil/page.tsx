@@ -73,26 +73,29 @@ export default function PerfilPage() {
         if (docSnap.exists()) {
           // 🦈 O MARTELO DO TUBARÃO: "as any"
           // Isso força o TypeScript a aceitar os dados brutos do banco, permitindo nossa sanitização manual.
-          const data = docSnap.data() as any; 
+          const data = docSnap.data() as Record<string, unknown>; 
           
           const safeSemestre = data.semestre ? String(data.semestre) : "1º";
           const safeCurso = data.curso ? String(data.curso) : "Não informado";
           const safeBio = data.bio ? String(data.bio) : "Nadando contra a corrente...";
-          const safeDisplayName = data.displayName || user.displayName || "Tubarão Anônimo";
+          const rawDisplayName = typeof data.displayName === "string" ? data.displayName : undefined;
+          const safeDisplayName = rawDisplayName || user.nome || "Tubarão Anônimo";
+          const safeBadges = Array.isArray(data.badges) ? (data.badges as Badge[]) : DEFAULT_BADGES;
+          const safeRole = typeof data.role === "string" ? data.role : undefined;
 
           setProfile({
             uid: user.uid,
             displayName: safeDisplayName,
             email: user.email || "",
-            photoURL: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(safeDisplayName)}&background=10b981&color=fff`,
+            photoURL: user.foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(safeDisplayName)}&background=10b981&color=fff`,
             curso: safeCurso,
             semestre: safeSemestre,
             bio: safeBio,
             level: Number(data.level) || 1,
             xp: Number(data.xp) || 0,
             nextLevelXp: Number(data.nextLevelXp) || 1000,
-            badges: data.badges || DEFAULT_BADGES,
-            role: data.role
+            badges: safeBadges,
+            role: safeRole
           });
           
           setFormData({

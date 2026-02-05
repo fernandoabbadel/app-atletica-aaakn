@@ -331,7 +331,7 @@ export default function ComunidadePage() {
       setNewPostText("");
       setImageFile(null);
       addToast("Postado! 🦈", "success");
-    } catch (e) { 
+    } catch { 
         addToast("Erro ao postar.", "error"); 
     } finally { 
         setIsPublishing(false); 
@@ -404,7 +404,7 @@ export default function ComunidadePage() {
           await deleteDoc(doc(db, "posts", post.id));
           addToast("Mensagem apagada.", "info");
           setMenuOpen(null);
-      } catch(e) { addToast("Erro ao apagar.", "error"); }
+      } catch { addToast("Erro ao apagar.", "error"); }
   };
 
   const handleDeleteComment = async (commentId: string) => {
@@ -415,7 +415,7 @@ export default function ComunidadePage() {
           await updateDoc(doc(db, "posts", commentModal), { comentarios: Math.max(0, commentsList.length - 1) });
           addToast("Comentário removido.", "info");
           setCommentMenuOpen(null);
-      } catch (e) { addToast("Erro ao excluir.", "error"); }
+      } catch { addToast("Erro ao excluir.", "error"); }
   };
 
   const handleReport = async () => {

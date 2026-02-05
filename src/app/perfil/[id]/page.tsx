@@ -16,7 +16,7 @@ import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
   doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
-  addDoc, serverTimestamp, onSnapshot, where, limit 
+  addDoc, serverTimestamp, onSnapshot, where, limit, Timestamp 
 } from "firebase/firestore";
 import Link from "next/link";
 
@@ -28,7 +28,7 @@ interface PostItem {
   texto?: string;
   likes?: string[];
   comentarios?: number;
-  createdAt?: any; // Timestamp do Firestore
+  createdAt?: Timestamp | null; // Timestamp do Firestore
   userId: string;
 }
 
@@ -211,6 +211,7 @@ export default function PerfilPublicoPage() {
   
   const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
+  const tabs: Array<typeof activeTab> = ['posts', 'eventos', 'treinos', 'ligas'];
 
   const [recentPosts, setRecentPosts] = useState<PostItem[]>([]);
   const [myEvents, setMyEvents] = useState<EventItem[]>([]);
@@ -455,8 +456,8 @@ export default function PerfilPublicoPage() {
             {/* ABAS */}
             <div className="w-full max-w-sm">
                 <div className="flex justify-between border-b border-zinc-800 mb-4 overflow-x-auto">
-                    {['posts', 'eventos', 'treinos', 'ligas'].map((tab) => (
-                        <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === tab ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>{tab}</button>
+                    {tabs.map((tab) => (
+                        <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === tab ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>{tab}</button>
                     ))}
                 </div>
 

@@ -126,7 +126,7 @@ export default function AdminUsuariosPage() {
             try {
                 await updateDoc(doc(db, "users", user.id), { status: newStatus });
                 addToast(`Usuário ${newStatus === 'bloqueado' ? 'bloqueado' : 'liberado'}!`, "info");
-            } catch (_) {
+            } catch {
                 addToast("Erro ao alterar status.", "error");
             }
         }
@@ -137,7 +137,7 @@ export default function AdminUsuariosPage() {
             try {
                 await deleteDoc(doc(db, "users", id));
                 addToast("Usuário deletado.", "info");
-            } catch (_) {
+            } catch {
                 addToast("Erro ao deletar.", "error");
             }
         }

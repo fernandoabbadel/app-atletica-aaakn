@@ -13,7 +13,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc, Timestamp } from "firebase/firestore";
 
 // --- TIPAGEM ESTRITA ---
 interface Plano {
@@ -42,7 +42,7 @@ interface Solicitacao {
     planoNome: string;
     valor: number;
     comprovanteUrl: string;
-    dataSolicitacao: any;
+    dataSolicitacao: Timestamp | null;
     status: 'pendente' | 'aprovado' | 'rejeitado';
 }
 

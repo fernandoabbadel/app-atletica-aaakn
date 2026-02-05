@@ -50,37 +50,52 @@ export default function MeusPedidosPage() {
             const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
             // 🦈 Normalização dos dados para interface unificada
-            const listaNormalizada: PedidoUnificado[] = rawList.map((item: any) => {
+            const listaNormalizada: PedidoUnificado[] = rawList.map((item) => {
+                const itemData = item as {
+                    id: string;
+                    dataSolicitacao?: Timestamp;
+                    createdAt?: Timestamp;
+                    data?: string;
+                    eventoNome?: string;
+                    quantidade?: number;
+                    loteNome?: string;
+                    valorTotal?: number;
+                    itens?: unknown[];
+                    total?: number;
+                    planoNome?: string;
+                    valor?: number;
+                    status?: PedidoUnificado["status"];
+                };
                 let titulo = "Item";
                 let subtitulo = "";
                 let valor = 0;
                 let data = new Date();
 
                 // Tratamento de Data
-                if (item.dataSolicitacao instanceof Timestamp) data = item.dataSolicitacao.toDate();
-                else if (item.createdAt instanceof Timestamp) data = item.createdAt.toDate();
-                else if (item.data) data = new Date(item.data);
+                if (itemData.dataSolicitacao instanceof Timestamp) data = itemData.dataSolicitacao.toDate();
+                else if (itemData.createdAt instanceof Timestamp) data = itemData.createdAt.toDate();
+                else if (itemData.data) data = new Date(itemData.data);
 
                 if (activeTab === 'eventos') {
-                    titulo = item.eventoNome || "Ingresso";
-                    subtitulo = `${item.quantidade || 1}x ${item.loteNome || "Lote Único"}`;
-                    valor = item.valorTotal || 0;
+                    titulo = itemData.eventoNome || "Ingresso";
+                    subtitulo = `${itemData.quantidade || 1}x ${itemData.loteNome || "Lote Único"}`;
+                    valor = itemData.valorTotal || 0;
                 } else if (activeTab === 'loja') {
-                    titulo = `Pedido #${item.id.slice(0,6).toUpperCase()}`;
-                    subtitulo = `${item.itens?.length || 0} itens`;
-                    valor = item.total || 0;
+                    titulo = `Pedido #${itemData.id.slice(0,6).toUpperCase()}`;
+                    subtitulo = `${itemData.itens?.length || 0} itens`;
+                    valor = itemData.total || 0;
                 } else if (activeTab === 'planos') {
-                    titulo = item.planoNome || "Adesão";
+                    titulo = itemData.planoNome || "Adesão";
                     subtitulo = "Anuidade";
-                    valor = item.valor || 0;
+                    valor = itemData.valor || 0;
                 }
 
                 return {
-                    id: item.id,
+                    id: itemData.id,
                     titulo,
                     subtitulo,
                     valor,
-                    status: item.status || 'pendente',
+                    status: itemData.status || 'pendente',
                     data,
                     tipo: activeTab === 'eventos' ? 'evento' : activeTab === 'loja' ? 'loja' : 'plano'
                 };

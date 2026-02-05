@@ -23,7 +23,7 @@ interface EventoData {
     titulo: string;
     imagem?: string;
     lotes?: Lote[];
-    [key: string]: any; // Flexibilidade para outros campos do evento
+    [key: string]: unknown; // Flexibilidade para outros campos do evento
 }
 
 interface PixData {

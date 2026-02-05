@@ -10,7 +10,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, writeBatch, Timestamp } from "firebase/firestore";
 import { ACHIEVEMENTS_CATALOG } from "../../../lib/achievements";
 
 // --- INTERFACES (O Escudo do Código) ---
@@ -31,7 +31,7 @@ interface LogData {
   id: string;
   userName: string;
   achievementTitle: string;
-  timestamp: any;
+  timestamp: Timestamp;
 }
 
 interface UserRank {
@@ -163,7 +163,7 @@ export default function AdminConquistasPage() {
       await setDoc(doc(db, "achievements_config", editingAch.id), editingAch, { merge: true });
       setEditingAch(null);
       addToast("Conquista salva!", "success");
-    } catch (e) { 
+    } catch { 
         addToast("Erro ao salvar.", "error"); 
     }
   };
@@ -178,7 +178,7 @@ export default function AdminConquistasPage() {
     try {
       await setDoc(doc(db, "achievements_config", ach.id), { active: !ach.active }, { merge: true });
       addToast("Status atualizado.", "info");
-    } catch (e) { addToast("Erro.", "error"); }
+    } catch { addToast("Erro.", "error"); }
   };
 
   // --- AÇÕES PATENTES ---
@@ -240,7 +240,7 @@ export default function AdminConquistasPage() {
           await setDoc(doc(db, "patentes_config", editingPatente.id), payload, { merge: true });
           setEditingPatente(null);
           addToast("Patente salva!", "success");
-      } catch (e) {
+      } catch {
           addToast("Erro ao salvar.", "error");
       }
   };

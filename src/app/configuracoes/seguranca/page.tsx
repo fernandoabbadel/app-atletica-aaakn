@@ -15,15 +15,12 @@ export default function SecurityPage() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // 🦈 Monitora Auth State para evitar crash se der F5
   useEffect(() => {
     const auth = getAuth(app);
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUserEmail(u.email);
-      } else {
+      if (!u) {
         // Se deslogar, força saida (opcional, mas seguro)
         // window.location.href = "/login";
       }
@@ -84,9 +81,10 @@ export default function SecurityPage() {
       setConfirmNewPassword("");
 
       addToast("Senha atualizada com sucesso! 🔒", "success");
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Erro ao mudar senha:", e);
-      const msg = String(e?.code || e?.message || "");
+      const err = e as { code?: string; message?: string };
+      const msg = String(err.code || err.message || "");
       
       if (msg.includes("auth/wrong-password")) {
         addToast("A senha atual está incorreta.", "error");

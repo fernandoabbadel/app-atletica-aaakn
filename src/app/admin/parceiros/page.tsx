@@ -13,7 +13,7 @@ import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import { 
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy 
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, Timestamp 
 } from "firebase/firestore";
 
 // --- HELPERS ---
@@ -63,7 +63,7 @@ interface ScanHistory {
     userId: string;
     cupom: string;
     valorEconomizado: string;
-    timestamp?: any;
+    timestamp?: Timestamp | null;
 }
 
 const CATEGORIAS_PADRAO = ["Alimentação", "Saúde", "Lazer", "Serviços", "Vestuário"];
@@ -131,7 +131,7 @@ export default function AdminParceirosPage() {
           await updateDoc(doc(db, "parceiros", id), { status: 'active' });
           setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
           addToast("Parceiro aprovado!", "success");
-      } catch (_) { addToast("Erro ao aprovar.", "error"); }
+      } catch { addToast("Erro ao aprovar.", "error"); }
   };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
@@ -140,7 +140,7 @@ export default function AdminParceirosPage() {
           await updateDoc(doc(db, "parceiros", id), { status: newStatus });
           setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as "active" | "disabled" } : p));
           addToast("Status atualizado.", "success");
-      } catch (_) { addToast("Erro.", "error"); }
+      } catch { addToast("Erro.", "error"); }
   };
 
   const togglePasswordVisibility = (id: string) => {
@@ -220,7 +220,7 @@ export default function AdminParceirosPage() {
               await deleteDoc(doc(db, "parceiros", id));
               setParceiros(prev => prev.filter(p => p.id !== id));
               addToast("Parceiro removido.", "success");
-          } catch(_) { addToast("Erro ao remover.", "error"); }
+          } catch { addToast("Erro ao remover.", "error"); }
       }
   };
   
@@ -231,7 +231,7 @@ export default function AdminParceirosPage() {
               if (isCupom) { setNewCupom(prev => ({ ...prev, imagem: base64 })); }
               else { setCurrentPartner(prev => ({ ...prev, [field]: base64 })); }
               addToast("Imagem carregada!", "success");
-          } catch (_) { addToast("Erro na imagem", "error"); }
+          } catch { addToast("Erro na imagem", "error"); }
       }
   };
 

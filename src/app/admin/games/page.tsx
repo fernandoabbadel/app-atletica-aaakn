@@ -9,7 +9,7 @@ import Image from "next/image";
 import { db } from "../../../lib/firebase";
 import { collection, query, getDocs, limit } from "firebase/firestore";
 // 🦈 Importamos a calculadora oficial para garantir que o Admin vê a mesma coisa que o User
-import { calculateUserStats } from "../../games/page"; 
+import { calculateUserStats } from "../../../lib/games"; 
 
 // 🦈 Interface para tipagem segura
 interface AdminUser {
@@ -18,7 +18,7 @@ interface AdminUser {
     turma: string;
     foto: string;
     stats?: Record<string, number>;
-    [key: string]: any; // Flexibilidade para outros campos do Firestore
+    [key: string]: unknown; // Flexibilidade para outros campos do Firestore
 }
 
 export default function AdminGamesPage() {

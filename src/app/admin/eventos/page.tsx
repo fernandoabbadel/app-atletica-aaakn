@@ -289,7 +289,7 @@ export default function AdminEventosPage() {
             addToast("Evento criado!", "success");
         }
         setShowModal(false);
-    } catch (_) {
+    } catch {
         addToast("Erro ao salvar.", "error");
     }
   };
@@ -299,7 +299,7 @@ export default function AdminEventosPage() {
       try {
           await deleteDoc(doc(db, "eventos", id));
           addToast("Evento cancelado.", "info");
-      } catch(_) {
+      } catch {
           addToast("Erro ao excluir.", "error");
       }
     }
@@ -355,14 +355,14 @@ export default function AdminEventosPage() {
       try {
           await updateDoc(doc(db, "eventos", evento.id), { status: newStatus });
           addToast(`Evento marcado como ${newStatus}.`, "info");
-      } catch(_) { addToast("Erro ao atualizar status.", "error"); }
+      } catch { addToast("Erro ao atualizar status.", "error"); }
   };
 
   const toggleLowStock = async (evento: Evento) => {
       try {
           await updateDoc(doc(db, "eventos", evento.id), { isLowStock: !evento.isLowStock });
           addToast(`Status de vagas ${!evento.isLowStock ? 'ATIVADO' : 'DESATIVADO'}`, "success");
-      } catch (_) {
+      } catch {
           addToast("Erro ao atualizar.", "error");
       }
   };
@@ -416,7 +416,7 @@ export default function AdminEventosPage() {
           });
           setNovaEnquete({ question: "", allowUserOptions: true });
           addToast("Enquete criada!", "success");
-      } catch (_) { addToast("Erro ao criar enquete.", "error"); }
+      } catch { addToast("Erro ao criar enquete.", "error"); }
   };
 
   const handleDeletePoll = async (pollId: string) => {
@@ -425,17 +425,20 @@ export default function AdminEventosPage() {
       try {
           await deleteDoc(doc(db, "eventos", showPollModal.id, "enquetes", pollId));
           addToast("Enquete excluída.", "info");
-      } catch (_) { addToast("Erro ao excluir.", "error"); }
+      } catch { addToast("Erro ao excluir.", "error"); }
   };
 
   const handleDeleteOption = async (poll: Poll, optionIndex: number) => {
       if (!showPollModal) return;
       if (!confirm("Remover esta opção da enquete?")) return;
-      const newOptions = poll.options.filter((_, i) => i !== optionIndex);
+      const newOptions = poll.options.filter((option, i) => {
+          void option;
+          return i !== optionIndex;
+      });
       try {
           await updateDoc(doc(db, "eventos", showPollModal.id, "enquetes", poll.id), { options: newOptions });
           addToast("Opção removida.", "info");
-      } catch (_) { addToast("Erro ao remover opção.", "error"); }
+      } catch { addToast("Erro ao remover opção.", "error"); }
   };
 
   return (

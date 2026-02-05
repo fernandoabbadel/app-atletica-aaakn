@@ -152,12 +152,13 @@ export default function AdminPermissoesPage() {
 
   const handleUpdateRole = async (targetUserId: string, newRole: string) => {
       try {
+          const adminName = typeof user?.displayName === "string" ? user.displayName : "Admin Master";
           await updateDoc(doc(db, "users", targetUserId), { role: newRole });
           setUsersList(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
           
           await logActivity(
             user?.uid || 'sistema',
-            user?.displayName || 'Admin Master',
+            adminName,
             "UPDATE",
             "Permissões - Usuários",
             `Alterou cargo do usuário ${targetUserId} para ${newRole}`
@@ -189,11 +190,12 @@ export default function AdminPermissoesPage() {
   const saveMatrix = async () => {
       setSavingMatrix(true);
       try {
+          const adminName = typeof user?.displayName === "string" ? user.displayName : "Admin Master";
           await setDoc(doc(db, "settings", "permissions"), permissionMatrix);
           
           await logActivity(
             user?.uid || 'sistema',
-            user?.displayName || 'Admin Master',
+            adminName,
             "UPDATE",
             "Permissões - Matriz",
             "Atualizou a Matriz de Acesso Global"

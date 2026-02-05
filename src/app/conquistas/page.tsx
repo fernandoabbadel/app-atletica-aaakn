@@ -17,17 +17,17 @@ import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
 // 🦈 Tipagem Segura para o Mapa de Ícones
-const IconMap: Record<string, React.ReactElement> = {
-    Fish: <Fish />, Rocket: <Rocket />, Swords: <Swords />, Skull: <Skull />, 
-    ShoppingBag: <ShoppingBag />, Gem: <Gem />, PartyPopper: <PartyPopper />, 
-    Beer: <Beer />, Ticket: <Ticket />, BookOpen: <BookOpen />, DollarSign: <DollarSign />, 
-    HeartHandshake: <HeartHandshake />, Heart: <Heart />, Megaphone: <Megaphone />, 
-    ShieldAlert: <ShieldAlert />, Activity: <Activity />, Dumbbell: <Dumbbell />, 
-    Flame: <Flame />, Crown: <Crown />, Zap: <Zap />, Wallet: <Wallet />, 
-    Timer: <Timer />, MessageCircle: <MessageCircle />, Gamepad2: <Gamepad2 />,
-    ThumbsUp: <ThumbsUp />, LayoutGrid: <LayoutGrid />, CheckCircle2: <CheckCircle2 />,
-    UserPlus: <UserPlus />, Target: <Target />, Star: <Star />, Ghost: <Ghost />, Medal: <Medal />,
-    Briefcase: <Briefcase />, GraduationCap: <GraduationCap />, Beiceps: <Dumbbell />
+const IconMap: Record<string, React.ElementType> = {
+    Fish, Rocket, Swords, Skull,
+    ShoppingBag, Gem, PartyPopper,
+    Beer, Ticket, BookOpen, DollarSign,
+    HeartHandshake, Heart, Megaphone,
+    ShieldAlert, Activity, Dumbbell,
+    Flame, Crown, Zap, Wallet,
+    Timer, MessageCircle, Gamepad2,
+    ThumbsUp, LayoutGrid, CheckCircle2,
+    UserPlus, Target, Star, Ghost, Medal,
+    Briefcase, GraduationCap, Beiceps: Dumbbell
 };
 
 // 🦈 Interfaces para eliminar any
@@ -104,7 +104,7 @@ export default function ConquistasPage() {
       let totalXp = 0;
       const missingKeys: string[] = []; // 🦈 Const aqui (array mutável é ok)
 
-      const processed = catalog.map(ach => {
+      const processed: AchievementDisplay[] = catalog.map(ach => {
           const keyExists = userStats && Object.prototype.hasOwnProperty.call(userStats, ach.statKey);
           // 🦈 Acesso seguro ao userStats com index signature implícita
           const userValue = userStats ? (userStats[ach.statKey] || 0) : 0;
@@ -187,9 +187,8 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
     : calculatedAchievements.list.filter(c => c.cat === filtro);
 
   const renderBadgeIcon = (iconName: string, isLocked: boolean) => {
-      const Icon = IconMap[iconName] || <Fish />;
-      // 🦈 CloneElement seguro
-      return React.cloneElement(Icon as React.ReactElement<any>, { size: 64, className: isLocked ? 'opacity-50 blur-[2px]' : '' });
+      const Icon = IconMap[iconName] || Fish;
+      return <Icon size={64} className={isLocked ? 'opacity-50 blur-[2px]' : ''} />;
   };
 
   return (
@@ -276,8 +275,8 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
         {/* FILTROS */}
         <section className="overflow-x-auto pb-2 scrollbar-hide">
             <div className="flex gap-2">
-                {["Todas", "Gym", "Games", "Loja", "Eventos", "Social"].map((cat) => (
-                    <button key={cat} onClick={() => setFiltro(cat as any)} className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase transition border ${filtro === cat ? "bg-emerald-600 border-emerald-500 text-white shadow-lg" : "bg-zinc-900 border-zinc-800 text-zinc-500"}`}>{cat}</button>
+                {(["Todas", "Gym", "Games", "Loja", "Eventos", "Social"] as Array<AchievementCategory | "Todas">).map((cat) => (
+                    <button key={cat} onClick={() => setFiltro(cat)} className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase transition border ${filtro === cat ? "bg-emerald-600 border-emerald-500 text-white shadow-lg" : "bg-zinc-900 border-zinc-800 text-zinc-500"}`}>{cat}</button>
                 ))}
             </div>
         </section>
@@ -287,7 +286,7 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
             <div className="grid grid-cols-1 gap-3">
                 {filteredList.map((item) => {
                     const percent = Math.min((item.progress / item.target) * 100, 100);
-                    const IconComponent = IconMap[item.iconName] || <Lock size={20}/>;
+                    const IconComponent = IconMap[item.iconName] || Lock;
                     
                     const isError = !item.keyExists && debugMode;
                     const cardBorder = isError ? "border-red-500 border-2" : item.isUnlocked ? "border-emerald-500/30" : "border-zinc-800/60";
@@ -313,7 +312,7 @@ Por favor, analise onde essas chaves deveriam ser atualizadas (ex: ao fazer logi
 
                             <div className="flex items-center gap-4 relative z-10">
                                 <div className={`h-14 w-14 shrink-0 rounded-2xl flex items-center justify-center border transition-colors ${item.isUnlocked ? "bg-emerald-500 text-black border-emerald-400" : "bg-zinc-800 text-zinc-600 border-zinc-700"}`}>
-                                    <span className="text-2xl">{item.isUnlocked ? IconComponent : <Lock size={20}/>}</span>
+                                    <span className="text-2xl">{item.isUnlocked ? <IconComponent size={20}/> : <Lock size={20}/>}</span>
                                 </div>
 
                                 <div className="flex-1 min-w-0 pr-16">

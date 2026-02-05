@@ -125,10 +125,11 @@ export default function AdesaoPage() {
       setLoading(true);
       try {
           // 1. Criar Solicitação "Pendente" no Banco
+          const userWithTurma = user as { turma?: string };
           await addDoc(collection(db, "solicitacoes_adesao"), {
               userId: user.uid,
               userName: user.displayName || "Aluno", // Ajustado para propriedade padrão do Auth
-              userTurma: (user as any).turma || "T??", // Cast temporário se 'turma' não estiver no tipo User padrão do context
+              userTurma: typeof userWithTurma.turma === "string" ? userWithTurma.turma : "T??",
               planoId: plano.id,
               planoNome: plano.nome,
               valor: plano.precoVal,

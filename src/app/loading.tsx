@@ -68,7 +68,7 @@ export default function Loading() {
           Carregando
         </h2>
         <p className="text-zinc-400 text-sm font-medium italic leading-relaxed min-h-[3rem] transition-all duration-500">
-          "{frase}"
+          &quot;{frase}&quot;
         </p>
       </div>
 

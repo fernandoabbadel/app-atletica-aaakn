@@ -5,7 +5,7 @@ import {
   ArrowLeft, Plus, Trophy, Calendar, Trash2, Medal, 
   ShieldAlert, CheckCircle2, XCircle, Dumbbell, Settings, 
   LayoutDashboard, AlertTriangle, Edit, BarChart3, PieChart,
-  X, ChevronDown, Undo2, ExternalLink, UploadCloud, Eye, Flag, Clock, Filter
+  X, ChevronDown, Undo2, ExternalLink, UploadCloud, Eye, Flag, Clock
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";

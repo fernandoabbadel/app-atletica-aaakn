@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Plus, Edit, Trash2, Save, X, Search, 
+  ArrowLeft, Plus, Edit, Trash2, X, Search, 
   Shield, Key, UploadCloud, Eye, EyeOff, 
   Loader2, Calendar, UserPlus, MonitorPlay
 } from "lucide-react";
@@ -94,6 +94,7 @@ export default function AdminLigasPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'membros' | 'eventos' | 'shark'>('info');
+  const tabs: Array<typeof activeTab> = ['info', 'membros', 'eventos', 'shark'];
   
   // Estado para visualização de senha
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
@@ -168,7 +169,7 @@ export default function AdminLigasPage() {
     try {
       await deleteDoc(doc(db, "ligas_config", id)); // CORRIGIDO
       addToast("Liga removida com sucesso.", "success");
-    } catch (e) {
+    } catch {
       addToast("Erro ao remover.", "error");
     }
   };
@@ -179,7 +180,7 @@ export default function AdminLigasPage() {
       try {
           await updateDoc(doc(db, "ligas_config", liga.id), { visivel: novoStatus }); // CORRIGIDO
           addToast(novoStatus ? "Liga visível no Dashboard! 📱" : "Liga ocultada do Dashboard.", novoStatus ? "success" : "info");
-      } catch (e) {
+      } catch {
           addToast("Erro ao atualizar visibilidade.", "error");
       }
   };
@@ -275,13 +276,13 @@ export default function AdminLigasPage() {
   // --- GESTÃO SHARK ROUND (PERGUNTAS) ---
   const addQuestion = () => setFormData(prev => ({...prev, perguntas: [...(prev.perguntas||[]), { id: Date.now().toString(), texto: "", alternativas: ["","","",""], correta: 0 }]}));
   
-  const updateQuestion = (idx: number, field: string, val: any) => {
+  const updateQuestion = (idx: number, field: string, val: string | number) => {
       const novas = [...(formData.perguntas || [])];
-      if(field === 'texto') novas[idx].texto = val; 
-      else if(field === 'correta') novas[idx].correta = val; 
+      if(field === 'texto') novas[idx].texto = String(val); 
+      else if(field === 'correta') novas[idx].correta = Number(val); 
       else {
           const altIdx = parseInt(field.split('-')[1]); 
-          novas[idx].alternativas[altIdx] = val;
+          novas[idx].alternativas[altIdx] = String(val);
       }
       setFormData({ ...formData, perguntas: novas });
   };
@@ -382,10 +383,10 @@ export default function AdminLigasPage() {
             </div>
 
             <div className="flex border-b border-zinc-800 mb-4 overflow-x-auto">
-                {['info', 'membros', 'eventos', 'shark'].map(tab => (
+                {tabs.map(tab => (
                     <button 
                         key={tab}
-                        onClick={() => setActiveTab(tab as any)}
+                        onClick={() => setActiveTab(tab)}
                         className={`px-4 py-2 text-xs font-bold uppercase border-b-2 transition ${activeTab === tab ? 'text-emerald-500 border-emerald-500' : 'text-zinc-500 border-transparent hover:text-white'}`}
                     >
                         {tab === 'info' ? 'Informações' : tab}

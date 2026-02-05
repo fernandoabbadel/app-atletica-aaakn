@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import {
   ArrowLeft, Swords, Trophy, Sparkles, Heart, Zap, Brain, User, Palette,
   Gamepad2, Edit2, Save, LogOut, Loader2,
-  Eye, ShoppingBag, Dumbbell, Target, Database, AlertTriangle, Wrench, Bot
+  Eye, ShoppingBag, Dumbbell, Target
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image
@@ -12,6 +12,7 @@ import { useToast } from "../../context/ToastContext";
 import SharkAvatar from "../components/SharkAvatar";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
+import { calculateLevel, getNextLevelXP, calculateUserStats, HeroStats } from "../../lib/games";
 import { collection, query, getDocs, limit, addDoc, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
 
 // ============================================================================
@@ -23,10 +24,6 @@ const MAX_ROUNDS = 10;
 
 // Tipos de Personalidade da IA
 type AIType = "estrategista" | "zueiro" | "copao" | "lerdo" | "medio" | string;
-
-interface HeroStats {
-  inteligencia: number; forca: number; stamina: number; hp: number; ataque: number; defesa: number;
-}
 
 interface Combatant {
   id: string; 
@@ -51,43 +48,7 @@ interface Move {
   power: number; accuracy: number; staminaCost: number; statScaling: keyof HeroStats; icon: string; color: string;
 }
 
-// 🦈 CÁLCULO DE NÍVEL
-export const calculateLevel = (xp: number) => {
-    if (xp < 50) return 1;
-    if (xp < 150) return 2;
-    if (xp < 350) return 3;
-    if (xp < 750) return 4;
-    if (xp < 1350) return 5;
-    if (xp < 2150) return 6;
-    return 6 + Math.floor((xp - 2150) / 1000);
-};
-
-export const getNextLevelXP = (level: number) => {
-    if (level === 1) return 50;
-    if (level === 2) return 150;
-    if (level === 3) return 350;
-    if (level === 4) return 750;
-    if (level === 5) return 1350;
-    if (level === 6) return 2150;
-    return 2150 + ((level - 6) * 1000);
-};
-
-// 🦈 FÓRMULA DE STATS
-export const calculateUserStats = (user: any): HeroStats => {
-    const stats = user.stats || {};
-    const xp = user.xp || 0;
-    const currentLevel = calculateLevel(xp);
-    const calc = (base: number, bonus: number) => Math.floor(base + bonus);
-
-    return {
-        forca: calc(20, ((stats.gymCheckins || 0) * 0.1) + ((stats.confirmedTrainings || 0) * 1)),
-        inteligencia: calc(20, ((stats.postsCount || 0) * 0.1) + ((stats.commentsCount || 0) * 0.1) + ((stats.albumCollected || 0) * 0.1) + ((stats.followingCount || 0) * 0.1)),
-        stamina: calc(50, ((stats.loginCount || 0) * 0.1) + ((stats.streak7Cycles || 0) * 1) + ((stats.streak30Cycles || 0) * 5) + ((stats.eventsAttended || 0) * 5) + ((stats.confirmedTrainings || 0) * 1)),
-        defesa: calc(20, ((stats.storeSpent || 0) * 0.1) + ((stats.followersCount || 0) * 0.1) + (user.plano_badge ? 30 : 0)),
-        ataque: calc(25, ((stats.arenaWins || 0) * 0.1) - ((stats.arenaLosses || 0) * 0.05)),
-        hp: calc(200, currentLevel * 50)
-    };
-};
+// 🦈 Cálculos de nível e stats movidos para src/lib/games.ts
 
 const STAT_CONFIG: Record<keyof HeroStats, { label: string; icon: React.ElementType; color: string; source: string; desc: string }> = {
   forca: { label: "Força", icon: Dumbbell, color: "text-red-500", source: "Gym", desc: "Check-ins e Treinos." },
@@ -483,7 +444,7 @@ export default function SharkLegendsPage() {
 
     const points = statsKeys.map((key, i) => {
       const angle = (Math.PI * 2 * i) / 6;
-      let val = myStats[key as keyof HeroStats];
+      const val = myStats[key as keyof HeroStats];
       let max = MAX_SERVER_STAT;
       if(key === 'hp') max = 5000; 
       

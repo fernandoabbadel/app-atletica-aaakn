@@ -8,7 +8,7 @@ import {
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Correção: Next Image
 import { db } from "../../lib/firebase";
-import { collection, query, orderBy, limit, getDocs, where, getCountFromServer } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, getCountFromServer, Timestamp } from "firebase/firestore";
 
 // --- INTERFACES (FIM DO ANY) ---
 interface DashboardStats {
@@ -25,7 +25,7 @@ interface RecentUser {
     foto: string;
     turma: string;
     role: string;
-    createdAt?: any;
+    createdAt?: Timestamp | null;
 }
 
 interface ActivityLog {
@@ -33,7 +33,7 @@ interface ActivityLog {
     userName: string;
     action: string;
     resource: string;
-    timestamp: any;
+    timestamp: Timestamp;
 }
 
 export default function AdminDashboardPage() {
@@ -48,8 +48,6 @@ export default function AdminDashboardPage() {
             // 1. Contadores (Usando count aggregations para performance)
             const usersColl = collection(db, "users");
             const eventsColl = collection(db, "eventos");
-            const salesColl = collection(db, "store_orders"); // Assumindo coleção de vendas
-            
             const usersSnapshot = await getCountFromServer(usersColl);
             const eventsSnapshot = await getCountFromServer(eventsColl);
             // Simulação de vendas se não tiver a coleção ainda
@@ -207,7 +205,7 @@ export default function AdminDashboardPage() {
 }
 
 // Componente Auxiliar para Cards
-function StatCard({ title, value, icon, trend }: { title: string, value: string | number, icon: any, trend: string }) {
+function StatCard({ title, value, icon, trend }: { title: string, value: string | number, icon: React.ReactNode, trend: string }) {
     return (
         <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition">
             <div className="flex justify-between items-start mb-4">
