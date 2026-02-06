@@ -211,7 +211,7 @@ export default function AdminParceirosPage() {
               addToast("Novo parceiro cadastrado!", "success");
           }
           setShowPartnerModal(false);
-      } catch (e) { console.error(e); addToast("Erro ao salvar.", "error"); }
+      } catch (error) { console.error(error); addToast("Erro ao salvar.", "error"); }
   };
 
   const handleDelete = async (id: string) => { 

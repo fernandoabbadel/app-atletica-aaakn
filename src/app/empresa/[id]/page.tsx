@@ -104,8 +104,8 @@ export default function EmpresaDashboard() {
             const scanSnaps = await getDocs(qScans);
             setHistory(scanSnaps.docs.map(d => ({id: d.id, ...d.data()} as ScanData)));
 
-        } catch (e) {
-            console.error(e);
+        } catch (error) {
+            console.error(error);
         } finally {
             setLoading(false);
         }
@@ -150,8 +150,8 @@ export default function EmpresaDashboard() {
               setPartner((prev) => prev ? ({...prev, totalScans: newTotal}) : null);
               addToast("✅ Cupom Validado com Sucesso!", "success");
 
-          } catch(e) {
-              console.error(e);
+          } catch(error) {
+              console.error(error);
               addToast("Erro ao registrar scan.", "error");
           }
       }, 2000);

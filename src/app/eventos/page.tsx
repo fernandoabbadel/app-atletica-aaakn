@@ -319,8 +319,8 @@ export default function EventosPage() {
                 ...doc.data() 
             } as Evento));
             setEventos(lista);
-        } catch (e) {
-            console.error("Erro eventos:", e);
+        } catch (error) {
+            console.error("Erro eventos:", error);
         } finally {
             setLoading(false);
         }

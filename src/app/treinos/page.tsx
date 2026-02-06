@@ -144,8 +144,8 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
             } else {
                  addToast("Inscrição cancelada.", "info");
             }
-        } catch (e) { 
-            console.error(e); 
+        } catch (error) { 
+            console.error(error); 
             addToast("Erro ao atualizar.", "error"); 
         } finally { 
             setLoadingAction(false); 

@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setPlanosCache(snapPlanos.docs.map(d => d.data() as PlanoConfig));
             }
 
-        } catch (e) { console.error("Erro ao carregar dados globais:", e); }
+        } catch (error) { console.error("Erro ao carregar dados globais:", error); }
     };
     fetchData();
   }, []);

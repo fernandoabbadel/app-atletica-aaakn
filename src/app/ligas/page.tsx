@@ -162,8 +162,8 @@ export default function LigasAdminPage() {
                   turma: d.data().turma
               } as UserSearch));
               setAllUsers(usersList);
-          } catch (e) { 
-              console.error(e);
+          } catch (error) { 
+              console.error(error);
               addToast("Erro ao carregar dados.", "error"); 
           } finally { 
               setIsLoadingList(false); 
@@ -408,8 +408,8 @@ export default function LigasAdminPage() {
               "Atualização de dados da Liga"
           );
 
-      } catch (e) { 
-          console.error(e);
+      } catch (error) { 
+          console.error(error);
           addToast("Erro ao salvar.", "error"); 
       } finally {
           setLoading(false);

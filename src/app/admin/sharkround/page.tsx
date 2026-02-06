@@ -61,8 +61,8 @@ export default function AdminSharkRound() {
       try {
           await updateDoc(doc(db, "ligas", liga.id), { ativa: novoStatus });
           addToast(novoStatus ? "Liga ATIVADA no SharkRound!" : "Liga removida do tabuleiro.", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao atualizar status.", "error");
       }
   };

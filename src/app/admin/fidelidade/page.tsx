@@ -89,8 +89,8 @@ export default function AdminFidelidadePage() {
         setIsModalOpen(false);
         setNewReward({ title: "", cost: "", stock: "", image: "" });
         addToast("Prêmio adicionado!", "success");
-    } catch (e) {
-        console.error(e); // 🦈 Logando o erro
+    } catch (error) {
+        console.error(error); // 🦈 Logando o erro
         addToast("Erro ao adicionar.", "error");
     }
   };
@@ -122,8 +122,8 @@ export default function AdminFidelidadePage() {
     try {
         await setDoc(doc(db, "app_config", "fidelity"), config, { merge: true });
         addToast("Configurações salvas!", "success");
-    } catch (e) {
-        console.error(e); // 🦈 Logando o erro
+    } catch (error) {
+        console.error(error); // 🦈 Logando o erro
         addToast("Erro ao salvar config.", "error");
     }
   };

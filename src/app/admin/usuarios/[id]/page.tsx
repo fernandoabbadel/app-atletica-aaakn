@@ -128,8 +128,8 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
               setMatches(matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match)));
               setGymLogs(gymSnap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog)));
 
-          } catch (e) {
-              console.error(e);
+          } catch (error) {
+              console.error(error);
               addToast("Erro ao carregar dados.", "error");
           } finally {
               setLoading(false);
@@ -178,8 +178,8 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
               
               addToast("Usuário deletado permanentemente.", "success");
               router.push('/admin/usuarios'); // Volta para a lista
-          } catch (e) {
-              console.error(e);
+          } catch (error) {
+              console.error(error);
               addToast("Erro ao deletar usuário.", "error");
               setActionLoading(false);
           }

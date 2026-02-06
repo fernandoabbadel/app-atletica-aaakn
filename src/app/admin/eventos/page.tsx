@@ -401,8 +401,8 @@ export default function AdminEventosPage() {
           } : item));
 
           addToast(isApproving ? "Pagamento aprovado! 🦈" : "Pagamento estornado.", isApproving ? "success" : "info");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao atualizar pagamento.", "error");
       }
   };

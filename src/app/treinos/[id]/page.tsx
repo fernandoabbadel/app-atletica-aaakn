@@ -186,8 +186,8 @@ export default function TreinoDetalhesPage() {
               }
           });
           addToast(status === 'going' ? "Presença confirmada! 💪" : "Inscrição removida.", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao atualizar.", "error");
       } finally {
           setLoadingAction(false);

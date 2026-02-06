@@ -214,8 +214,8 @@ export default function AdminConquistasPage() {
           });
           await batch.commit();
           addToast("Patentes Restauradas!", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao restaurar.", "error");
       } finally {
           setLoading(false);

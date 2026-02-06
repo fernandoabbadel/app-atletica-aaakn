@@ -139,8 +139,8 @@ export default function AdminPermissoesPage() {
                   setPermissionMatrix(defaultMatrix);
               }
 
-          } catch (e) {
-              console.error(e);
+          } catch (error) {
+              console.error(error);
               addToast("Deu ruim ao carregar os dados do cardume!", "error");
           } finally {
               setLoading(false);
@@ -165,8 +165,8 @@ export default function AdminPermissoesPage() {
           );
           
           addToast(`Cargo atualizado para ${newRole.toUpperCase()}! 🦈`, "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao trocar a patente do peixe.", "error");
       }
   };
@@ -202,8 +202,8 @@ export default function AdminPermissoesPage() {
           );
           
           addToast("As leis do oceano foram atualizadas! 🦈", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao salvar as regras.", "error");
       } finally {
           setSavingMatrix(false);

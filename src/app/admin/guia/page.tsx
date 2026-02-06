@@ -132,8 +132,8 @@ export default function AdminGuiaPage() {
           try {
               await deleteDoc(doc(db, "guia_data", id));
               addToast("Item removido.", "info");
-          } catch (e) {
-              console.error(e); // 🦈 Logando erro
+          } catch (error) {
+              console.error(error); // 🦈 Logando erro
               addToast("Erro ao excluir.", "error");
           }
       }
@@ -174,8 +174,8 @@ export default function AdminGuiaPage() {
               addToast("Item criado!", "success");
           }
           setIsModalOpen(false);
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao salvar.", "error");
       } finally {
           setIsSaving(false);

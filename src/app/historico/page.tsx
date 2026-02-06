@@ -1,6 +1,7 @@
 // src/app/historico/page.tsx
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Calendar, MapPin, Trophy, ChevronRight, CalendarRange, Loader2 } from "lucide-react";
@@ -83,25 +84,35 @@ export default function HistoricoPage() {
           {/* Imagem de Capa do Banco */}
           {config.fotoCapa && (
             <div className="absolute inset-0 z-0">
-               <img 
-                  src={config.fotoCapa} 
-                  className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-1000" 
-                  alt="Capa da página de histórico" 
-               />
+              <Image 
+                src={config.fotoCapa} 
+                alt="Capa da página de histórico" 
+                fill // O tubarão usou fill para cobrir todo o container pai (substitui w-full h-full)
+                className="object-cover opacity-40 group-hover:scale-105 transition duration-1000"
+                sizes="(max-width: 768px) 100vw, 100vw" // Otimização de carregamento para mobile/desktop
+              />
             </div>
           )}
           
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/60 to-[#050505] z-10"></div>
           
-          <div className="relative z-20 flex flex-col items-center animate-in zoom-in-50 duration-700 px-4 text-center">
-              <div className="w-24 h-24 md:w-32 md:h-32 bg-black/50 backdrop-blur-xl rounded-full border-4 border-emerald-500/30 p-4 shadow-[0_0_40px_rgba(16,185,129,0.2)] mb-4">
-                <img src="/logo.png" className="w-full h-full object-contain drop-shadow-xl" alt="Logo AAAKN" />
-              </div>
-              <h1 className="text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white drop-shadow-xl">
-                  {config.tituloPagina.split(' ').slice(0, -1).join(' ')} <span className="text-emerald-500">{config.tituloPagina.split(' ').slice(-1)}</span>
-              </h1>
-              <p className="text-zinc-400 text-xs md:text-sm font-medium mt-2 max-w-lg">{config.subtituloPagina}</p>
-          </div>
+       <div className="relative z-20 flex flex-col items-center animate-in zoom-in-50 duration-700 px-4 text-center">
+            {/* Adicionado 'relative' nesta div abaixo para conter o fill */}
+            <div className="relative w-24 h-24 md:w-32 md:h-32 bg-black/50 backdrop-blur-xl rounded-full border-4 border-emerald-500/30 p-4 shadow-[0_0_40px_rgba(16,185,129,0.2)] mb-4">
+                <Image 
+                    src="/logo.png" 
+                    fill
+                    sizes="(max-width: 768px) 96px, 128px"
+                    className="object-contain drop-shadow-xl p-1" 
+                    alt="Logo AAAKN" 
+                    priority // Carregamento prioritário para logo principal
+                />
+            </div>
+            <h1 className="text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white drop-shadow-xl">
+                {config.tituloPagina.split(' ').slice(0, -1).join(' ')} <span className="text-emerald-500">{config.tituloPagina.split(' ').slice(-1)}</span>
+            </h1>
+            <p className="text-zinc-400 text-xs md:text-sm font-medium mt-2 max-w-lg">{config.subtituloPagina}</p>
+      </div>
           
           <div className="absolute top-6 left-6 z-30">
               <Link href="/dashboard" className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition border border-white/10 active:scale-95">
@@ -134,18 +145,20 @@ export default function HistoricoPage() {
                               <div className={`pl-10 md:pl-0 w-full md:w-1/2 ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
                                   <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-hidden group hover:border-emerald-500/50 transition duration-300 shadow-xl">
                                       
-                                      {/* FOTO DO EVENTO */}
-                                      <div className="h-40 w-full overflow-hidden relative bg-black">
-                                          <img 
-                                            src={event.foto || "https://via.placeholder.com/400x200?text=Sem+Foto"} 
-                                            alt={`Foto do evento ${event.titulo}`}
-                                            className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
-                                            onError={(e) => e.currentTarget.src = "/logo.png"}
-                                          />
-                                          <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1 rounded-full border border-white/10 shadow-lg">
-                                              <span className="text-xs font-black text-emerald-400">{event.ano}</span>
-                                          </div>
-                                      </div>
+                                 {/* FOTO DO EVENTO */}
+    <div className="h-40 w-full overflow-hidden relative bg-black">
+        <Image 
+            src={event.foto || "https://via.placeholder.com/400x200?text=Sem+Foto"} 
+            alt={`Foto do evento ${event.titulo}`}
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            className="object-cover group-hover:scale-110 transition duration-700"
+            // Nota: onError não funciona igual no Image component, recomenda-se tratar a URL antes ou usar um componente wrapper, mas o src com fallback (||) já ajuda.
+        />
+        <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1 rounded-full border border-white/10 shadow-lg z-10">
+            <span className="text-xs font-black text-emerald-400">{event.ano}</span>
+        </div>
+    </div>
 
                                       <div className="p-5">
                                           <h3 className="text-xl font-black uppercase text-white mb-2 leading-tight">{event.titulo}</h3>

@@ -199,8 +199,8 @@ export default function AdminLigasPage() {
         addToast("Liga criada!", "success");
       }
       setShowModal(false);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       addToast("Erro ao salvar.", "error");
     }
   };

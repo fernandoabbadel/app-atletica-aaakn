@@ -60,8 +60,8 @@ export default function SettingsPage() {
             await logActivity(user.uid, user.nome, "UPDATE", "Configurações", "Reativou a conta");
             addToast("Conta reativada! Bem-vindo de volta, Tubarão! 🦈", "success");
         }
-    } catch (e) {
-        console.error(e);
+    } catch (error) {
+        console.error(error);
         addToast("Erro ao atualizar status da conta.", "error");
     } finally {
         setActionLoading(false);

@@ -106,14 +106,16 @@ export default function AdminComunidadePage() {
       fetchComments();
   }, [viewCommentsId]);
 
-  // --- AÇÕES DE CONFIGURAÇÃO ---
+// --- AÇÕES DE CONFIGURAÇÃO ---
   const handleSaveConfig = async () => {
     try { 
-        // 🦈 Correção: Usando Partial<AppConfig> para evitar 'any'
+        // 🦈 Correção: Usando Partial<AppConfig> para evitar 'any' e garantir segurança de tipo
         await updateDoc(doc(db, "app_config", "comunidade"), config as Partial<AppConfig>); 
+        
         addToast("Configurações da Resenha salvas!", "success"); 
-    } catch (e) { 
-        console.error(e); // 🦈 Log do erro
+        
+    } catch (error) { 
+        console.error(error); // 🦈 Variável de erro padronizada para 'error'
         addToast("Erro ao salvar config.", "error"); 
     }
   };
@@ -123,8 +125,8 @@ export default function AdminComunidadePage() {
       try {
           await updateDoc(doc(db, "posts", id), { blocked: !currentStatus });
           addToast(currentStatus ? "Post desbloqueado e visível." : "Post bloqueado (oculto).", "info");
-      } catch (e) { 
-          console.error(e); // 🦈 Log do erro
+      } catch (error) { 
+          console.error(error); // 🦈 Log do erro
           addToast("Erro ao atualizar status.", "error"); 
       }
   };
@@ -133,8 +135,8 @@ export default function AdminComunidadePage() {
       try {
           await updateDoc(doc(db, "posts", id), { commentsDisabled: !currentStatus });
           addToast(currentStatus ? "Comentários reabertos." : "Comentários trancados.", "info");
-      } catch (e) { 
-          console.error(e); // 🦈 Log do erro
+      } catch (error) { 
+          console.error(error); // 🦈 Log do erro
           addToast("Erro ao atualizar status.", "error"); 
       }
   };
@@ -143,8 +145,8 @@ export default function AdminComunidadePage() {
       try {
           await updateDoc(doc(db, "posts", id), { fixado: !current }); 
           addToast(current ? "Post desafixado." : "Post fixado no topo!", "success"); 
-      } catch (e) { 
-          console.error(e); // 🦈 Log do erro
+      } catch (error) { 
+          console.error(error); // 🦈 Log do erro
           addToast("Erro ao fixar.", "error"); 
       }
   };
@@ -154,8 +156,8 @@ export default function AdminComunidadePage() {
       try {
           await deleteDoc(doc(db, "posts", id));
           addToast("Post removido do banco de dados.", "info");
-      } catch (e) { 
-          console.error(e); // 🦈 Log do erro
+      } catch (error) { 
+          console.error(error); // 🦈 Log do erro
           addToast("Erro ao excluir.", "error"); 
       }
   };
@@ -178,8 +180,8 @@ export default function AdminComunidadePage() {
           await deleteDoc(doc(db, "denuncias", denunciaId));
           
           if (action === 'ignore') addToast("Denúncia ignorada/removida.", "info");
-      } catch (e) {
-          console.error(e); // 🦈 Log do erro
+      } catch (error) {
+          console.error(error); // 🦈 Log do erro
           addToast("Erro ao resolver denúncia.", "error");
       }
   };

@@ -188,7 +188,7 @@ export default function AdminPlanosPage() {
           
           addToast("Solicitação rejeitada e usuário liberado.", "info");
           setViewingReceipt(null);
-      } catch(e) { console.error(e); addToast("Erro.", "error"); }
+      } catch(error) { console.error(error); addToast("Erro.", "error"); }
   };
 
   // 🦈 NOVA FUNÇÃO: DESTRAVA USUÁRIO NA FORÇA BRUTA
@@ -203,8 +203,8 @@ export default function AdminPlanosPage() {
           await updateDoc(doc(db, "users", sol.userId), { plano_status: "ativo" });
           
           addToast("Registro excluído e usuário destravado!", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao excluir.", "error");
       }
   };
@@ -213,7 +213,7 @@ export default function AdminPlanosPage() {
   const handleSeedPlanos = async () => {
       if(!confirm("⚠️ ISSO VAI RECRIAR OS PLANOS PADRÃO. Confirmar?")) return;
       setIsSaving(true);
-      try { await Promise.all(INITIAL_PLANOS.map(p => addDoc(collection(db, "planos"), p))); addToast("Planos resetados!", "success"); } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); }
+      try { await Promise.all(INITIAL_PLANOS.map(p => addDoc(collection(db, "planos"), p))); addToast("Planos resetados!", "success"); } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); }
   };
   
   const handleCreate = () => { 
@@ -236,11 +236,11 @@ export default function AdminPlanosPage() {
           if (id) { await updateDoc(doc(db, "planos", id), payload); addToast("Plano atualizado!", "success"); } 
           else { await addDoc(collection(db, "planos"), payload); addToast("Plano criado!", "success"); } 
           setIsModalOpen(false); 
-      } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); } 
+      } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); } 
   };
   
-  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deleteDoc(doc(db, "planos", id)); addToast("Removido.", "info"); } catch(e) { console.error(e); addToast("Erro.", "error"); } };
-  const handleSaveBanner = async () => { setIsSaving(true); try { await setDoc(doc(db, "app_config", "marketing_banner"), bannerConfig); addToast("Banner atualizado!", "success"); } catch (e) { console.error(e); addToast("Erro.", "error"); } finally { setIsSaving(false); } };
+  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deleteDoc(doc(db, "planos", id)); addToast("Removido.", "info"); } catch(error) { console.error(error); addToast("Erro.", "error"); } };
+  const handleSaveBanner = async () => { setIsSaving(true); try { await setDoc(doc(db, "app_config", "marketing_banner"), bannerConfig); addToast("Banner atualizado!", "success"); } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); } };
   
   const handleBenefitChange = (index: number, value: string) => { if (!editingPlan) return; const newBenefits = [...editingPlan.beneficios]; newBenefits[index] = value; setEditingPlan({ ...editingPlan, beneficios: newBenefits }); };
   const addBenefit = () => { if (!editingPlan) return; setEditingPlan({ ...editingPlan, beneficios: [...editingPlan.beneficios, "Novo Benefício"] }); };

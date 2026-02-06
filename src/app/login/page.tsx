@@ -1,6 +1,6 @@
 // src/app/login/page.tsx
 "use client";
-
+import Image from "next/image";
 import type React from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -79,15 +79,18 @@ export default function LoginPage() {
 
       {/* Logo e Título */}
       <div className="relative z-10 mb-8 animate-float-slow text-center">
-        <div className="relative inline-block">
+       <div className="relative inline-block">
           {/* Garanta que logo.png existe em public/ */}
-          <img
+          <Image
             src="/logo.png"
             alt="AAAKN Logo"
+            width={192} // 192px refere-se ao w-48
+            height={192}
             className="w-40 h-40 md:w-48 md:h-48 object-contain drop-shadow-[0_0_30px_rgba(16,185,129,0.3)] mx-auto"
+            priority
           />
           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full -z-10 scale-75" />
-        </div>
+      </div>
         <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mt-4">
           BEM-VINDO,{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">
@@ -177,15 +180,21 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-3">
-            {/* Botão Google (Recomendado ter, já que configuramos no AuthContext) */}
-            <button
-              onClick={handleGoogleLogin}
-              disabled={isLoading}
-              className="w-full py-3 bg-white text-black font-bold text-sm rounded-xl transition hover:bg-zinc-200 flex items-center justify-center gap-2"
-            >
-               <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google Logo" />
-               Entrar com Google
-            </button>
+          {/* Botão Google */}
+      <button
+          onClick={handleGoogleLogin}
+          disabled={isLoading}
+          className="w-full py-3 bg-white text-black font-bold text-sm rounded-xl transition hover:bg-zinc-200 flex items-center justify-center gap-2"
+      >
+          <Image 
+              src="https://www.svgrepo.com/show/475656/google-color.svg" 
+              width={20} 
+              height={20} 
+              className="w-5 h-5" 
+              alt="Google Logo" 
+          />
+          Entrar com Google
+      </button>
 
             {/* BOTÃO ENTRAR COMO VISITANTE (DEGUSTAÇÃO) */}
             <button

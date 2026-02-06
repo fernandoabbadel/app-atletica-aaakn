@@ -310,9 +310,9 @@ export default function SharkLegendsPage() {
                 "stats.arenaLosses": increment(1), xp: increment(5)
             });
             addToast("Derrota... Ganhou 5 XP.", "error");
-            try { await updateDoc(doc(db, "users", finalEnemy.id), { xp: increment(10), "stats.arenaWins": increment(1) }); } catch(e){ console.error(e); }
+            try { await updateDoc(doc(db, "users", finalEnemy.id), { xp: increment(10), "stats.arenaWins": increment(1) }); } catch(error){ console.error(error); }
         }
-    } catch (e) { console.error(e); }
+    } catch (error) { console.error(error); }
   }, [user, addToast, round]);
 
   const executeEnemyTurn = useCallback((lastPlayerMove: Move, currentHero: Combatant, currentEnemy: Combatant, currentLog: string[]) => {
@@ -429,7 +429,7 @@ export default function SharkLegendsPage() {
     addToast("Você fugiu! Covarde... 🐔", "error");
     
     if (user) {
-        try { await updateDoc(doc(db, "users", enemy.id), { xp: increment(5), "stats.arenaWins": increment(1) }); } catch(e){ console.error(e); }
+        try { await updateDoc(doc(db, "users", enemy.id), { xp: increment(5), "stats.arenaWins": increment(1) }); } catch(error){ console.error(error); }
     }
     setHero(null); setEnemy(null);
   };

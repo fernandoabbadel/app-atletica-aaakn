@@ -1,3 +1,7 @@
+// ==================================================
+// ARQUIVO: src/app/admin/album/page.tsx
+// ==================================================
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -131,7 +135,7 @@ export default function AdminAlbumPage() {
     }
   };
 
-  // 4. Salvar CMS
+  // 4. Salvar CMS (CORREÇÃO BUILD & CLEAN CODE)
   const handleSaveCms = async () => {
     setSavingCms(true);
     try {
@@ -144,8 +148,8 @@ export default function AdminAlbumPage() {
             await logActivity(user.uid, user.nome, "UPDATE", "Album Admin", `Atualizou config da ${cmsTurma}`);
         }
 
-    } catch (e) {
-        console.error(e);
+    } catch (error) { // 🦈 Clean Code: 'error' em vez de 'e'
+        console.error(error);
         addToast("Erro ao salvar configurações.", "error");
     } finally {
         setSavingCms(false);
@@ -256,7 +260,7 @@ export default function AdminAlbumPage() {
                               <div className="flex gap-4 items-start">
                                   <div className="relative w-32 h-20 bg-zinc-800 rounded-xl overflow-hidden border border-zinc-700 shrink-0">
                                       {cmsData.capa ? (
-                                        <Image src={cmsData.capa} fill className="object-cover" alt="Preview" unoptimized/>
+                                         <Image src={cmsData.capa} fill className="object-cover" alt="Preview" unoptimized/>
                                       ) : (
                                         <div className="w-full h-full flex items-center justify-center text-zinc-600"><ImageIcon size={24}/></div>
                                       )}

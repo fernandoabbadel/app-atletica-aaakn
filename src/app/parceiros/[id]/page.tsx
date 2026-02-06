@@ -56,8 +56,8 @@ export default function ParceiroDetalhePage() {
               } else {
                   addToast("Parceiro não encontrado.", "error");
               }
-          } catch (e) {
-              console.error(e);
+          } catch (error) {
+              console.error(error);
           } finally {
               setLoading(false);
           }

@@ -83,8 +83,8 @@ export default function CarteirinhaPage() {
               if (snap.exists()) {
                   setConfig(snap.data() as CarteirinhaConfig);
               }
-          } catch (e) {
-              console.error("Erro config carteirinha", e);
+          } catch (error) {
+              console.error("Erro config carteirinha", error);
           } finally {
               setLoadingConfig(false);
           }

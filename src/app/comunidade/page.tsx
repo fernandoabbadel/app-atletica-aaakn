@@ -388,8 +388,8 @@ export default function ComunidadePage() {
           }
           
           setNewComment("");
-      } catch (e) { 
-          console.error(e); 
+      } catch (error) { 
+          console.error(error); 
       } finally {
           setIsPostingComment(false);
       }
@@ -475,7 +475,7 @@ export default function ComunidadePage() {
           [myStatField]: increment(hasInteracted ? -1 : 1)
       });
 
-    } catch (e) { console.error(e); }
+    } catch (error) { console.error(error); }
   };
 
   const toggleCommentLike = async (comment: CommentData) => {
@@ -499,7 +499,7 @@ export default function ComunidadePage() {
               "stats.likesGiven": increment(hasLiked ? -1 : 1)
           });
 
-      } catch (e) { console.error(e); }
+      } catch (error) { console.error(error); }
   };
 
   const currentPostCommentsDisabled = posts.find(p => p.id === commentModal)?.commentsDisabled;

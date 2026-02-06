@@ -1,6 +1,7 @@
 // src/app/loja/[id]/page.tsx
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
@@ -177,8 +178,8 @@ export default function DetalheProdutoPage() {
             });
 
             addToast("Pedido enviado! Aguarde a liberação.", "success");
-        } catch (e) {
-            console.error(e);
+        } catch (error) {
+            console.error(error);
             addToast("Erro ao realizar pedido.", "error");
         }
     };
@@ -217,14 +218,17 @@ export default function DetalheProdutoPage() {
     return (
         <div className="min-h-screen bg-[#050505] text-white pb-10 font-sans selection:bg-emerald-500/30">
             
-            {/* HERO */}
+          {/* HERO */}
             <div className="relative w-full h-[45vh] bg-black">
-                <img 
+                <Image 
                     src={produto.img} 
                     alt={produto.nome}
-                    className="w-full h-full object-cover" 
+                    fill
+                    priority // Importante para LCP (Largest Contentful Paint)
+                    className="object-cover"
+                    sizes="100vw"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent z-10"></div>
                 <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:bg-zinc-800 transition border border-white/10"><ArrowLeft size={24}/></button>
                 <button onClick={handleLike} className="absolute top-6 right-6 z-20 bg-black/40 backdrop-blur-md p-3 rounded-full text-white hover:scale-110 transition border border-white/10">
                     <Heart size={24} className={isLiked ? "fill-red-500 text-red-500" : "text-white"} />
@@ -326,19 +330,25 @@ export default function DetalheProdutoPage() {
                             {reviews.length === 0 && <p className="text-zinc-500 text-xs text-center italic">Seja o primeiro a avaliar.</p>}
                             {reviews.map(rev => (
                                 <div key={rev.id} className="border-b border-zinc-800 pb-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-zinc-800 rounded-full overflow-hidden">
-                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${rev.userName}`} alt={rev.userName}/>
-                                            </div>
-                                            <span className="text-xs font-bold text-white">{rev.userName}</span>
-                                        </div>
-                                        <div className="flex text-yellow-500">
-                                            {[...Array(5)].map((_, i) => (
-                                                <Star key={i} size={10} className={i < rev.rating ? "fill-current" : "text-zinc-700"}/>
-                                            ))}
-                                        </div>
-                                    </div>
+                                  <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+                <div className="relative w-8 h-8 bg-zinc-800 rounded-full overflow-hidden">
+                    <Image 
+                        src={`https://api.dicebear.com/7.x/initials/svg?seed=${rev.userName}`} 
+                        alt={rev.userName}
+                        fill
+                        sizes="32px"
+                        className="object-cover"
+                    />
+                </div>
+                <span className="text-xs font-bold text-white">{rev.userName}</span>
+            </div>
+            <div className="flex text-yellow-500">
+                {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={10} className={i < rev.rating ? "fill-current" : "text-zinc-700"}/>
+                ))}
+            </div>
+     </div>
                                     <p className="text-zinc-400 text-xs leading-relaxed">{rev.comment}</p>
                                 </div>
                             ))}

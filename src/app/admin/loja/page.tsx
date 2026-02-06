@@ -148,8 +148,8 @@ export default function AdminLojaPage() {
           }
 
           addToast("Pedido aprovado e pontos creditados!", "success");
-      } catch (e) {
-          console.error(e);
+      } catch (error) {
+          console.error(error);
           addToast("Erro ao aprovar pedido.", "error");
       }
   };

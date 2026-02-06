@@ -4,11 +4,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Calendar, Loader2, Target, Users, Heart, 
   CheckCircle, ChevronRight, ChevronLeft, ShoppingBag, 
-  Star, Wallet, Dumbbell, Medal, ExternalLink, MessageCircle, Lightbulb, MapPin
+  Star, Wallet, Dumbbell, ExternalLink, MessageCircle, Lightbulb, MapPin,
+  ScanBarcode, Crosshair
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext'; 
 import Link from 'next/link';
-import Image from 'next/image'; // 🦈 Otimização de Imagem
+import Image from 'next/image'; 
 import { db } from '../../lib/firebase'; 
 import { 
     collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, getDocs, where, Timestamp
@@ -259,13 +260,13 @@ const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: st
                             {turmaStats.map((st, i) => (
                                 <div key={i} className="flex items-center bg-zinc-800/50 rounded-full pr-2 border border-zinc-700/50 p-0.5">
                                     <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-600 bg-black relative">
-                                         <Image 
-                                            src={`/turma${st.turma}.jpeg`} 
-                                            alt={`T${st.turma}`}
-                                            fill
-                                            className="object-cover"
-                                            unoptimized
-                                         />
+                                          <Image 
+                                              src={`/turma${st.turma}.jpeg`} 
+                                              alt={`T${st.turma}`}
+                                              fill
+                                              className="object-cover"
+                                              unoptimized
+                                           />
                                     </div>
                                     <span className="text-[9px] font-bold text-zinc-400 ml-1.5">+{st.count}</span>
                                 </div>
@@ -287,6 +288,12 @@ export default function DashboardPage() {
   const [ligas, setLigas] = useState<Liga[]>([]);
   const [mensagens, setMensagens] = useState<PostComunidade[]>([]);
   const [treinos, setTreinos] = useState<string[]>([]);
+  
+  // 🦈 State para o contador de Caça
+  const [totalCaca, setTotalCaca] = useState(0);
+  // 🦈 State para o total de Alunos (Y)
+  const [totalAlunos, setTotalAlunos] = useState(0);
+
   const [loadingData, setLoadingData] = useState(true);
   const [loadingLike, setLoadingLike] = useState(false);
 
@@ -312,6 +319,17 @@ export default function DashboardPage() {
         setLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Liga)));
     });
 
+    // 🦈 Busca dados da CAÇA (Album Rankings) para o contador X
+    const unsubCaca = onSnapshot(query(collection(db, "album_rankings")), (snap) => {
+        const total = snap.docs.reduce((acc, doc) => acc + (doc.data().totalColetado || 0), 0);
+        setTotalCaca(total);
+    });
+
+    // 🦈 Busca dados de USUÁRIOS para o contador Y (Total Cardume)
+    const unsubTotalUsers = onSnapshot(collection(db, "users"), (snap) => {
+        setTotalAlunos(snap.size);
+    });
+
     // ID 720: Correção para buscar da coleção "posts"
     const unsubMsgs = onSnapshot(
         query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(5)), 
@@ -328,7 +346,10 @@ export default function DashboardPage() {
         setLoadingData(false);
     });
 
-    return () => { unsubEvents(); unsubProds(); unsubParceiros(); unsubMsgs(); unsubTreinos(); unsubLigas(); };
+    return () => { 
+        unsubEvents(); unsubProds(); unsubParceiros(); 
+        unsubMsgs(); unsubTreinos(); unsubLigas(); unsubCaca(); unsubTotalUsers();
+    };
   }, []);
 
   const scroll = (ref: React.RefObject<HTMLDivElement | null>, dir: 'left' | 'right') => { 
@@ -439,9 +460,14 @@ export default function DashboardPage() {
           </div>
       )}
 
-      {/* 2. SHARK ROUND & TREINOS */}
+      {/* 2. SHARK ROUND (COM FAIXA "EM BREVE") & TREINOS */}
       <div className="grid grid-cols-2 gap-4">
           <Link href="/sharkround" className="bg-emerald-600 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition relative overflow-hidden group shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+              {/* ID 03: FAIXA EM BREVE */}
+              <div className="absolute top-3 -right-8 w-32 bg-orange-500 text-black text-[9px] font-black uppercase text-center py-1 rotate-45 border-2 border-black z-20 shadow-lg">
+                  Em Breve
+              </div>
+              
               <div className="absolute right-0 top-0 w-24 h-24 bg-white/10 rounded-full blur-xl -mr-6 -mt-6"></div>
               <Target size={32} className="text-black relative z-10" />
               <h3 className="font-black text-black text-xl uppercase italic leading-none relative z-10 drop-shadow-md">Shark<br/>Round</h3>
@@ -467,22 +493,51 @@ export default function DashboardPage() {
           </Link>
       </div>
 
-      {/* 3. CONQUISTAS & FIDELIDADE */}
-      <div className="grid grid-cols-2 gap-4">
-          <Link href="/conquistas" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition hover:border-zinc-700 group relative overflow-hidden shadow-lg">
-              <div className="absolute top-0 right-0 opacity-10 p-2"><Medal size={80}/></div>
-              <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-500 font-black text-xl shadow-[0_0_10px_rgba(16,185,129,0.2)]">{userData?.level || 1}</div>
-              <h3 className="font-black text-white text-lg uppercase italic leading-none">Nível</h3>
-          </Link>
-          <Link href="/fidelidade" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 h-44 flex flex-col justify-between active:scale-95 transition hover:border-zinc-700 group relative overflow-hidden shadow-lg">
-              <div className="absolute top-0 right-0 opacity-10 p-2"><Star size={80} className="text-yellow-500"/></div>
-              <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 text-yellow-500 font-black shadow-[0_0_10px_rgba(234,179,8,0.2)]"><Star size={20} className="fill-current"/></div>
-              <div>
-                  <h3 className="font-black text-white text-lg uppercase italic leading-none">Fidelidade</h3>
-                  <p className="text-[10px] text-zinc-500 mt-1 uppercase font-bold">{userData?.selos || 0} Selos</p>
-              </div>
-          </Link>
-      </div>
+      {/* 🦈 3. ID 01 & 02: CAÇA AOS CALOUROS (ATUALIZADO PARA X/Y) */}
+      <Link href="/album" className="relative h-40 w-full overflow-hidden rounded-3xl bg-black border border-emerald-900/50 block group active:scale-95 transition-all shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+            {/* Efeitos de Fundo (Sonar) */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-900/20 via-black to-black opacity-80"></div>
+            
+            {/* Radar Animation Ping */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] border border-emerald-500/10 rounded-full animate-[ping_3s_linear_infinite]"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] border border-emerald-500/20 rounded-full animate-[ping_3s_linear_infinite_1s]"></div>
+
+            {/* Grid Tático */}
+            <div className="absolute inset-0 bg-[url('/grid.png')] opacity-5 bg-repeat"></div>
+
+            <div className="absolute inset-0 flex flex-col justify-between p-6 z-10">
+                <div className="flex justify-between items-start">
+                    <div className="flex flex-col">
+                        <h3 className="text-emerald-500 font-black uppercase italic text-xl flex items-center gap-2 drop-shadow-md">
+                            <Crosshair size={20} className="animate-spin-slow-reverse"/> Caça aos Calouros
+                        </h3>
+                        <p className="text-zinc-500 text-[10px] font-bold tracking-[0.2em] uppercase mt-1">Status: Em Operação</p>
+                    </div>
+                    <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20 animate-pulse">
+                        <ScanBarcode className="text-emerald-500" size={20}/>
+                    </div>
+                </div>
+
+                <div className="flex items-end justify-between">
+                    <div>
+                        {/* ID 02: CONTADOR X/Y - ENCONTRADOS */}
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-black text-emerald-400 tracking-tighter drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">
+                                {totalCaca}
+                            </span>
+                            <span className="text-2xl font-black text-zinc-600">/</span>
+                            <span className="text-2xl font-black text-zinc-500">
+                                {totalAlunos}
+                            </span>
+                        </div>
+                        <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider block mt-0.5">Encontrados</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-emerald-500 text-[10px] font-bold uppercase tracking-wider bg-emerald-950/50 px-3 py-1.5 rounded-full border border-emerald-900">
+                        Ver Ranking <ChevronRight size={10}/>
+                    </div>
+                </div>
+            </div>
+      </Link>
 
       {/* 4. CARROSSEL EVENTOS (Padronizado) */}
       {events.length > 0 && (
@@ -599,9 +654,9 @@ export default function DashboardPage() {
               const userLikedMsg = msg.likes?.includes(userData?.uid);
               return (
               <div key={msg.id} className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden relative group">
-                   <Link href="/comunidade" className="absolute inset-0 z-0"/>
-                   
-                   <div className="p-4 flex gap-4 items-start relative z-0">
+                    <Link href="/comunidade" className="absolute inset-0 z-0"/>
+                    
+                    <div className="p-4 flex gap-4 items-start relative z-0">
                       <div className="w-10 h-10 rounded-full bg-black border border-zinc-700 relative overflow-hidden">
                         <Image 
                             src={msg.avatar || "https://github.com/shadcn.png"} 
@@ -618,16 +673,16 @@ export default function DashboardPage() {
                           </div>
                           <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{msg.texto}</p>
                       </div>
-                   </div>
+                    </div>
 
-                   <div className="px-4 pb-3 flex justify-end relative z-10">
-                       <button 
-                          onClick={(e) => { e.preventDefault(); handleMessageLike(msg.id, msg.likes); }}
-                          className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full transition ${userLikedMsg ? 'text-red-500 bg-red-500/10' : 'text-zinc-500 hover:bg-zinc-800'}`}
-                       >
-                           <Heart size={12} className={userLikedMsg ? 'fill-current' : ''}/> {msg.likes?.length || 0}
-                       </button>
-                   </div>
+                    <div className="px-4 pb-3 flex justify-end relative z-10">
+                        <button 
+                           onClick={(e) => { e.preventDefault(); handleMessageLike(msg.id, msg.likes); }}
+                           className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full transition ${userLikedMsg ? 'text-red-500 bg-red-500/10' : 'text-zinc-500 hover:bg-zinc-800'}`}
+                        >
+                            <Heart size={12} className={userLikedMsg ? 'fill-current' : ''}/> {msg.likes?.length || 0}
+                        </button>
+                    </div>
               </div>
           )}) : (
               <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl">
@@ -655,6 +710,9 @@ export default function DashboardPage() {
         }
         .animate-spin-slow {
             animation: spin-slow 10s linear infinite;
+        }
+        .animate-spin-slow-reverse {
+            animation: spin-slow 10s linear infinite reverse;
         }
         @keyframes marquee {
             0% { transform: translateX(0); }

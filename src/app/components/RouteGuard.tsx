@@ -70,8 +70,8 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
             setPermissionMatrix(JSON.parse(cachedRules));
             setRulesLoading(false); // Libera rápido
           }
-        } catch (e) {
-          console.error("Erro ao ler cache de regras:", e);
+        } catch (error) {
+          console.error("Erro ao ler cache de regras:", error);
         }
       }
 

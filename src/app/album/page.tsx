@@ -123,8 +123,8 @@ export default function AlbumPage() {
       }, { merge: true });
 
       addToast(`CAPTURA! ${targetUser.nome} adicionado! 📸🔥`, "success");
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       addToast("Erro ao colar no banco de dados.", "error");
     }
   }, [user, usuarios, meuAlbum, addToast]); // 🦈 Dependências corretas

@@ -47,8 +47,8 @@ export default function SmartLink({ href, children, className, showLockIcon = fa
             const allowedRoles = permissionMatrix[matchedPath].map((r: string) => r.toLowerCase());
             return allowedRoles.includes(userRole);
         }
-    } catch (e) {
-        console.error("Erro ao verificar permissão no SmartLink", e);
+    } catch (error) {
+        console.error("Erro ao verificar permissão no SmartLink", error);
         return true; // Falha segura: libera se o JSON estiver quebrado
     }
 

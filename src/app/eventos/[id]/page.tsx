@@ -1,6 +1,6 @@
 // src/app/eventos/[id]/page.tsx
 "use client";
-
+import Image from "next/image";
 import React, { useEffect, useState, useMemo } from "react";
 import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
@@ -390,7 +390,7 @@ export default function DetalhesEventoPage() {
               await updateDoc(doc(db, "users", authorId), { "stats.likesReceived": increment(incrementVal) });
               await updateDoc(doc(db, "users", user.uid), { "stats.likesGiven": increment(incrementVal) });
           }
-      } catch (e) { console.error(e); }
+      } catch (error) { console.error(error); }
   };
 
   const handleDeleteComment = async (comId: string) => {
@@ -500,15 +500,17 @@ export default function DetalhesEventoPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
-      {/* HERO */}
-      <div className="relative h-[50vh] w-full">
-        <img 
-            src={evento.imagem || "https://placehold.co/600x400/111/333"} 
-            alt={`Capa do evento ${evento.titulo}`}
-            className="w-full h-full object-cover" 
-            style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
+      {/* HERO IMAGE NEXT.JS */}
+        <div className="relative w-full h-full">
+            <Image 
+                src={evento.imagem || "https://placehold.co/600x400/111/333"} 
+                alt={`Capa do evento ${evento.titulo}`}
+                fill
+                className="object-cover" 
+                style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}
+                unoptimized // Adicione isso para evitar erros de domínio externo
+            />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
             <Link href="/eventos" className="bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 text-white hover:bg-white hover:text-black transition">
@@ -523,10 +525,16 @@ export default function DetalhesEventoPage() {
             <EventCountdown dateStr={evento.data} timeStr={evento.hora} />
         </div>
 
-        <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
+      <div className="absolute bottom-24 right-6 z-20 flex flex-col items-end gap-2">
             {rankingTurmas.map((t) => (
                 <div key={t.turma} className="flex items-center gap-2 bg-black/60 backdrop-blur-md pl-1 pr-3 py-1 rounded-full border border-white/10">
-                    <img src={t.imagem} alt={`Turma ${t.turma}`} className="w-6 h-6 rounded-full object-cover border border-zinc-500"/>
+                    <Image 
+                        src={t.imagem} 
+                        alt={`Turma ${t.turma}`} 
+                        width={24} 
+                        height={24} 
+                        className="rounded-full object-cover border border-zinc-500"
+                    />
                     <span className="text-[10px] font-bold text-emerald-400">+{t.count}</span>
                 </div>
             ))}
@@ -667,18 +675,24 @@ export default function DetalhesEventoPage() {
                         <button onClick={() => handleReportPoll(currentPoll.id)} className="text-zinc-600 hover:text-yellow-500"><ShieldAlert size={14}/></button>
                     </div>
                     
-                    {topTurmasPoll.length > 0 && (
-                        <div className="flex gap-2 mb-2 items-center bg-black/20 p-2 rounded-lg border border-white/5">
-                            {topTurmasPoll.map(turma => (
-                                <div key={turma} className="flex items-center gap-1">
-                                    <div className="w-5 h-5 rounded-full border border-zinc-700 overflow-hidden">
-                                        <img src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} alt={`Turma ${turma}`} className="w-full h-full object-cover"/>
-                                    </div>
-                                    <span className="text-[9px] font-bold text-zinc-400">{turma}</span>
-                                </div>
-                            ))}
+             {topTurmasPoll.length > 0 && (
+            <div className="flex gap-2 mb-2 items-center bg-black/20 p-2 rounded-lg border border-white/5">
+                {topTurmasPoll.map(turma => (
+                    <div key={turma} className="flex items-center gap-1">
+                        <div className="relative w-5 h-5 rounded-full border border-zinc-700 overflow-hidden">
+                            <Image 
+                                src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} 
+                                alt={`Turma ${turma}`} 
+                                fill
+                                sizes="20px"
+                                className="object-cover"
+                            />
                         </div>
-                    )}
+                        <span className="text-[9px] font-bold text-zinc-400">{turma}</span>
+                    </div>
+                ))}
+            </div>
+        )}
 
                     <div className="space-y-2">
                         {currentPoll.options?.sort((a: EnqueteOption, b: EnqueteOption) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
@@ -695,15 +709,22 @@ export default function DetalhesEventoPage() {
                                     >
                                         <div className={`absolute left-0 top-0 h-full transition-all duration-500 ${userVotedHere ? 'bg-purple-500/40' : 'bg-purple-500/20'}`} style={{ width: `${percent}%` }}></div>
                                         
-                                        <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
-                                            {opt.creatorAvatar && (
-                                                <img src={opt.creatorAvatar} alt="Criador" className="w-5 h-5 rounded-full border border-zinc-700 object-cover" title={`Criado por ${opt.creatorName}`}/>
-                                            )}
-                                            <span className="truncate text-left flex items-center gap-1">
-                                                {opt.text}
-                                                {userVotedHere && <CheckCircle size={10} className="text-purple-400"/>}
-                                            </span>
-                                        </div>
+                                     <div className="relative z-10 pl-3 flex items-center gap-2 max-w-[70%]">
+            {opt.creatorAvatar && (
+                <Image 
+                    src={opt.creatorAvatar} 
+                    alt="Criador" 
+                    width={20}
+                    height={20}
+                    className="rounded-full border border-zinc-700 object-cover" 
+                    title={`Criado por ${opt.creatorName}`}
+                />
+            )}
+            <span className="truncate text-left flex items-center gap-1">
+                {opt.text}
+                {userVotedHere && <CheckCircle size={10} className="text-purple-400"/>}
+            </span>
+        </div>
                                         
                                         <span className="relative z-10 pr-3 text-zinc-500 font-bold group-hover:text-purple-400 flex items-center gap-1">
                                             {opt.votes} <span className="text-[8px] font-normal uppercase">Votos</span>
@@ -760,13 +781,19 @@ export default function DetalhesEventoPage() {
                     const nameColorClass = PLAN_COLORS[c.userPlanoCor || 'zinc'] || "text-zinc-300";
                     const likesArray = Array.isArray(c.likes) ? c.likes : [];
 
-                    return (!c.hidden || isAdmin) && (
-                        <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
-                            <Link href={`/perfil/${c.userId}`}>
-                                <div className="relative group/avatar cursor-pointer">
-                                    <img src={c.userAvatar || "https://github.com/shadcn.png"} alt={c.userName} className="w-10 h-10 rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"/>
-                                </div>
-                            </Link>
+                return (!c.hidden || isAdmin) && (
+            <div key={c.id} className={`flex gap-3 ${c.hidden ? 'opacity-50 grayscale' : ''}`}>
+                <Link href={`/perfil/${c.userId}`}>
+                    <div className="relative group/avatar cursor-pointer">
+                        <Image 
+                            src={c.userAvatar || "https://github.com/shadcn.png"} 
+                            alt={c.userName} 
+                            width={40}
+                            height={40}
+                            className="rounded-full bg-zinc-800 object-cover border border-zinc-800 group-hover/avatar:border-emerald-500 transition-colors"
+                        />
+                    </div>
+                </Link>
                             
                             <div className="flex-1">
                                 <div className="flex justify-between items-start">
@@ -779,14 +806,16 @@ export default function DetalhesEventoPage() {
                                             <UserBadges data={c} patentesConfig={patentesConfig} />
                                         </div>
                                         {/* ID 653: Foto da Turma + Nome */}
-                                        <div className="flex items-center gap-1 mt-0.5 opacity-60">
-                                            <img 
-                                                src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
-                                                alt="Turma"
-                                                className="w-3 h-3 rounded-full object-cover border border-zinc-800"
-                                            />
-                                            <span className="text-[9px] text-zinc-300 font-mono">{c.userTurma || "Visitante"}</span>
-                                        </div>
+                                       <div className="flex items-center gap-1 mt-0.5 opacity-60">
+            <Image 
+                src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
+                alt="Turma"
+                width={12}
+                height={12}
+                className="rounded-full object-cover border border-zinc-800"
+            />
+            <span className="text-[9px] text-zinc-300 font-mono">{c.userTurma || "Visitante"}</span>
+        </div>
                                     </div>
 
                                     <div className="flex gap-2 text-zinc-500">
@@ -835,12 +864,18 @@ export default function DetalhesEventoPage() {
                   <div className="p-2 overflow-y-auto space-y-1 custom-scrollbar flex-1">
                       {modalUsers.map((u, i) => (
                           <Link key={i} href={`/perfil/${u.userId}`} className="flex items-center gap-3 p-3 hover:bg-zinc-900 rounded-2xl transition group">
-                              <div className="relative">
-                                  <img src={u.userAvatar || "https://github.com/shadcn.png"} alt={u.userName} className="w-10 h-10 rounded-full object-cover border-2 border-zinc-800 group-hover:border-emerald-500 transition-colors"/>
-                                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-800 rounded-full flex items-center justify-center text-[9px] font-black text-white border border-black">
-                                      {u.userTurma || "?"}
-                                  </div>
-                              </div>
+                           <div className="relative">
+            <Image 
+                src={u.userAvatar || "https://github.com/shadcn.png"} 
+                alt={u.userName} 
+                width={40}
+                height={40}
+                className="rounded-full object-cover border-2 border-zinc-800 group-hover:border-emerald-500 transition-colors"
+            />
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-800 rounded-full flex items-center justify-center text-[9px] font-black text-white border border-black">
+                {u.userTurma || "?"}
+            </div>
+        </div>
                               <div className="flex-1">
                                   <p className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">{u.userName}</p>
                                   <p className="text-[10px] text-zinc-500 uppercase font-bold">Ver Perfil</p>

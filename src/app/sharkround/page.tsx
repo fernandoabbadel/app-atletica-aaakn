@@ -103,7 +103,7 @@ export default function SharkRoundPage() {
                 ligasLoaded.push(data);
                 ligasMap[d.id] = data;
             });
-        } catch(e) { console.log("Offline/Erro Ligas", e); }
+        } catch(error) { console.log("Offline/Erro Ligas", error); }
 
         setLigasAtivasMap(ligasMap); 
 
@@ -156,8 +156,8 @@ export default function SharkRoundPage() {
                 coracoes: Math.floor(Math.random() * 4)
             }));
             setOutrosJogadores(players);
-        } catch (e) {
-             console.error("Erro ao carregar jogadores", e);
+        } catch (error) {
+             console.error("Erro ao carregar jogadores", error);
              setOutrosJogadores([{ id: 'p2', nome: 'Vivian', avatar: 'https://github.com/shadcn.png', posicao: 10, preso: true, coracoes: 2 }]);
         }
     };
@@ -181,7 +181,7 @@ export default function SharkRoundPage() {
                   tubas: d.data().tubas || 0
               })));
           }
-      } catch (e) { console.error(e); }
+      } catch (error) { console.error(error); }
   };
 
   // --- MECÂNICA ---
