@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// 🦈 CONTEXTOS (A ordem de importação não altera a lógica, mas organiza)
+// 🦈 CONTEXTOS
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
-import { CartProvider } from "@/context/CartContext"; // <--- O Novo Jogador
+import { CartProvider } from "@/context/CartContext";
 
 // 🦈 COMPONENTES GLOBAIS
 import BottomNav from "@/app/components/BottomNav";
@@ -21,23 +21,24 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 1. METADATA (SEO)
+// 1. METADATA (SEO & PWA)
 export const metadata: Metadata = {
   title: "Tubarão App - AAAKN",
   description: "Portal oficial da Atlética Medicina Caraguá",
-  manifest: "/manifest.json",
+  manifest: "/manifest.json", // Link para o arquivo PWA
   icons: {
     icon: "/favicon.ico",
   },
 };
 
-// 2. VIEWPORT (Visual Mobile)
+// 2. VIEWPORT (Visual Mobile & Tema)
+// Isso substitui o antigo 'theme-color' dentro do metadata
 export const viewport: Viewport = {
   themeColor: "#050505",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false,
+  userScalable: false, // Impede zoom indesejado no app mobile
 };
 
 export default function RootLayout({
@@ -50,16 +51,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-white min-h-screen selection:bg-emerald-500/30`}
       >
-        {/* 1. Autenticação (Quem é o usuário?) */}
+        {/* 1. Autenticação */}
         <AuthProvider>
           
-          {/* 2. Feedback Visual (Toasts/Alertas) */}
+          {/* 2. Feedback Visual */}
           <ToastProvider>
             
-            {/* 3. Estado do Carrinho (Precisa do Toast para avisar) */}
+            {/* 3. Carrinho */}
             <CartProvider>
               
-              {/* 4. Proteção de Rotas (Verifica se pode acessar) */}
+              {/* 4. Proteção de Rotas */}
               <RouteGuard>
                 
                 {/* Conteúdo Principal */}
@@ -67,7 +68,7 @@ export default function RootLayout({
                   {children}
                 </main>
 
-                {/* Navegação Fixa (Sempre visível para quem está logado) */}
+                {/* Navegação Fixa */}
                 <BottomNav />
 
               </RouteGuard>

@@ -6,7 +6,7 @@ import {
   ArrowLeft, MapPin, Edit3, Instagram, MessageCircle, Crown, 
   Star, Ghost, Fish, Swords, Share2, ShieldCheck, Loader2, 
   X, PawPrint, Users, Lock, Heart, UserCheck,
-  Zap, Gem, Trophy, Medal, Calendar, Dumbbell, LayoutList, // <--- Vírgula corrigida aqui pelo Tubarão 🦈
+  Zap, Gem, Trophy, Medal, Calendar, Dumbbell, LayoutList,
   ChevronRight, ThumbsUp, LayoutGrid, UserPlus, Target, User,
   Skull, Rocket, Clock, CheckCircle, Camera, Upload
 } from "lucide-react";
@@ -59,13 +59,6 @@ interface LigaPerfil {
   foto?: string;
   logo?: string;
   logoBase64?: string;
-}
-
-interface Patente {
-    titulo: string;
-    minXp: number;
-    cor: string;
-    iconName: string;
 }
 
 interface UserProfile {
@@ -165,37 +158,6 @@ const getSportInfo = (sport: string) => {
 // 🦈 SUB-COMPONENTES
 // ============================================================================
 
-// 🦈 LEVEL BADGE (ID 908: Ligado às patentes)
-const LevelBadge = ({ xp }: { xp: number }) => {
-    const [patentes, setPatentes] = useState<Patente[]>([]);
-
-    useEffect(() => {
-        const q = query(collection(db, "patentes_config")); 
-        const unsub = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(d => d.data() as Patente);
-            data.sort((a, b) => a.minXp - b.minXp);
-            if (data.length > 0) setPatentes(data);
-            else setPatentes([{ titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
-        });
-        return () => unsub();
-    }, []);
-
-    const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
-    if (!currentBadge) return null;
-
-    const IconMap: Record<string, React.ElementType> = { 
-        Fish, Swords, Crown, Skull, Rocket, Star, Zap, Trophy, Medal, Heart 
-    };
-    const IconComp = IconMap[currentBadge.iconName] || Fish;
-    const colorClass = currentBadge.cor || "text-zinc-500";
-
-    return (
-        <div title={`${currentBadge.titulo} • ${xp} XP`} className={`relative group cursor-help p-2 rounded-full bg-zinc-900 border border-zinc-700 shadow-lg transition-transform hover:scale-110`}>
-            <IconComp size={20} className={colorClass} />
-        </div>
-    );
-};
-
 // 🦈 PROFILE BADGES
 const ProfileBadges = ({ userData }: { userData: UserProfile }) => {
     const isAdmin = userData?.role?.includes('admin') || userData?.role === 'master';
@@ -238,9 +200,9 @@ export default function MeuPerfilPage() {
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingPhrase, setLoadingPhrase] = useState(LOADING_PHRASES[0]); // ID 905
+  const [loadingPhrase, setLoadingPhrase] = useState(LOADING_PHRASES[0]);
   
-  // States do Modal de Edição (Restaurados)
+  // States do Modal de Edição
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
@@ -255,7 +217,7 @@ export default function MeuPerfilPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const coverInputRef = useRef<HTMLInputElement>(null); // Novo para capa
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -264,13 +226,11 @@ export default function MeuPerfilPage() {
   const [activeModal, setActiveModal] = useState<'followers' | 'following' | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'eventos' | 'treinos' | 'ligas'>('posts');
   
-  // States Tipados (ID 901)
   const [recentPosts, setRecentPosts] = useState<PostPerfil[]>([]);
   const [myEvents, setMyEvents] = useState<EventoPerfil[]>([]);
   const [myTreinos, setMyTreinos] = useState<TreinoPerfil[]>([]);
   const [myLigas, setMyLigas] = useState<LigaPerfil[]>([]);
 
-  // ID 905: Efeito para frases aleatórias
   useEffect(() => {
       const interval = setInterval(() => {
           setLoadingPhrase(LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)]);
@@ -290,7 +250,6 @@ export default function MeuPerfilPage() {
                 const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
                 setProfile(data);
                 
-                // Popula states de edição
                 setEditName(data.nome || "");
                 setEditBio(data.bio || "");
                 setEditInstagram(data.instagram || "");
@@ -308,7 +267,6 @@ export default function MeuPerfilPage() {
                 if (data.stats?.followingCount !== undefined) setFollowingCount(data.stats.followingCount);
                 else { const snap = await getDocs(collection(db, "users", user.uid, "following")); setFollowingCount(snap.size); }
 
-                // 1. POSTS
                 const qPosts = query(collection(db, "posts"), where("userId", "==", user.uid), limit(20));
                 getDocs(qPosts).then(snap => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPerfil));
@@ -316,7 +274,6 @@ export default function MeuPerfilPage() {
                     setRecentPosts(list.slice(0, 5));
                 });
 
-                // 2. EVENTOS
                 const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", user.uid), limit(20));
                 getDocs(qEvents).then(snap => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EventoPerfil));
@@ -324,13 +281,11 @@ export default function MeuPerfilPage() {
                     setMyEvents(list.slice(0, 5));
                 });
 
-                // 3. LIGAS
                 const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", user.uid));
                 getDocs(qLigas).then(snap => 
                     setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as LigaPerfil)))
                 );
 
-                // 4. TREINOS
                 const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", user.uid), limit(20));
                 getDocs(qTreinos).then(snap => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TreinoPerfil));
@@ -342,7 +297,7 @@ export default function MeuPerfilPage() {
         finally { setLoading(false); }
     };
     fetchProfile();
-  }, [user, authLoading, router, addToast]); // ID 491: Dependência addToast adicionada
+  }, [user, authLoading, router, addToast]);
 
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile || !user) return;
@@ -355,7 +310,6 @@ export default function MeuPerfilPage() {
       else setFollowingList(list);
   };
 
-  // Função Restaurada: Salvar Perfil
   const handleSaveProfile = async () => {
       if (!user || !profile) return;
       setSavingProfile(true);
@@ -385,13 +339,11 @@ export default function MeuPerfilPage() {
       }
   };
 
-  // Função Restaurada: Upload de Imagem (Avatar/Capa)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'capa') => {
       if (!e.target.files || !e.target.files[0] || !user) return;
       const file = e.target.files[0];
       
-      // Validação básica
-      if (file.size > 5 * 1024 * 1024) { // 5MB
+      if (file.size > 5 * 1024 * 1024) { 
           addToast("Imagem muito grande! Max 5MB.", "error");
           return;
       }
@@ -446,7 +398,7 @@ export default function MeuPerfilPage() {
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
       <div className="relative">
-        {/* CAPA DO PERFIL (ID 902: Image otimizada) */}
+        {/* CAPA DO PERFIL */}
         <div className="h-48 w-full bg-zinc-900 overflow-hidden relative group">
             <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-[#050505]/50 to-[#050505] z-10"></div>
             <Image 
@@ -455,32 +407,42 @@ export default function MeuPerfilPage() {
                 fill
                 className="object-cover opacity-60 blur-[2px] group-hover:blur-0 transition duration-700"
                 unoptimized
+                sizes="100vw"
             />
             <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
-            <button onClick={() => coverInputRef.current?.click()} className="absolute top-6 right-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><Camera size={20}/></button>
             <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'capa')} />
         </div>
 
-        <div className="px-6 relative z-20 -mt-16 flex flex-col items-center">
-            <div className="relative mb-3 group">
-                <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)] relative">
+        <div className="px-6 relative z-20 -mt-20 flex flex-col items-center">
+            
+            {/* CONTAINER PRINCIPAL DO AVATAR E TURMA (ID 1021 e 1022) */}
+            {/* O Tubarão fixou o tamanho aqui (w-40 h-40) para o posicionamento absoluto funcionar perfeitamente */}
+            <div className="relative w-40 h-40 mb-4 group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                
+                {/* 1. Foto de Perfil */}
+                <div className="w-full h-full rounded-full p-1 bg-gradient-to-tr from-emerald-500 via-zinc-800 to-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.3)] relative overflow-hidden">
                     <Image 
                         src={profile.foto || "https://github.com/shadcn.png"} 
                         alt="Foto Perfil"
                         fill
                         className="rounded-full object-cover border-4 border-[#050505]"
                         unoptimized
+                        sizes="(max-width: 768px) 160px, 160px"
                     />
-                    <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition backdrop-blur-sm border-4 border-transparent"><Upload size={24}/></button>
+                    {/* ID 1020/1023: Ícone de Upload VOLTOU, mas só aparece no HOVER */}
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <Camera size={32} className="text-white drop-shadow-md" />
+                    </div>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'avatar')} />
                 </div>
-                <div className="absolute bottom-1 right-1 w-10 h-10 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-30 overflow-hidden relative">
-                    <Image src={turmaImage} alt="Turma" fill className="object-cover" unoptimized/>
+                
+                {/* 2. Logo da Turma (ID 1021 - Sobreposta CORRETAMENTE no canto inferior direito) */}
+                {/* Está "absoluta" em relação ao pai de 160px (w-40), garantindo que fique na borda */}
+                <div className="absolute bottom-0 right-0 w-14 h-14 bg-black rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg z-20 overflow-hidden">
+                    <Image src={turmaImage} alt="Turma" fill className="object-cover" unoptimized sizes="56px"/>
                 </div>
-                {/* ID 254: LevelBadge Inserido */}
-                <div className="absolute top-0 right-0 z-40 transform translate-x-2 -translate-y-2">
-                    <LevelBadge xp={profile.xp || 0} />
-                </div>
+                
+                {/* 🦈 REMOVIDO: Level Badge (Peixe Palhaço) - ID 1030 */}
             </div>
 
             <div className="text-center space-y-1 mb-4">
@@ -525,7 +487,6 @@ export default function MeuPerfilPage() {
                 </div>
             </div>
 
-            {/* ID 903: Aspas corrigidas */}
             {profile.bio && (
                 <div className="w-full max-w-sm bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl mb-6 backdrop-blur-sm">
                     <p className="text-sm text-zinc-300 text-center italic leading-relaxed">&quot;{profile.bio}&quot;</p>
@@ -540,7 +501,6 @@ export default function MeuPerfilPage() {
 
             <div className="w-full max-w-sm">
              <div className="flex justify-between border-b border-zinc-800 mb-4 overflow-x-auto no-scrollbar">
-            {/* O Tubarão usou 'as const' para o TypeScript entender os tipos literais e removeu o 'any' */}
             {(['posts', 'eventos', 'treinos', 'ligas'] as const).map((tab) => (
                 <button 
                     key={tab} 
@@ -550,7 +510,6 @@ export default function MeuPerfilPage() {
                         ${activeTab === tab ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-zinc-500 hover:text-zinc-300'}
                     `}
                 >
-                    {/* Visual padronizado para todas as abas */}
                     {tab === 'posts' && <LayoutList size={14} />}
                     {tab === 'eventos' && <Calendar size={14} />}
                     {tab === 'treinos' && <Dumbbell size={14} />}
@@ -561,21 +520,18 @@ export default function MeuPerfilPage() {
             ))}
         </div>
                 <div className="min-h-[200px]">
-                    {/* POSTS */}
                     {activeTab === 'posts' && (
                         recentPosts.length > 0 ? (
                             <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
                     )}
 
-                    {/* EVENTOS */}
                     {activeTab === 'eventos' && (
                         myEvents.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><Image src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} alt={e.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }} unoptimized /><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
+                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><Image src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} alt={e.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }} unoptimized sizes="(max-width: 768px) 100vw, 50vw" /><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum evento marcado.</div>
                     )}
 
-                    {/* LIGAS */}
                     {activeTab === 'ligas' && (
                         myLigas.length > 0 ? (
                             <div className="grid grid-cols-3 gap-4 animate-in fade-in">
@@ -584,7 +540,7 @@ export default function MeuPerfilPage() {
                                         <div className="w-24 h-24 rounded-full bg-black border-2 border-zinc-800 p-0.5 group-hover:border-emerald-500 group-hover:scale-105 transition-all shadow-lg">
                                             <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center relative">
                                                 {l.logoBase64 ? (
-                                                    <Image src={l.logoBase64} alt={l.nome} fill className="object-cover" unoptimized />
+                                                    <Image src={l.logoBase64} alt={l.nome} fill className="object-cover" unoptimized sizes="96px" />
                                                 ) : (
                                                     <Users size={32} className="text-zinc-500"/>
                                                 )}
@@ -597,7 +553,6 @@ export default function MeuPerfilPage() {
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Não participa de ligas.</div>
                     )}
 
-                    {/* TREINOS */}
                     {activeTab === 'treinos' && (
                         myTreinos.length > 0 ? (
                              <div className="grid gap-3 animate-in fade-in">
@@ -610,6 +565,7 @@ export default function MeuPerfilPage() {
                                                     fill
                                                     className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
                                                     unoptimized
+                                                    sizes="96px"
                                                  />
                                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
                                             </div>
@@ -634,7 +590,6 @@ export default function MeuPerfilPage() {
                 </div>
             </div>
 
-            {/* FICHA TÉCNICA */}
             <div className="w-full max-w-sm mt-8 border-t border-zinc-800 pt-6">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest pl-2 border-l-2 border-zinc-500 mb-3">Ficha Técnica</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -649,7 +604,6 @@ export default function MeuPerfilPage() {
         </div>
       </div>
 
-      {/* MODAL DE EDIÇÃO (RESTAURADO) */}
       {showEditModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-6 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -745,7 +699,6 @@ export default function MeuPerfilPage() {
           </div>
       )}
 
-      {/* MODAL DE SEGUIDORES/SEGUINDO */}
       {activeModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in">
               <div className="bg-zinc-950 w-full max-w-sm rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">

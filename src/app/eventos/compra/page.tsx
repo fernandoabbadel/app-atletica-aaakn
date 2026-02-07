@@ -279,7 +279,7 @@ function CompraContent() {
                     </div>
                 </div>
 
-                <button onClick={() => window.location.href = '/menu'} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
+                <button onClick={() => window.location.href = '/eventos'} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase py-4 rounded-xl shadow-lg transition active:scale-95 border border-zinc-700">
                     Voltar ao Menu
                 </button>
             </div>

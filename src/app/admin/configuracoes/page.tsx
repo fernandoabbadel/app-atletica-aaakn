@@ -51,7 +51,7 @@ const INITIAL_SECTIONS: ConfigSection[] = [
     id: "1",
     title: "Sua Conta",
     items: [
-      { id: "1", label: "Dados Pessoais", icon: "User", type: "link", path: "/perfil/dados", active: true },
+      { id: "1", label: "Dados Pessoais", icon: "User", type: "link", path: "/perfil", active: true },
       { id: "2", label: "Carteirinha Digital", icon: "Wallet", type: "link", path: "/carteirinha", active: true },
     ],
   },

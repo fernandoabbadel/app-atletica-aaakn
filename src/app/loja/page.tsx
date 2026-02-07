@@ -123,7 +123,7 @@ export default function LojaPage() {
                 </div>
             </div>
 
-            <Link href="/carrinho" className="relative bg-zinc-900 p-2.5 rounded-full hover:bg-zinc-800 transition border border-zinc-800 group">
+            <Link href="/configuracoes/pedidos" className="relative bg-zinc-900 p-2.5 rounded-full hover:bg-zinc-800 transition border border-zinc-800 group">
                 <ShoppingBag size={20} className="text-zinc-400 group-hover:text-emerald-500 transition"/>
                 {cartCount > 0 && (
                     <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-black text-[10px] font-black flex items-center justify-center rounded-full shadow-lg shadow-emerald-500/20">

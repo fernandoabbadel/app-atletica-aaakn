@@ -54,6 +54,7 @@ const RAW_PAGES = [
     { path: '/admin/guia', label: '📘 Adm Guia' },
     { path: '/admin/gym', label: '🏋️ Adm Gym' },
     { path: '/admin/historico', label: '📜 Adm Histórico' },
+   { path: '/admin/landing', label: '👥 Gerenciar LandingPage' },
     { path: '/admin/ligas', label: '🏆 Adm Ligas' },
     { path: '/admin/logs', label: '📝 Logs do Sistema' },
     { path: '/admin/loja', label: '👕 Adm Loja' },
