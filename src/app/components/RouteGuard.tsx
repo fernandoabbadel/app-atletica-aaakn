@@ -3,29 +3,43 @@
 // ============================================================================
 // 1. IMPORTAÇÕES & CONSTANTES
 // ============================================================================
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext"; 
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import SharkLoader from "./SharkLoader";
 import { usePathname, useRouter } from "next/navigation";
-// 🦈 CORREÇÃO: Removido 'useMemo' que não estava sendo usado
-import { useEffect, useState } from "react";
 
 // Mude para false quando for para produção
-const SHOW_DEBUG_ON_SCREEN = false; // process.env.NODE_ENV === 'development';
+const SHOW_DEBUG_ON_SCREEN = process.env.NODE_ENV === 'development';
 
-// 🦈 ZONA SEGURA (Rotas Públicas)
+// 🦈 ZONA SEGURA (Rotas Públicas - O RouteGuard ignora essas)
+// IMPORTANTE: /banned, /em-breve e /nao-encontrado PRECISAM estar aqui
+// para o usuário conseguir visualizar a página sem entrar em loop.
 const PUBLIC_PATHS = [
   "/login",
   "/",
   "/historico",
   "/cadastro",
-  "/termos",
+  "/configuracoes/termos",
   "/empresa/cadastro",
   "/recuperar-senha",
+  "/sem-permissao", 
+  "/banned",       
+  "/em-breve",      
+  "/nao-encontrado" 
 ];
 
-// 🦈 ZONA DE DEGUSTAÇÃO (O que o visitante anônimo pode ver)
+// 🦈 ZONA DE OBRAS (Funcionalidades futuras)
+// Se o usuário tentar acessar isso, ele cai na página /em-breve
+const COMING_SOON_PATHS = [
+  "/marketplace-futuro", 
+  "/funcionalidade-x",
+  "/shark-tv"
+];
+
+// 🦈 ZONA DE DEGUSTAÇÃO (O que o visitante sem cadastro completo vê)
 const GUEST_ALLOWED_PATHS = [
   "/dashboard",
   "/perfil",
@@ -41,6 +55,7 @@ interface PermissionMatrix {
 
 export default function RouteGuard({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth();
+  const { addToast } = useToast(); 
   const router = useRouter();
   const pathname = usePathname();
 
@@ -56,96 +71,101 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   });
 
   // ============================================================================
-  // 2. BUSCA DE REGRAS (CACHE + FIREBASE COM FAIL-SAFE)
+  // 2. BUSCA DE REGRAS (CACHE + FIREBASE)
   // ============================================================================
   useEffect(() => {
     let isMounted = true;
 
     const fetchRules = async () => {
-      // 1. Tenta Cache Local (Velocidade do Tubarão)
+      // 1. Cache Local
       const cachedRules = localStorage.getItem("shark_permissions");
       if (cachedRules) {
         try {
-          if (isMounted) {
-            setPermissionMatrix(JSON.parse(cachedRules));
-            setRulesLoading(false); // Libera rápido
+          const parsed = JSON.parse(cachedRules);
+          if (parsed && typeof parsed === 'object') {
+             if (isMounted) {
+                setPermissionMatrix(parsed);
+                setRulesLoading(false);
+             }
           }
         } catch (error) {
-          console.error("Erro ao ler cache de regras:", error);
+          localStorage.removeItem("shark_permissions");
         }
       }
 
-      // 2. Busca Atualização no Oceano (Firebase)
+      // 2. Firebase Live
       try {
         const docSnap = await getDoc(doc(db, "settings", "permissions"));
         if (docSnap.exists() && isMounted) {
           const liveRules = docSnap.data() as PermissionMatrix;
-          
-          // Só atualiza se mudou (evita re-render desnecessário)
           if (JSON.stringify(liveRules) !== cachedRules) {
             setPermissionMatrix(liveRules);
             localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
           }
         }
       } catch (error) {
-        console.error("🚨 Erro crítico ao buscar regras:", error);
-        // Em caso de erro, mantemos o cache ou vazio, mas NÃO travamos o app
+        console.error("Erro Rules:", error);
       } finally {
         if (isMounted) setRulesLoading(false);
       }
     };
 
     fetchRules();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
   // ============================================================================
-  // 3. O GUARDA: LÓGICA DE SEGURANÇA
+  // 3. O GUARDA: LOGICA DE PRIORIDADE (AQUI ESTÁ O SEGREDO)
   // ============================================================================
   useEffect(() => {
-    // Se ainda está carregando Auth ou Regras, o Tubarão espera.
-    if (authLoading || rulesLoading) return;
-
     const currentPath = pathname ? pathname.split("?")[0] : "/";
-
-    // 🦈 DEFINIÇÃO DE ROLE
-    let userRole = "visitante";
-    if (user) {
-      if (user.isAnonymous) {
-        userRole = "guest_anon"; // Visitante Anônimo (Firebase Anon)
-      } else {
-        userRole = (user.role || "user").toLowerCase();
-      }
-    }
-
-    // --- A. ROTAS PÚBLICAS (LIBERADAS GERAL) ---
+    
+    // PRIORIDADE 1: É rota pública? Libera JÁ.
+    // Isso garante que /banned e /em-breve carreguem sem travar.
     const isPublic = PUBLIC_PATHS.some(p => currentPath === p || currentPath.startsWith("/public"));
     if (isPublic) {
       setAuthorized(true);
+      return; 
+    }
+
+    // Se não é pública, espera carregar auth e regras
+    if (authLoading || (!permissionMatrix && rulesLoading)) return;
+
+    // Definição de Role
+    let userRole = "visitante";
+    if (user) {
+      if (user.isAnonymous) userRole = "guest_anon";
+      else userRole = (user.role || "user").toLowerCase();
+    }
+
+    // PRIORIDADE 2: Em Breve (Antes de checar permissão)
+    // Se a funcionalidade tá em obra, ninguém entra (exceto se você quiser liberar Master aqui depois)
+    if (COMING_SOON_PATHS.some(p => currentPath.startsWith(p))) {
+        setAuthorized(false);
+        // Feedback opcional (se quiser avisar antes de trocar)
+        // addToast("Ops! Estamos construindo essa parte 🚧", "info");
+        router.replace("/em-breve");
+        return;
+    }
+
+    // PRIORIDADE 3: Login Obrigatório
+    if (!user) {
+      setAuthorized(false);
+      addToast("Opa! Faz login pra nadar com o cardume! 🦈", "info");
+      router.replace("/login");
       return;
     }
 
-    // --- B. NÃO LOGADO (MANDA PRO LOGIN) ---
-    if (!user) {
+    // PRIORIDADE 4: Jaula (Banidos)
+    if ((user.status === "banned" || user.status === "bloqueado")) {
       setAuthorized(false);
-      // Evita loop se já estiver indo pro login
-      if (currentPath !== "/login") {
-        router.replace("/login"); // 'replace' é melhor que 'push' para login
+      if (currentPath !== "/banned") {
+          router.replace("/banned");
       }
       return;
     }
 
-    // --- C. BANIDOS (JAULA) ---
-    if ((user.status === "banned" || user.status === "bloqueado") && currentPath !== "/banned") {
-      setAuthorized(false);
-      router.replace("/banned");
-      return;
-    }
-
-    // --- D. VISITANTE ANÔNIMO (DEGUSTAÇÃO) ---
+    // PRIORIDADE 5: Visitante Anônimo
     if (userRole === "guest_anon") {
       const isAllowed = GUEST_ALLOWED_PATHS.some((p) =>
         currentPath === p || currentPath.startsWith(p + "/")
@@ -153,34 +173,31 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
       if (!isAllowed) {
         setAuthorized(false);
-        router.replace("/dashboard"); // Manda pra casa segura
+        addToast("Essa área é exclusiva para membros oficiais! 🚫", "error");
+        router.replace("/dashboard");
         return;
       }
-      // Se permitido, segue o fluxo para aprovação final
     }
 
-    // --- E. GUEST COM LOGIN GOOGLE (FALTA CADASTRO) ---
-    // Se o cara logou com Google mas não tem role definida ou é 'guest' (não anonimo)
+    // PRIORIDADE 6: Cadastro Pendente (Guest Google)
     if ((userRole === "guest" || !user.role) && !user.isAnonymous && currentPath !== "/cadastro") {
-       // Permite logout ou cadastro
        setAuthorized(false);
+       addToast("Quase lá! Termine seu cadastro pra liberar tudo. 📝", "info");
        router.replace("/cadastro");
        return;
     }
 
-    // --- F. MATRIZ DE PERMISSÕES (ADMIN E OUTROS) ---
+    // PRIORIDADE 7: Matriz de Permissões (O Grande Filtro)
     if (permissionMatrix) {
-      // MASTER: O Tubarão Rei acessa tudo
       if (userRole === "master") {
         setAuthorized(true);
         setDebugInfo({ role: userRole, path: currentPath, decision: "👑 MASTER PASS" });
         return;
       }
 
-      // Encontra a regra mais específica para o caminho atual
       const matchedRulePath = Object.keys(permissionMatrix)
         .filter((rulePath) => currentPath === rulePath || currentPath.startsWith(rulePath + "/"))
-        .sort((a, b) => b.length - a.length)[0]; // Pega a string mais longa (mais específica)
+        .sort((a, b) => b.length - a.length)[0];
 
       if (matchedRulePath) {
         const allowedRoles = permissionMatrix[matchedRulePath].map((r) => r.toLowerCase());
@@ -194,7 +211,9 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
         if (!isRoleAllowed) {
           setAuthorized(false);
-          // Redirecionamento inteligente
+          // 🦈 FEEDBACK JOVEM E DIRETO
+          addToast("Eita! Você não tem a chave dessa porta, Tubarão! 🚫", "error");
+          
           if (user.isAnonymous) {
             router.replace("/dashboard");
           } else {
@@ -202,54 +221,57 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
           }
           return;
         }
+      } else {
+        // Bloqueio padrão para /admin
+        if (currentPath.startsWith("/admin")) {
+            setAuthorized(false);
+            addToast("Opa! Área restrita da diretoria! 👮", "error");
+            router.replace("/sem-permissao");
+            return;
+        }
       }
     }
 
-    // --- G. EMPRESAS (SEGURANÇA EXTRA) ---
-    if (userRole === "empresa" && !currentPath.startsWith("/empresa") && currentPath !== "/dashboard" && currentPath !== "/perfil") {
+    // PRIORIDADE 8: Empresa
+    if (userRole === "empresa" && !currentPath.startsWith("/empresa") && !["/dashboard", "/perfil"].includes(currentPath)) {
        setAuthorized(false);
+       addToast("Seu painel de parceiros é por aqui! 💼", "info");
        router.replace("/empresa");
        return;
     }
 
-    // SE PASSOU POR TUDO: LIBERADO! 🚀
+    // LIBERADO!
     setAuthorized(true);
 
-  }, [user, authLoading, rulesLoading, pathname, router, permissionMatrix]);
+  }, [user, authLoading, rulesLoading, pathname, router, permissionMatrix, addToast]);
 
   // ============================================================================
   // 4. RENDERIZAÇÃO
   // ============================================================================
   
-  // 1. Carregando dados vitais? Mostra Spinner.
-  if (authLoading || rulesLoading) return <SharkLoader />;
-
-  // 2. Se o usuário está sendo redirecionado (não autorizado e tem user), segura o spinner.
-  //    MAS, se a rota for pública, renderiza logo (ex: Login) para evitar travamento.
   const currentPath = pathname ? pathname.split("?")[0] : "/";
   const isPublicRenderCheck = PUBLIC_PATHS.includes(currentPath);
 
-  if (!authorized && !isPublicRenderCheck && user) {
-    return <SharkLoader />;
+  // 1. Rota Pública? Renderiza JÁ (Sem loader, sem piscar)
+  // Isso faz com que /banned e /em-breve apareçam instantaneamente
+  if (isPublicRenderCheck) {
+      return <>{children}</>;
   }
 
-  // 3. Se não autorizado e sem usuário, mostra loader enquanto o useEffect joga pro login.
-  //    (A menos que já esteja numa rota pública, aí mostra o conteúdo, ex: tela de login)
-  if (!authorized && !user && !isPublicRenderCheck) {
+  // 2. Carregando lógica? Loader.
+  if (authLoading || (rulesLoading && !permissionMatrix)) return <SharkLoader />;
+
+  // 3. Negado ou esperando redirect? Loader.
+  if (!authorized) {
       return <SharkLoader />;
   }
 
   return (
     <>
       {children}
-      
-      {/* PAINEL DE DEPURAÇÃO (Visível apenas em DEV ou flag ativada) */}
       {SHOW_DEBUG_ON_SCREEN && user?.role !== "master" && (
-        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] font-mono text-emerald-400 p-3 rounded-lg z-[99999] shadow-2xl backdrop-blur-sm pointer-events-none">
-          <div className="font-bold text-white mb-1">🦈 SHARK GUARD</div>
-          <div><span className="text-zinc-500">Role:</span> {debugInfo.role}</div>
-          <div><span className="text-zinc-500">Path:</span> {debugInfo.path}</div>
-          <div className="mt-1 font-bold">{debugInfo.decision}</div>
+        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] text-emerald-400 p-2 rounded z-50">
+           GUARD: {debugInfo.decision}
         </div>
       )}
     </>
