@@ -10,44 +10,10 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import SharkLoader from "./SharkLoader";
 import { usePathname, useRouter } from "next/navigation";
+import { PUBLIC_PATHS, COMING_SOON_PATHS, GUEST_ALLOWED_PATHS } from "@/lib/appRoutes";
 
 // Mude para false quando for para produção
 const SHOW_DEBUG_ON_SCREEN = process.env.NODE_ENV === 'development';
-
-// 🦈 ZONA SEGURA (Rotas Públicas - O RouteGuard ignora essas)
-// IMPORTANTE: /banned, /em-breve e /nao-encontrado PRECISAM estar aqui
-// para o usuário conseguir visualizar a página sem entrar em loop.
-const PUBLIC_PATHS = [
-  "/login",
-  "/",
-  "/historico",
-  "/cadastro",
-  "/configuracoes/termos",
-  "/empresa/cadastro",
-  "/recuperar-senha",
-  "/sem-permissao", 
-  "/banned",       
-  "/em-breve",      
-  "/nao-encontrado" 
-];
-
-// 🦈 ZONA DE OBRAS (Funcionalidades futuras)
-// Se o usuário tentar acessar isso, ele cai na página /em-breve
-const COMING_SOON_PATHS = [
-  "/marketplace-futuro", 
-  "/funcionalidade-x",
-  "/shark-tv"
-];
-
-// 🦈 ZONA DE DEGUSTAÇÃO (O que o visitante sem cadastro completo vê)
-const GUEST_ALLOWED_PATHS = [
-  "/dashboard",
-  "/perfil",
-  "/loja",
-  "/games",
-  "/ranking",
-  "/treinos",
-];
 
 interface PermissionMatrix {
   [path: string]: string[];
@@ -98,6 +64,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
         const docSnap = await getDoc(doc(db, "settings", "permissions"));
         if (docSnap.exists() && isMounted) {
           const liveRules = docSnap.data() as PermissionMatrix;
+          // Atualiza cache se mudou
           if (JSON.stringify(liveRules) !== cachedRules) {
             setPermissionMatrix(liveRules);
             localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
@@ -115,13 +82,12 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   }, []);
 
   // ============================================================================
-  // 3. O GUARDA: LOGICA DE PRIORIDADE (AQUI ESTÁ O SEGREDO)
+  // 3. O GUARDA: LOGICA DE PRIORIDADE
   // ============================================================================
   useEffect(() => {
     const currentPath = pathname ? pathname.split("?")[0] : "/";
     
     // PRIORIDADE 1: É rota pública? Libera JÁ.
-    // Isso garante que /banned e /em-breve carreguem sem travar.
     const isPublic = PUBLIC_PATHS.some(p => currentPath === p || currentPath.startsWith("/public"));
     if (isPublic) {
       setAuthorized(true);
@@ -138,12 +104,9 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       else userRole = (user.role || "user").toLowerCase();
     }
 
-    // PRIORIDADE 2: Em Breve (Antes de checar permissão)
-    // Se a funcionalidade tá em obra, ninguém entra (exceto se você quiser liberar Master aqui depois)
+    // PRIORIDADE 2: Em Breve
     if (COMING_SOON_PATHS.some(p => currentPath.startsWith(p))) {
         setAuthorized(false);
-        // Feedback opcional (se quiser avisar antes de trocar)
-        // addToast("Ops! Estamos construindo essa parte 🚧", "info");
         router.replace("/em-breve");
         return;
     }
@@ -189,12 +152,14 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
     // PRIORIDADE 7: Matriz de Permissões (O Grande Filtro)
     if (permissionMatrix) {
+      // MASTER: Chave Mestra
       if (userRole === "master") {
         setAuthorized(true);
         setDebugInfo({ role: userRole, path: currentPath, decision: "👑 MASTER PASS" });
         return;
       }
 
+      // Encontra a regra mais específica para a rota atual
       const matchedRulePath = Object.keys(permissionMatrix)
         .filter((rulePath) => currentPath === rulePath || currentPath.startsWith(rulePath + "/"))
         .sort((a, b) => b.length - a.length)[0];
@@ -211,7 +176,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
         if (!isRoleAllowed) {
           setAuthorized(false);
-          // 🦈 FEEDBACK JOVEM E DIRETO
           addToast("Eita! Você não tem a chave dessa porta, Tubarão! 🚫", "error");
           
           if (user.isAnonymous) {
@@ -222,7 +186,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
           return;
         }
       } else {
-        // Bloqueio padrão para /admin
+        // Bloqueio padrão para /admin se não houver regra explícita
         if (currentPath.startsWith("/admin")) {
             setAuthorized(false);
             addToast("Opa! Área restrita da diretoria! 👮", "error");
@@ -253,7 +217,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   const isPublicRenderCheck = PUBLIC_PATHS.includes(currentPath);
 
   // 1. Rota Pública? Renderiza JÁ (Sem loader, sem piscar)
-  // Isso faz com que /banned e /em-breve apareçam instantaneamente
   if (isPublicRenderCheck) {
       return <>{children}</>;
   }
@@ -270,7 +233,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     <>
       {children}
       {SHOW_DEBUG_ON_SCREEN && user?.role !== "master" && (
-        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] text-emerald-400 p-2 rounded z-50">
+        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] text-emerald-400 p-2 rounded z-50 pointer-events-none">
            GUARD: {debugInfo.decision}
         </div>
       )}

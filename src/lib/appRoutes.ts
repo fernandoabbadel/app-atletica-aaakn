@@ -1,13 +1,14 @@
 // src/lib/appRoutes.ts
 
 // 1. ZONA SEGURA (Públicas - Login, Erro, Em Breve)
+// O RouteGuard ignora a verificação para estas rotas para evitar loops.
 export const PUBLIC_PATHS = [
   "/login",
   "/",
   "/historico",
   "/cadastro",
-  "/configuracoes/termos",
   "/configuracoes",
+  "/configuracoes/termos",
   "/empresa/cadastro",
   "/recuperar-senha",
   "/sem-permissao",
@@ -16,22 +17,32 @@ export const PUBLIC_PATHS = [
   "/nao-encontrado"
 ];
 
-// 2. ZONA DE DEGUSTAÇÃO (O que visitante vê)
+// 2. ZONA DE DEGUSTAÇÃO (O que visitante sem login completo/aprovado pode ver)
 export const GUEST_ALLOWED_PATHS = [
   "/dashboard",
-  "/perfil",
-  "/loja",
-  "/games",
-  "/ranking",
-  "/treinos",
+  "/login",
+  "/",
+  "/empresa",
+  "/empresa/cadastro",
+  "/historico",
+  "/cadastro",
+  "/configuracoes/termos",
+  "/empresa/cadastro",
+  "/recuperar-senha",
+  "/sem-permissao",
+  "/banned",
+  "/em-breve",
+  "/nao-encontrado"
+  
 ];
 
-// 3. ZONA DE OBRAS (Se não tiver nenhuma agora, deixe vazio)
+// 3. ZONA DE OBRAS (Funcionalidades em desenvolvimento - redirecionam para Em Breve)
 export const COMING_SOON_PATHS = [
-  // "/pagina-que-ainda-nao-existe",
+  // "/marketplace-futuro",
+  // "/shark-tv"
 ];
 
-// 4. MAPA DO SISTEMA (Cópia exata do seu RAW_PAGES)
+// 4. MAPA DO SISTEMA (Lista completa para o Painel Admin)
 export const APP_PAGES = [
     // --- ADMINISTRAÇÃO ---
     { path: '/admin', label: '👮 Admin Dashboard' },

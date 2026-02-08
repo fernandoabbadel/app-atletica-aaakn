@@ -10,13 +10,14 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../../context/AuthContext"; 
-import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
+import { useAuth } from "@/context/AuthContext"; 
+import { useToast } from "@/context/ToastContext";
+import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
-import { logActivity } from "../../../lib/logger"; 
+import { logActivity } from "@/lib/logger"; 
+import { APP_PAGES } from "@/lib/appRoutes"; // Usando a lista centralizada
 
-// --- 1. DEFINIÇÃO DE CARGOS (Hierarquia Tubarão - ID 005 Verificado) ---
+// --- 1. DEFINIÇÃO DE CARGOS ---
 const ROLES = [
     { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
     
@@ -34,68 +35,10 @@ const ROLES = [
     { id: 'user', label: 'Membro', icon: User, color: 'text-zinc-400' },
     { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' },
     
-    // 🦈 NOVO PERFIL: INATIVO (Para quem desativou a conta)
+    // Inativos
     { id: 'inactive', label: 'Inativo', icon: UserX, color: 'text-zinc-700' }
 ];
 
-// --- 2. MAPEAMENTO DE ROTAS (ID 002: Ordem Alfabética + ID 001: Configurações Add) ---
-const RAW_PAGES = [
-    // --- ADMINISTRAÇÃO (BACKOFFICE) ---
-    { path: '/admin', label: '👮 Admin Dashboard' },
-    { path: '/admin/album', label: '📷 Adm Álbum' },
-    { path: '/admin/carteirinha', label: '🪪 Adm Carteirinha' },
-    { path: '/admin/comunidade', label: '💬 Adm Comunidade' },
-    { path: '/admin/configuracoes', label: '⚙️ Configurações (Adm)' },
-    { path: '/admin/conquistas', label: '🏅 Adm Conquistas' },
-    { path: '/admin/denuncias', label: '🚨 Denúncias' },
-    { path: '/admin/eventos', label: '📅 Adm Eventos' },
-    { path: '/admin/fidelidade', label: '💎 Adm Fidelidade' },
-    { path: '/admin/games', label: '🎮 Adm Games' },
-    { path: '/admin/guia', label: '📘 Adm Guia' },
-    { path: '/admin/gym', label: '🏋️ Adm Gym' },
-    { path: '/admin/historico', label: '📜 Adm Histórico' },
-   { path: '/admin/landing', label: '👥 Gerenciar LandingPage' },
-    { path: '/admin/ligas', label: '🏆 Adm Ligas' },
-    { path: '/admin/logs', label: '📝 Logs do Sistema' },
-    { path: '/admin/loja', label: '👕 Adm Loja' },
-    { path: '/admin/parceiros', label: '🤝 Adm Parceiros' },
-    { path: '/admin/permissoes', label: '🔑 Permissões (Crítico)' },
-    { path: '/admin/planos', label: '📝 Adm Planos' },
-    { path: '/admin/scanner', label: '📷 Scanner QR' },
-    { path: '/admin/sharkround', label: '🦈 Adm SharkRound' },
-    { path: '/admin/treinos', label: '💪 Adm Treinos' },
-    { path: '/admin/usuarios', label: '👥 Gerenciar Usuários' },
-
-    // --- PÚBLICO / MEMBROS ---
-    { path: '/album', label: '📸 Álbum' },
-    { path: '/carrinho', label: '🛒 Carrinho' },
-    { path: '/carteirinha', label: '🪪 Carteirinha' },
-    { path: '/comunidade', label: '💬 Comunidade' },
-    { path: '/configuracoes', label: '⚙️ Ajustes (User)' }, // ID 001: Essencial para Inativos
-    { path: '/conquistas', label: '🏅 Conquistas' },
-    { path: '/dashboard', label: '🏠 Dashboard' },
-    { path: '/empresa', label: '💼 Painel Empresa' },
-    { path: '/eventos', label: '🎉 Eventos' },
-    { path: '/fidelidade', label: '💎 Fidelidade' },
-    { path: '/games', label: '🎮 Games' },
-    { path: '/guia', label: '📘 Guia' },
-    { path: '/gym', label: '🏋️ Gym / Check-in' },
-    { path: '/historico', label: '📜 Histórico' },
-    { path: '/ligas', label: '🏆 Ligas (Geral)' },
-    { path: '/ligas_unitau', label: '🏟️ Ligas Unitau' },
-    { path: '/loja', label: '🛍️ Loja' },
-    { path: '/parceiros', label: '🤝 Parceiros' },
-    { path: '/perfil', label: '👤 Perfil' },
-    { path: '/planos', label: '📝 Planos' },
-    { path: '/ranking', label: '📊 Ranking' },
-    { path: '/sharkround', label: '🦈 SharkRound' },
-    { path: '/treinos', label: '💪 Treinos' },
-];
-
-// ID 002: Ordenação Alfabética Rigorosa
-const PAGES = RAW_PAGES.sort((a, b) => a.path.localeCompare(b.path));
-
-// Tipagem
 interface UserData {
     id: string;
     nome: string;
@@ -136,7 +79,7 @@ export default function AdminPermissoesPage() {
                   setPermissionMatrix(docSnap.data() as Record<string, string[]>);
               } else {
                   const defaultMatrix: Record<string, string[]> = {};
-                  PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
+                  APP_PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
                   setPermissionMatrix(defaultMatrix);
               }
 
@@ -248,7 +191,6 @@ export default function AdminPermissoesPage() {
                       </div>
                   </div>
 
-                  {/* ID 004: Tabela com Freeze Header (Sticky Top) e Primeira Coluna Fixa */}
                   <div className="overflow-auto max-h-[70vh] rounded-xl border border-zinc-800 shadow-2xl bg-[#0a0a0a] relative">
                       <table className="w-full text-left border-collapse">
                           <thead className="bg-zinc-900 sticky top-0 z-40 shadow-md">
@@ -269,11 +211,10 @@ export default function AdminPermissoesPage() {
                               </tr>
                           </thead>
                           <tbody className="bg-black">
-                              {PAGES.map((page, idx) => {
+                              {APP_PAGES.map((page, idx) => {
                                   const isAdmin = page.path.startsWith('/admin');
-                                  const prevPage = idx > 0 ? PAGES[idx - 1] : null;
+                                  const prevPage = idx > 0 ? APP_PAGES[idx - 1] : null;
                                   const prevIsAdmin = prevPage ? prevPage.path.startsWith('/admin') : isAdmin;
-                                  // Separa visualmente rotas ADMIN das rotas USER
                                   const showSeparator = prevPage && isAdmin !== prevIsAdmin;
 
                                   return (
@@ -284,7 +225,7 @@ export default function AdminPermissoesPage() {
                                               </tr>
                                           )}
 
-                                          <tr className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''} ${isAdmin ? 'bg-red-950/5 hover:bg-red-900/10' : ''}`}>
+                                          <tr className={`group hover:bg-zinc-900/30 transition ${idx !== APP_PAGES.length -1 ? 'border-b border-zinc-800/50' : ''} ${isAdmin ? 'bg-red-950/5 hover:bg-red-900/10' : ''}`}>
                                               <td className={`p-4 text-xs font-bold text-white sticky left-0 z-30 group-hover:bg-zinc-900 transition border-r border-zinc-800 shadow-[2px_0_5px_rgba(0,0,0,0.5)] ${isAdmin ? 'bg-[#0f0505]' : 'bg-black'}`}>
                                                   <div className="flex flex-col">
                                                       <span className={`text-sm flex items-center gap-2 ${isAdmin ? 'text-red-200' : 'text-zinc-200'}`}>
