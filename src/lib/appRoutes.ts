@@ -17,23 +17,17 @@ export const PUBLIC_PATHS = [
   "/nao-encontrado"
 ];
 
-// 2. ZONA DE DEGUSTAÇÃO (O que visitante sem login completo/aprovado pode ver)
+// 2. ZONA DE DEGUSTAÇÃO (O que visitante logado como GUEST vê)
+// Visitantes podem ver o Dashboard, Perfil Básico e Lojas, mas com restrições de ação
 export const GUEST_ALLOWED_PATHS = [
+  ...PUBLIC_PATHS, // Inclui todas as públicas automaticamente
   "/dashboard",
-  "/login",
-  "/",
-  "/empresa",
-  "/empresa/cadastro",
-  "/historico",
-  "/cadastro",
-  "/configuracoes/termos",
-  "/empresa/cadastro",
-  "/recuperar-senha",
-  "/sem-permissao",
-  "/banned",
-  "/em-breve",
-  "/nao-encontrado"
-  
+  "/empresa", // Painel da empresa
+  "/perfil",
+  "/loja",
+  "/games",
+  "/ranking",
+  "/treinos"
 ];
 
 // 3. ZONA DE OBRAS (Funcionalidades em desenvolvimento - redirecionam para Em Breve)
@@ -42,7 +36,7 @@ export const COMING_SOON_PATHS = [
   // "/shark-tv"
 ];
 
-// 4. MAPA DO SISTEMA (Lista completa para o Painel Admin)
+// 4. MAPA DO SISTEMA (Lista completa para o Painel Admin - Gerenciador de Permissões)
 export const APP_PAGES = [
     // --- ADMINISTRAÇÃO ---
     { path: '/admin', label: '👮 Admin Dashboard' },

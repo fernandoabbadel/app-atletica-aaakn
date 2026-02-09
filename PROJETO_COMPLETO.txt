@@ -66,25 +66,23 @@ PAGINA 62 - C:\Users\User\app-atletica-aaakn\src\app\ligas_unitau\page.tsx
 PAGINA 63 - C:\Users\User\app-atletica-aaakn\src\app\login\page.tsx
 PAGINA 64 - C:\Users\User\app-atletica-aaakn\src\app\loja\[id]\page.tsx
 PAGINA 65 - C:\Users\User\app-atletica-aaakn\src\app\loja\page.tsx
-PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
-PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
-PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
-PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
-PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
-PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
-PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
-PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
-PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
-PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
-PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
-PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
-PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
-PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
-PAGINA 80 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
-PAGINA 81 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
-PAGINA 82 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
-PAGINA 83 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
-PAGINA 84 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
+PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
+PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
+PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
+PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
+PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
+PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
+PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
+PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
+PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
+PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
+PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
+PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
+PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
+PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
+PAGINA 80 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
+PAGINA 81 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
+PAGINA 82 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
 
 // ==================================================
 //             CONTEÚDO DOS ARQUIVOS
@@ -7069,13 +7067,14 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../../context/AuthContext"; 
-import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
+import { useAuth } from "@/context/AuthContext"; 
+import { useToast } from "@/context/ToastContext";
+import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
-import { logActivity } from "../../../lib/logger"; 
+import { logActivity } from "@/lib/logger"; 
+import { APP_PAGES } from "@/lib/appRoutes"; // Usando a lista centralizada
 
-// --- 1. DEFINIÃ‡ÃƒO DE CARGOS (Hierarquia TubarÃ£o - ID 005 Verificado) ---
+// --- 1. DEFINIÃ‡ÃƒO DE CARGOS ---
 const ROLES = [
     { id: 'master', label: 'Master', icon: Crown, color: 'text-red-500' },
     
@@ -7093,68 +7092,10 @@ const ROLES = [
     { id: 'user', label: 'Membro', icon: User, color: 'text-zinc-400' },
     { id: 'guest', label: 'Visitante', icon: Ghost, color: 'text-zinc-600' },
     
-    // ðŸ¦ˆ NOVO PERFIL: INATIVO (Para quem desativou a conta)
+    // Inativos
     { id: 'inactive', label: 'Inativo', icon: UserX, color: 'text-zinc-700' }
 ];
 
-// --- 2. MAPEAMENTO DE ROTAS (ID 002: Ordem AlfabÃ©tica + ID 001: ConfiguraÃ§Ãµes Add) ---
-const RAW_PAGES = [
-    // --- ADMINISTRAÃ‡ÃƒO (BACKOFFICE) ---
-    { path: '/admin', label: 'ðŸ‘® Admin Dashboard' },
-    { path: '/admin/album', label: 'ðŸ“· Adm Ãlbum' },
-    { path: '/admin/carteirinha', label: 'ðŸªª Adm Carteirinha' },
-    { path: '/admin/comunidade', label: 'ðŸ’¬ Adm Comunidade' },
-    { path: '/admin/configuracoes', label: 'âš™ï¸ ConfiguraÃ§Ãµes (Adm)' },
-    { path: '/admin/conquistas', label: 'ðŸ… Adm Conquistas' },
-    { path: '/admin/denuncias', label: 'ðŸš¨ DenÃºncias' },
-    { path: '/admin/eventos', label: 'ðŸ“… Adm Eventos' },
-    { path: '/admin/fidelidade', label: 'ðŸ’Ž Adm Fidelidade' },
-    { path: '/admin/games', label: 'ðŸŽ® Adm Games' },
-    { path: '/admin/guia', label: 'ðŸ“˜ Adm Guia' },
-    { path: '/admin/gym', label: 'ðŸ‹ï¸ Adm Gym' },
-    { path: '/admin/historico', label: 'ðŸ“œ Adm HistÃ³rico' },
-   { path: '/admin/landing', label: 'ðŸ‘¥ Gerenciar LandingPage' },
-    { path: '/admin/ligas', label: 'ðŸ† Adm Ligas' },
-    { path: '/admin/logs', label: 'ðŸ“ Logs do Sistema' },
-    { path: '/admin/loja', label: 'ðŸ‘• Adm Loja' },
-    { path: '/admin/parceiros', label: 'ðŸ¤ Adm Parceiros' },
-    { path: '/admin/permissoes', label: 'ðŸ”‘ PermissÃµes (CrÃ­tico)' },
-    { path: '/admin/planos', label: 'ðŸ“ Adm Planos' },
-    { path: '/admin/scanner', label: 'ðŸ“· Scanner QR' },
-    { path: '/admin/sharkround', label: 'ðŸ¦ˆ Adm SharkRound' },
-    { path: '/admin/treinos', label: 'ðŸ’ª Adm Treinos' },
-    { path: '/admin/usuarios', label: 'ðŸ‘¥ Gerenciar UsuÃ¡rios' },
-
-    // --- PÃšBLICO / MEMBROS ---
-    { path: '/album', label: 'ðŸ“¸ Ãlbum' },
-    { path: '/carrinho', label: 'ðŸ›’ Carrinho' },
-    { path: '/carteirinha', label: 'ðŸªª Carteirinha' },
-    { path: '/comunidade', label: 'ðŸ’¬ Comunidade' },
-    { path: '/configuracoes', label: 'âš™ï¸ Ajustes (User)' }, // ID 001: Essencial para Inativos
-    { path: '/conquistas', label: 'ðŸ… Conquistas' },
-    { path: '/dashboard', label: 'ðŸ  Dashboard' },
-    { path: '/empresa', label: 'ðŸ’¼ Painel Empresa' },
-    { path: '/eventos', label: 'ðŸŽ‰ Eventos' },
-    { path: '/fidelidade', label: 'ðŸ’Ž Fidelidade' },
-    { path: '/games', label: 'ðŸŽ® Games' },
-    { path: '/guia', label: 'ðŸ“˜ Guia' },
-    { path: '/gym', label: 'ðŸ‹ï¸ Gym / Check-in' },
-    { path: '/historico', label: 'ðŸ“œ HistÃ³rico' },
-    { path: '/ligas', label: 'ðŸ† Ligas (Geral)' },
-    { path: '/ligas_unitau', label: 'ðŸŸï¸ Ligas Unitau' },
-    { path: '/loja', label: 'ðŸ›ï¸ Loja' },
-    { path: '/parceiros', label: 'ðŸ¤ Parceiros' },
-    { path: '/perfil', label: 'ðŸ‘¤ Perfil' },
-    { path: '/planos', label: 'ðŸ“ Planos' },
-    { path: '/ranking', label: 'ðŸ“Š Ranking' },
-    { path: '/sharkround', label: 'ðŸ¦ˆ SharkRound' },
-    { path: '/treinos', label: 'ðŸ’ª Treinos' },
-];
-
-// ID 002: OrdenaÃ§Ã£o AlfabÃ©tica Rigorosa
-const PAGES = RAW_PAGES.sort((a, b) => a.path.localeCompare(b.path));
-
-// Tipagem
 interface UserData {
     id: string;
     nome: string;
@@ -7195,7 +7136,7 @@ export default function AdminPermissoesPage() {
                   setPermissionMatrix(docSnap.data() as Record<string, string[]>);
               } else {
                   const defaultMatrix: Record<string, string[]> = {};
-                  PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
+                  APP_PAGES.forEach(p => defaultMatrix[p.path] = ['master']);
                   setPermissionMatrix(defaultMatrix);
               }
 
@@ -7307,7 +7248,6 @@ export default function AdminPermissoesPage() {
                       </div>
                   </div>
 
-                  {/* ID 004: Tabela com Freeze Header (Sticky Top) e Primeira Coluna Fixa */}
                   <div className="overflow-auto max-h-[70vh] rounded-xl border border-zinc-800 shadow-2xl bg-[#0a0a0a] relative">
                       <table className="w-full text-left border-collapse">
                           <thead className="bg-zinc-900 sticky top-0 z-40 shadow-md">
@@ -7328,11 +7268,10 @@ export default function AdminPermissoesPage() {
                               </tr>
                           </thead>
                           <tbody className="bg-black">
-                              {PAGES.map((page, idx) => {
+                              {APP_PAGES.map((page, idx) => {
                                   const isAdmin = page.path.startsWith('/admin');
-                                  const prevPage = idx > 0 ? PAGES[idx - 1] : null;
+                                  const prevPage = idx > 0 ? APP_PAGES[idx - 1] : null;
                                   const prevIsAdmin = prevPage ? prevPage.path.startsWith('/admin') : isAdmin;
-                                  // Separa visualmente rotas ADMIN das rotas USER
                                   const showSeparator = prevPage && isAdmin !== prevIsAdmin;
 
                                   return (
@@ -7343,7 +7282,7 @@ export default function AdminPermissoesPage() {
                                               </tr>
                                           )}
 
-                                          <tr className={`group hover:bg-zinc-900/30 transition ${idx !== PAGES.length -1 ? 'border-b border-zinc-800/50' : ''} ${isAdmin ? 'bg-red-950/5 hover:bg-red-900/10' : ''}`}>
+                                          <tr className={`group hover:bg-zinc-900/30 transition ${idx !== APP_PAGES.length -1 ? 'border-b border-zinc-800/50' : ''} ${isAdmin ? 'bg-red-950/5 hover:bg-red-900/10' : ''}`}>
                                               <td className={`p-4 text-xs font-bold text-white sticky left-0 z-30 group-hover:bg-zinc-900 transition border-r border-zinc-800 shadow-[2px_0_5px_rgba(0,0,0,0.5)] ${isAdmin ? 'bg-[#0f0505]' : 'bg-black'}`}>
                                                   <div className="flex flex-col">
                                                       <span className={`text-sm flex items-center gap-2 ${isAdmin ? 'text-red-200' : 'text-zinc-200'}`}>
@@ -12741,44 +12680,10 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import SharkLoader from "./SharkLoader";
 import { usePathname, useRouter } from "next/navigation";
+import { PUBLIC_PATHS, COMING_SOON_PATHS, GUEST_ALLOWED_PATHS } from "@/lib/appRoutes";
 
 // Mude para false quando for para produÃ§Ã£o
 const SHOW_DEBUG_ON_SCREEN = process.env.NODE_ENV === 'development';
-
-// ðŸ¦ˆ ZONA SEGURA (Rotas PÃºblicas - O RouteGuard ignora essas)
-// IMPORTANTE: /banned, /em-breve e /nao-encontrado PRECISAM estar aqui
-// para o usuÃ¡rio conseguir visualizar a pÃ¡gina sem entrar em loop.
-const PUBLIC_PATHS = [
-  "/login",
-  "/",
-  "/historico",
-  "/cadastro",
-  "/configuracoes/termos",
-  "/empresa/cadastro",
-  "/recuperar-senha",
-  "/sem-permissao", 
-  "/banned",       
-  "/em-breve",      
-  "/nao-encontrado" 
-];
-
-// ðŸ¦ˆ ZONA DE OBRAS (Funcionalidades futuras)
-// Se o usuÃ¡rio tentar acessar isso, ele cai na pÃ¡gina /em-breve
-const COMING_SOON_PATHS = [
-  "/marketplace-futuro", 
-  "/funcionalidade-x",
-  "/shark-tv"
-];
-
-// ðŸ¦ˆ ZONA DE DEGUSTAÃ‡ÃƒO (O que o visitante sem cadastro completo vÃª)
-const GUEST_ALLOWED_PATHS = [
-  "/dashboard",
-  "/perfil",
-  "/loja",
-  "/games",
-  "/ranking",
-  "/treinos",
-];
 
 interface PermissionMatrix {
   [path: string]: string[];
@@ -12829,6 +12734,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
         const docSnap = await getDoc(doc(db, "settings", "permissions"));
         if (docSnap.exists() && isMounted) {
           const liveRules = docSnap.data() as PermissionMatrix;
+          // Atualiza cache se mudou
           if (JSON.stringify(liveRules) !== cachedRules) {
             setPermissionMatrix(liveRules);
             localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
@@ -12846,13 +12752,12 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   }, []);
 
   // ============================================================================
-  // 3. O GUARDA: LOGICA DE PRIORIDADE (AQUI ESTÃ O SEGREDO)
+  // 3. O GUARDA: LOGICA DE PRIORIDADE
   // ============================================================================
   useEffect(() => {
     const currentPath = pathname ? pathname.split("?")[0] : "/";
     
     // PRIORIDADE 1: Ã‰ rota pÃºblica? Libera JÃ.
-    // Isso garante que /banned e /em-breve carreguem sem travar.
     const isPublic = PUBLIC_PATHS.some(p => currentPath === p || currentPath.startsWith("/public"));
     if (isPublic) {
       setAuthorized(true);
@@ -12869,12 +12774,9 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       else userRole = (user.role || "user").toLowerCase();
     }
 
-    // PRIORIDADE 2: Em Breve (Antes de checar permissÃ£o)
-    // Se a funcionalidade tÃ¡ em obra, ninguÃ©m entra (exceto se vocÃª quiser liberar Master aqui depois)
+    // PRIORIDADE 2: Em Breve
     if (COMING_SOON_PATHS.some(p => currentPath.startsWith(p))) {
         setAuthorized(false);
-        // Feedback opcional (se quiser avisar antes de trocar)
-        // addToast("Ops! Estamos construindo essa parte ðŸš§", "info");
         router.replace("/em-breve");
         return;
     }
@@ -12920,12 +12822,14 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
     // PRIORIDADE 7: Matriz de PermissÃµes (O Grande Filtro)
     if (permissionMatrix) {
+      // MASTER: Chave Mestra
       if (userRole === "master") {
         setAuthorized(true);
         setDebugInfo({ role: userRole, path: currentPath, decision: "ðŸ‘‘ MASTER PASS" });
         return;
       }
 
+      // Encontra a regra mais especÃ­fica para a rota atual
       const matchedRulePath = Object.keys(permissionMatrix)
         .filter((rulePath) => currentPath === rulePath || currentPath.startsWith(rulePath + "/"))
         .sort((a, b) => b.length - a.length)[0];
@@ -12942,7 +12846,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
         if (!isRoleAllowed) {
           setAuthorized(false);
-          // ðŸ¦ˆ FEEDBACK JOVEM E DIRETO
           addToast("Eita! VocÃª nÃ£o tem a chave dessa porta, TubarÃ£o! ðŸš«", "error");
           
           if (user.isAnonymous) {
@@ -12953,7 +12856,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
           return;
         }
       } else {
-        // Bloqueio padrÃ£o para /admin
+        // Bloqueio padrÃ£o para /admin se nÃ£o houver regra explÃ­cita
         if (currentPath.startsWith("/admin")) {
             setAuthorized(false);
             addToast("Opa! Ãrea restrita da diretoria! ðŸ‘®", "error");
@@ -12984,7 +12887,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   const isPublicRenderCheck = PUBLIC_PATHS.includes(currentPath);
 
   // 1. Rota PÃºblica? Renderiza JÃ (Sem loader, sem piscar)
-  // Isso faz com que /banned e /em-breve apareÃ§am instantaneamente
   if (isPublicRenderCheck) {
       return <>{children}</>;
   }
@@ -13001,7 +12903,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     <>
       {children}
       {SHOW_DEBUG_ON_SCREEN && user?.role !== "master" && (
-        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] text-emerald-400 p-2 rounded z-50">
+        <div className="fixed bottom-2 right-2 bg-zinc-950/90 border border-emerald-500/30 text-[10px] text-emerald-400 p-2 rounded z-50 pointer-events-none">
            GUARD: {debugInfo.decision}
         </div>
       )}
@@ -22816,365 +22718,7 @@ export default function LojaPage() {
 }
 
 // ==================================================
-// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\menu\page.tsx
-// ==================================================
-
-// src/app/menu/page.tsx
-"use client";
-
-import React, { useState } from "react";
-import Image from "next/image";
-import {
-  ArrowLeft,
-  CreditCard,
-  HelpCircle,
-  LogOut,
-  ChevronRight,
-  User,
-  Bell,
-  Shield,
-  Moon,
-  Crown,
-  Wallet,
-  History,
-  Trophy,
-  QrCode,
-  ShoppingBag,
-  Gift,
-  Map,
-  Store,
-  Zap,
-} from "lucide-react";
-import Link from "next/link";
-
-export default function MenuPage() {
-  const [notificacoes, setNotificacoes] = useState(true);
-
-  // DADOS DO USUÃRIO (MOCK)
-  const socio = {
-    nome: "Maria Eduarda Cantelmo",
-    curso: "Medicina",
-    turma: "T5",
-    matricula: "2024.1.0042",
-    foto: "https://i.pravatar.cc/300?u=eduarda_med_final",
-    status: "ATIVO",
-    plano: "OURO", // Plano atual
-    saldo: "R$ 45,90",
-    pontos: 2450,
-  };
-
-  return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-10 selection:bg-emerald-500/30">
-      {/* HEADER */}
-      <header className="p-4 sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md flex items-center gap-3 border-b border-zinc-900">
-        <Link
-          href="/"
-          className="p-2 -ml-2 text-zinc-400 hover:text-white transition rounded-full hover:bg-zinc-900"
-        >
-          <ArrowLeft size={24} />
-        </Link>
-        <h1 className="font-bold text-lg">Central do SÃ³cio</h1>
-      </header>
-
-      <main className="p-4 space-y-6">
-        {/* 1. CARTÃƒO DE PERFIL + PLANO */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-[2rem] p-5">
-          <div className="flex items-center gap-4 relative z-10">
-            <div className="relative">
-              <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-emerald-500 to-emerald-900">
-                <Image
-                  src={socio.foto}
-                  alt={`Foto de perfil de ${socio.nome}`}
-                  width={80}
-                  height={80}
-                  className="w-full h-full rounded-full object-cover border-4 border-[#050505]"
-                  unoptimized
-                />
-              </div>
-              <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full border-4 border-[#050505]">
-                <Crown size={12} strokeWidth={3} />
-              </div>
-            </div>
-
-            <div className="flex-1">
-              <h2 className="font-black text-xl text-white leading-none mb-1">
-                {socio.nome}
-              </h2>
-              <p className="text-xs text-zinc-400 font-medium mb-3">
-                {socio.curso} â€¢ {socio.turma}
-              </p>
-
-              {/* BARRA DO PLANO ATUAL */}
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 uppercase tracking-wider flex items-center gap-1">
-                  <Crown size={10} strokeWidth={3} />
-                  PLANO {socio.plano}
-                </span>
-                <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
-                  {socio.status}
-                </span>
-              </div>
-
-              <Link
-                href="/carteirinha"
-                className="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 transition px-3 py-1.5 rounded-lg border border-white/10 group"
-              >
-                <QrCode size={14} className="text-emerald-500" />
-                <span className="text-[10px] font-bold text-zinc-300 group-hover:text-white uppercase tracking-wider">
-                  Abrir Carteirinha
-                </span>
-              </Link>
-            </div>
-          </div>
-
-          {/* Background Decorativo */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-        </section>
-
-        {/* 2. BOTÃƒO DE UPGRADE DE PLANO (NOVO!) */}
-        <section>
-          <Link
-            href="/planos"
-            className="block w-full bg-gradient-to-r from-purple-900 to-purple-600 rounded-2xl p-4 border border-purple-500/30 relative overflow-hidden group"
-          >
-            <div className="relative z-10 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <Zap size={16} className="text-yellow-400 fill-yellow-400" />
-                  FaÃ§a Upgrade do seu Plano
-                </h3>
-                <p className="text-[10px] text-purple-200 mt-1 w-3/4 leading-tight">
-                  Tenha acesso a mais festas, descontos turbinados e kits
-                  exclusivos.
-                </p>
-              </div>
-              <div className="bg-white text-purple-700 p-2 rounded-full shadow-lg group-hover:scale-110 transition">
-                <ChevronRight size={20} />
-              </div>
-            </div>
-            {/* Efeito de brilho */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
-          </Link>
-        </section>
-
-        {/* 3. RESUMO FINANCEIRO E GAMIFICATION */}
-        <section className="grid grid-cols-2 gap-3">
-          <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-between h-28 relative overflow-hidden group">
-            <div className="relative z-10">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
-                <Wallet size={12} /> Saldo Atual
-              </span>
-              <span className="text-2xl font-black text-white mt-1 block">
-                {socio.saldo}
-              </span>
-            </div>
-            <div className="relative z-10">
-              <span className="text-[9px] text-emerald-500 font-bold cursor-pointer hover:underline">
-                Adicionar Saldo
-              </span>
-            </div>
-            <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/10 rounded-full group-hover:scale-150 transition duration-500"></div>
-          </div>
-
-          <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-between h-28 relative overflow-hidden group">
-            <div className="relative z-10">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
-                <Trophy size={12} className="text-amber-500" /> Pontos XP
-              </span>
-              <span className="text-2xl font-black text-white mt-1 block">
-                {socio.pontos}
-              </span>
-            </div>
-            <div className="relative z-10">
-              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden mt-2">
-                <div className="h-full bg-amber-500 w-[70%]"></div>
-              </div>
-              <span className="text-[9px] text-zinc-500 mt-1 block">
-                NÃ­vel Ouro
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. ATALHOS RÃPIDOS */}
-        <section className="grid grid-cols-4 gap-2">
-          <Link
-            href="/conquistas"
-            className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group"
-          >
-            <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 group-hover:scale-110 transition">
-              <Trophy size={18} />
-            </div>
-            <span className="text-[9px] font-bold text-zinc-300">
-              Conquistas
-            </span>
-          </Link>
-
-          <Link
-            href="/fidelidade"
-            className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group"
-          >
-            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition">
-              <Gift size={18} />
-            </div>
-            <span className="text-[9px] font-bold text-zinc-300">
-              Fidelidade
-            </span>
-          </Link>
-
-          <Link
-            href="/loja"
-            className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group"
-          >
-            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:scale-110 transition">
-              <ShoppingBag size={18} />
-            </div>
-            <span className="text-[9px] font-bold text-zinc-300">Loja</span>
-          </Link>
-
-          <Link
-            href="/guia"
-            className="bg-zinc-900 p-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition flex flex-col items-center gap-2 text-center group"
-          >
-            <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500 group-hover:scale-110 transition">
-              <Map size={18} />
-            </div>
-            <span className="text-[9px] font-bold text-zinc-300">Guia</span>
-          </Link>
-        </section>
-
-        {/* 5. MENU DE NAVEGAÃ‡ÃƒO */}
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">
-              Minha Conta
-            </h3>
-            <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-              <MenuItem
-                icon={<User size={18} />}
-                label="Dados Pessoais"
-                desc="Atualizar cadastro"
-              />
-              <MenuItem
-                icon={<History size={18} />}
-                label="HistÃ³rico de Pedidos"
-                desc="Ingressos e produtos"
-              />
-              <MenuItem
-                icon={<CreditCard size={18} />}
-                label="Pagamentos"
-                desc="CartÃµes salvos"
-              />
-              <Link href="/parceiros" className="block">
-                <MenuItem
-                  icon={<Store size={18} />}
-                  label="Clube de Parceiros"
-                  desc="Descontos exclusivos"
-                  badge="Novo"
-                />
-              </Link>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">
-              PreferÃªncias
-            </h3>
-            <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-              <div className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50 transition">
-                <div className="flex items-center gap-3 text-zinc-400">
-                  <Bell size={18} />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-zinc-200 block">
-                      NotificaÃ§Ãµes
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setNotificacoes(!notificacoes)}
-                  className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${
-                    notificacoes ? "bg-emerald-500" : "bg-zinc-700"
-                  }`}
-                >
-                  <div
-                    className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform duration-300 ${
-                      notificacoes ? "left-6" : "left-1"
-                    }`}
-                  ></div>
-                </button>
-              </div>
-
-              <MenuItem icon={<Shield size={18} />} label="Privacidade" />
-              <MenuItem
-                icon={<Moon size={18} />}
-                label="AparÃªncia"
-                badge="Dark"
-              />
-            </div>
-          </div>
-
-          <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-            <MenuItem icon={<HelpCircle size={18} />} label="Ajuda e Suporte" />
-
-            <button className="w-full flex items-center justify-between p-4 hover:bg-red-500/10 transition group border-t border-zinc-800">
-              <div className="flex items-center gap-3">
-                <LogOut size={18} className="text-red-500" />
-                <span className="text-sm font-bold text-red-500">
-                  Sair da Conta
-                </span>
-              </div>
-              <span className="text-[10px] text-zinc-600">v1.0.5</span>
-            </button>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function MenuItem({
-  icon,
-  label,
-  desc,
-  badge,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  desc?: string;
-  badge?: string;
-}) {
-  return (
-    <button className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50 transition group">
-      <div className="flex items-center gap-3 text-zinc-400 group-hover:text-white transition">
-        {icon}
-        <div className="text-left">
-          <span className="text-sm font-medium text-zinc-200 group-hover:text-white block leading-tight">
-            {label}
-          </span>
-          {desc && (
-            <span className="text-[10px] text-zinc-500 font-normal">
-              {desc}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        {badge && (
-          <span className="bg-zinc-800 text-zinc-400 text-[10px] font-bold px-2 py-0.5 rounded-md border border-zinc-700">
-            {badge}
-          </span>
-        )}
-        <ChevronRight
-          size={16}
-          className="text-zinc-600 group-hover:text-zinc-400"
-        />
-      </div>
-    </button>
-  );
-}
-
-// ==================================================
-// PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
+// PAGINA 66 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -23376,7 +22920,7 @@ export default function ParceiroDetalhePage() {
 }
 
 // ==================================================
-// PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
+// PAGINA 67 - C:\Users\User\app-atletica-aaakn\src\app\parceiros\page.tsx
 // ==================================================
 
 "use client";
@@ -23509,7 +23053,7 @@ export default function EmpresaLoginPage() {
 }
 
 // ==================================================
-// PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
+// PAGINA 68 - C:\Users\User\app-atletica-aaakn\src\app\perfil\[id]\page.tsx
 // ==================================================
 
 // ARQUIVO: src/app/perfil/[id]/page.tsx
@@ -24073,7 +23617,7 @@ export default function PerfilPublicoPage() {
 }
 
 // ==================================================
-// PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
+// PAGINA 69 - C:\Users\User\app-atletica-aaakn\src\app\perfil\page.tsx
 // ==================================================
 
 "use client";
@@ -24795,7 +24339,7 @@ export default function MeuPerfilPage() {
 }
 
 // ==================================================
-// PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
+// PAGINA 70 - C:\Users\User\app-atletica-aaakn\src\app\planos\adesao\page.tsx
 // ==================================================
 
 "use client";
@@ -25117,7 +24661,7 @@ export default function AdesaoPage() {
 }
 
 // ==================================================
-// PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
+// PAGINA 71 - C:\Users\User\app-atletica-aaakn\src\app\planos\page.tsx
 // ==================================================
 
 "use client";
@@ -25305,7 +24849,7 @@ export default function PlanosPage() {
 }
 
 // ==================================================
-// PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
+// PAGINA 72 - C:\Users\User\app-atletica-aaakn\src\app\ranking\[turmaId]\page.tsx
 // ==================================================
 
 "use client";
@@ -25498,7 +25042,7 @@ export default function TurmaRankingPage({
 }
 
 // ==================================================
-// PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
+// PAGINA 73 - C:\Users\User\app-atletica-aaakn\src\app\ranking\page.tsx
 // ==================================================
 
 "use client";
@@ -25784,7 +25328,7 @@ export default function RankingPage() {
 }
 
 // ==================================================
-// PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
+// PAGINA 74 - C:\Users\User\app-atletica-aaakn\src\app\sem-permissao\page.tsx
 // ==================================================
 
 "use client";
@@ -25888,7 +25432,7 @@ export default function SemPermissao() {
 }
 
 // ==================================================
-// PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
+// PAGINA 75 - C:\Users\User\app-atletica-aaakn\src\app\sharkround\page.tsx
 // ==================================================
 
 "use client";
@@ -26436,84 +25980,7 @@ export default function SharkRoundPage() {
 }
 
 // ==================================================
-// PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\termos\page.tsx
-// ==================================================
-
-"use client";
-
-import React, { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Shield, Scale, Cookie, Lock, FileText } from "lucide-react";
-
-// --- CONTEÃšDO (MOCK - Em produÃ§Ã£o viria do banco) ---
-const DOCS = [
-    { id: "privacidade", title: "PolÃ­tica de Privacidade", icon: Lock, content: "Aqui entra o texto completo da PolÃ­tica de Privacidade..." },
-    { id: "termos", title: "Termos de Uso", icon: Scale, content: "Aqui entra o texto completo dos Termos de Uso..." },
-    { id: "cookies", title: "PolÃ­tica de Cookies", icon: Cookie, content: "Aqui entra o texto completo da PolÃ­tica de Cookies..." },
-    { id: "moderacao", title: "ModeraÃ§Ã£o e DenÃºncias", icon: Shield, content: "Aqui entra o texto completo de ModeraÃ§Ã£o..." }
-];
-
-export default function TermosLegaisPage() {
-  const [activeDocId, setActiveDocId] = useState("privacidade");
-  const activeDoc = DOCS.find(d => d.id === activeDocId);
-
-  return (
-    <div className="min-h-screen bg-[#050505] text-white pb-20 font-sans selection:bg-emerald-500">
-      
-      {/* HEADER FIXO */}
-      <header className="p-4 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 flex items-center gap-4">
-          <Link href="/configuracoes" className="p-2 bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition"><ArrowLeft size={20}/></Link>
-          <h1 className="text-lg font-black uppercase tracking-tight">Central JurÃ­dica</h1>
-      </header>
-
-      <main className="max-w-4xl mx-auto p-4 flex flex-col md:flex-row gap-6 mt-4">
-          
-          {/* MENU LATERAL */}
-          <nav className="w-full md:w-64 shrink-0 space-y-2">
-              {DOCS.map(doc => (
-                  <button 
-                      key={doc.id}
-                      onClick={() => setActiveDocId(doc.id)}
-                      className={`w-full flex items-center gap-3 p-4 rounded-xl text-left transition-all border ${activeDocId === doc.id ? 'bg-zinc-800 border-emerald-500 text-emerald-500 shadow-lg' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
-                  >
-                      <doc.icon size={20}/>
-                      <span className="text-xs font-bold uppercase">{doc.title}</span>
-                  </button>
-              ))}
-          </nav>
-
-          {/* CONTEÃšDO DO DOCUMENTO */}
-          <div className="flex-1 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {activeDoc && (
-                  <>
-                      <div className="flex items-center gap-3 mb-6 pb-6 border-b border-zinc-800">
-                          <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-500"><activeDoc.icon size={24}/></div>
-                          <h2 className="text-2xl font-black uppercase">{activeDoc.title}</h2>
-                      </div>
-                      
-                      {/* ÃREA DE TEXTO (PRESERVA QUEBRA DE LINHA) */}
-                      <div className="prose prose-invert prose-sm max-w-none text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                          {/* Aqui entra o texto que estÃ¡ no banco. 
-                             Como estamos usando mock, ele vai mostrar o texto curto do mock acima.
-                             Mas quando vocÃª usar o contexto real, ele puxarÃ¡ o textÃ£o do Admin.
-                          */}
-                          {activeDoc.content}
-                          
-                          <div className="mt-8 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-500 text-xs font-bold uppercase flex items-center gap-2">
-                              <FileText size={16}/> Documento registrado em 12/01/2026
-                          </div>
-                      </div>
-                  </>
-              )}
-          </div>
-
-      </main>
-    </div>
-  );
-}
-
-// ==================================================
-// PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
+// PAGINA 76 - C:\Users\User\app-atletica-aaakn\src\app\treinos\[id]\page.tsx
 // ==================================================
 
 "use client";
@@ -26922,7 +26389,7 @@ export default function TreinoDetalhesPage() {
 }
 
 // ==================================================
-// PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
+// PAGINA 77 - C:\Users\User\app-atletica-aaakn\src\app\treinos\page.tsx
 // ==================================================
 
 "use client";
@@ -27339,7 +26806,7 @@ export default function TreinosPage() {
 }
 
 // ==================================================
-// PAGINA 80 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
+// PAGINA 78 - C:\Users\User\app-atletica-aaakn\src\app\layout.tsx
 // ==================================================
 
 import type { Metadata, Viewport } from "next";
@@ -27425,7 +26892,7 @@ export default function RootLayout({
 }
 
 // ==================================================
-// PAGINA 81 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
+// PAGINA 79 - C:\Users\User\app-atletica-aaakn\src\app\loading.tsx
 // ==================================================
 
 "use client";
@@ -27531,7 +26998,7 @@ export default function Loading() {
 }
 
 // ==================================================
-// PAGINA 82 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
+// PAGINA 80 - C:\Users\User\app-atletica-aaakn\src\app\not-found.tsx
 // ==================================================
 
 // src/app/not-found.tsx
@@ -27610,7 +27077,7 @@ export default function NotFound() {
 }
 
 // ==================================================
-// PAGINA 83 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
+// PAGINA 81 - C:\Users\User\app-atletica-aaakn\src\app\page.tsx
 // ==================================================
 
 "use client";
@@ -28056,7 +27523,7 @@ export default function LandingPage() {
 }
 
 // ==================================================
-// PAGINA 84 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
+// PAGINA 82 - C:\Users\User\app-atletica-aaakn\src\app\template.tsx
 // ==================================================
 
 "use client";

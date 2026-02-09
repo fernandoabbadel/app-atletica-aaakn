@@ -14,12 +14,12 @@ import { useRouter, usePathname } from "next/navigation";
 import { logActivity } from "../lib/logger"; 
 import LoadingScreen from "../app/loading";
 import { DEFAULT_STATS, DEFAULT_USER_PROPS } from "../constants/userDefaults";
+import { isFirebasePermissionError } from "../lib/firebaseErrors";
 
 // --- TIPAGEM ---
 export type UserRole = "guest" | "user" | "treinador" | "empresa" | "admin_treino" | "admin_geral" | "admin_gestor" | "master" | "vendas";
 export type UserStatus = "ativo" | "inadimplente" | "banned" | "pendente" | "paused" | "bloqueado";
 
-// 🦈 Interfaces Auxiliares para Cache (Fim dos any)
 interface PatenteConfig {
     titulo: string;
     minXp: number;
@@ -34,6 +34,14 @@ interface PlanoConfig {
     descontoLoja: number;
     xpMultiplier: number;
 }
+
+const DEFAULT_PATENTES: PatenteConfig[] = [
+  { titulo: "Megalodon", minXp: 50000, iconName: "Crown", cor: "text-red-600" },
+  { titulo: "TubarÃ£o Branco", minXp: 15000, iconName: "Fish", cor: "text-emerald-400" },
+  { titulo: "Barracuda", minXp: 2000, iconName: "Swords", cor: "text-blue-400" },
+  { titulo: "Peixe PalhaÃ§o", minXp: 500, iconName: "Fish", cor: "text-orange-400" },
+  { titulo: "PlÃ¢ncton", minXp: 0, iconName: "Fish", cor: "text-zinc-400" }
+];
 
 export interface UserStats {
     loginCount?: number;
@@ -51,17 +59,16 @@ export interface UserStats {
     arenaLosses?: number;
     arenaLoseStreak?: number;
     storeSpent?: number;
-    albumCollected?: number;
     storeItemsCount?: number;
     eventsAttended?: number;
     eventsPromo?: number;
     eventsAcademic?: number;
     solidarityCount?: number;
     accountCreated?: number;
+    albumCollected?: number;
     [key: string]: number | undefined; 
 }
 
-// 🦈 INTERFACE USER BLINDADA
 export interface User {
   uid: string;
   nome: string;
@@ -117,7 +124,7 @@ export interface User {
   plano_icon?: string;
   desconto_loja?: number;
   
-  [key: string]: string | number | boolean | undefined | null | UserStats | string[] | object; 
+  [key: string]: unknown; 
 }
 
 interface AuthContextType {
@@ -139,13 +146,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mounted, setMounted] = useState(false);
   
+  // ðŸ¦ˆ ESTADO LOCAL DE GUEST
   const [isLocalGuest, setIsLocalGuest] = useState(false);
   
-  // 🦈 CACHES DE DADOS GLOBAIS (Tipados)
   const [patentesCache, setPatentesCache] = useState<PatenteConfig[]>([]); 
   const [planosCache, setPlanosCache] = useState<PlanoConfig[]>([]);
-  
-  // 🦈 REF DE CONTROLE (Evita loop de updates)
   const lastMaintenanceUid = useRef<string | null>(null);
 
   const router = useRouter();
@@ -156,124 +161,154 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMounted(true);
 
     const fetchData = async () => {
-        try {
-            // A. Buscar Patentes
-            const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "desc"));
-            const snapPatentes = await getDocs(qPatentes);
-            if (!snapPatentes.empty) {
-                setPatentesCache(snapPatentes.docs.map(d => d.data() as PatenteConfig));
-            } else {
-                 // Fallback local se o banco estiver vazio
-                 setPatentesCache([
-                    { titulo: "Megalodon", minXp: 50000, iconName: "Crown", cor: "text-red-600" },
-                    { titulo: "Tubarão Branco", minXp: 15000, iconName: "Fish", cor: "text-emerald-400" },
-                    { titulo: "Barracuda", minXp: 2000, iconName: "Swords", cor: "text-blue-400" },
-                    { titulo: "Peixe Palhaço", minXp: 500, iconName: "Fish", cor: "text-orange-400" },
-                    { titulo: "Plâncton", minXp: 0, iconName: "Fish", cor: "text-zinc-400" }
-                ]);
-            }
+      try {
+        const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "desc"));
+        const snapPatentes = await getDocs(qPatentes);
+        if (!snapPatentes.empty) {
+          setPatentesCache(snapPatentes.docs.map((d) => d.data() as PatenteConfig));
+        } else {
+          setPatentesCache(DEFAULT_PATENTES);
+        }
+      } catch (error: unknown) {
+        setPatentesCache(DEFAULT_PATENTES);
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar patentes:", error);
+        }
+      }
 
-            // B. Buscar Planos
-            const snapPlanos = await getDocs(collection(db, "planos"));
-            if (!snapPlanos.empty) {
-                setPlanosCache(snapPlanos.docs.map(d => d.data() as PlanoConfig));
-            }
-
-        } catch (error) { console.error("Erro ao carregar dados globais:", error); }
+      try {
+        const snapPlanos = await getDocs(collection(db, "planos"));
+        if (!snapPlanos.empty) {
+          setPlanosCache(snapPlanos.docs.map((d) => d.data() as PlanoConfig));
+        }
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar planos:", error);
+        }
+      }
     };
     fetchData();
   }, []);
 
-  // Helper: Calcula DADOS DA PATENTE com base no cache
-  // 🦈 UseCallback para entrar na dep do useEffect sem loop
+  // Helper: Calcula Patente
   const calculatePatenteData = useCallback((xp: number) => {
       if (patentesCache.length === 0) return null;
       const found = patentesCache.find(p => xp >= p.minXp);
       return found || patentesCache[patentesCache.length - 1]; 
   }, [patentesCache]);
 
-  // 2. MONITORAR AUTH (SOMENTE LEITURA E SINCRONIA DE ESTADO)
+  // 2. RECUPERAÃ‡ÃƒO DE SESSÃƒO GUEST (Novo!)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
-      
+    const savedGuest = localStorage.getItem("shark_guest_session");
+    if (savedGuest) {
+        try {
+            const guestUser = JSON.parse(savedGuest);
+            setIsLocalGuest(true);
+            setUser(guestUser);
+            // Pequeno delay para garantir que o loading nÃ£o pisque errado
+            setTimeout(() => setLoading(false), 500);
+        } catch {
+            localStorage.removeItem("shark_guest_session");
+        }
+    }
+  }, []);
+
+    // 3. MONITORAR AUTH (FIREBASE)
+  useEffect(() => {
+    let unsubscribeUserDoc: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (fbUser: FirebaseUser | null) => {
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+        unsubscribeUserDoc = null;
+      }
+
       if (isLocalGuest) {
-          setLoading(false);
-          return;
+        setLoading(false);
+        return;
       }
 
       if (fbUser) {
-        try {
-          const userRef = doc(db, "users", fbUser.uid);
-          
-          // 🦈 OTIMIZAÇÃO: Listener apenas LÊ e atualiza o estado local
-          // NUNCA escreve no banco aqui dentro
-          const unsubDoc = onSnapshot(userRef, (userSnap) => {
-              if (userSnap.exists()) {
-                const userData = userSnap.data() as User;
-                setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
-                setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
-              } else {
-                // Criação de user (ok aqui pois acontece 1 vez na vida)
-                const newUser: User = {
-                  ...DEFAULT_USER_PROPS,
-                  uid: fbUser.uid,
-                  nome: fbUser.displayName || "Sem Nome",
-                  email: fbUser.email || "",
-                  foto: fbUser.photoURL || "https://github.com/shadcn.png",
-                  role: "guest",
-                  status: "ativo",
-                  stats: { ...DEFAULT_STATS },
-                  ultimoLoginDiario: new Date().toLocaleDateString('pt-BR'),
-                  data_adesao: new Date().toISOString()
-                } as User; 
-                
-                setDoc(userRef, newUser); // Async, não bloqueia
-                setUser(newUser);
-                setIsAdmin(false);
-                logActivity(newUser.uid, newUser.nome, "CREATE", "Usuários", "Novo cadastro via Google");
-              }
-              setLoading(false);
-          });
+        const userRef = doc(db, "users", fbUser.uid);
 
-          return () => unsubDoc(); 
+        unsubscribeUserDoc = onSnapshot(
+          userRef,
+          (userSnap) => {
+            if (userSnap.exists()) {
+              const userData = userSnap.data() as User;
+              setUser({ ...userData, uid: fbUser.uid, isAnonymous: false });
+              setIsAdmin(["master", "admin_geral", "admin_gestor"].includes(userData.role));
+            } else {
+              const newUser: User = {
+                ...DEFAULT_USER_PROPS,
+                uid: fbUser.uid,
+                nome: fbUser.displayName || "Sem Nome",
+                email: fbUser.email || "",
+                foto: fbUser.photoURL || "https://github.com/shadcn.png",
+                role: "guest",
+                status: "ativo",
+                stats: { ...DEFAULT_STATS },
+                ultimoLoginDiario: new Date().toLocaleDateString("pt-BR"),
+                data_adesao: new Date().toISOString()
+              } as User;
 
-        } catch (error) {
-          console.error("Erro no Auth:", error);
-          setUser(null);
-          setIsAdmin(false);
-          setLoading(false);
-        }
-      } else {
-        if (!isLocalGuest) {
+              void setDoc(userRef, newUser).catch((error: unknown) => {
+                if (!isFirebasePermissionError(error)) {
+                  console.error("Erro ao criar perfil inicial:", error);
+                }
+              });
+
+              setUser(newUser);
+              setIsAdmin(false);
+              void logActivity(newUser.uid, newUser.nome, "CREATE", "Usuários", "Novo cadastro via Google");
+            }
+
+            setLoading(false);
+          },
+          (error: unknown) => {
+            if (!isFirebasePermissionError(error)) {
+              console.error("Erro ao sincronizar usuário:", error);
+            }
             setUser(null);
             setIsAdmin(false);
             setLoading(false);
-            lastMaintenanceUid.current = null; // Reseta controle ao deslogar
-        }
+          }
+        );
+
+        return;
+      }
+
+      const savedGuest = localStorage.getItem("shark_guest_session");
+      if (!savedGuest) {
+        setUser(null);
+        setIsAdmin(false);
+        setLoading(false);
+        lastMaintenanceUid.current = null;
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+      }
+      unsubscribeAuth();
+    };
   }, [isLocalGuest]); 
 
-  // 3. EFEITO DE MANUTENÇÃO (ESCRITA INTELIGENTE - 1x POR SESSÃO)
+  // 4. MANUTENÃ‡ÃƒO (ATUALIZAÃ‡ÃƒO DE DADOS)
   useEffect(() => {
     const runMaintenance = async () => {
-        // Condições para rodar: User logado, não é convidado local, e cache carregado
-        if (!user || isLocalGuest || loading || patentesCache.length === 0) return;
+        // ðŸ¦ˆ TRAVA DE SEGURANÃ‡A: Guest Local NÃƒO roda manutenÃ§Ã£o no banco
+        if (!user || isLocalGuest || user.isAnonymous || loading || patentesCache.length === 0) return;
         
-        // 🦈 TRAVA: Se já rodamos para este usuário nesta sessão, pare.
         if (lastMaintenanceUid.current === user.uid) return;
-
-        // Marca como executado imediatamente
         lastMaintenanceUid.current = user.uid;
         
         const userRef = doc(db, "users", user.uid);
-        // 🦈 Correção de tipo: Record permite chaves dinâmicas sem 'any'
         const updates: Record<string, unknown> = {};
         let hasUpdates = false;
 
-        // A. AUTO-CURA (Verifica dados corrompidos/antigos)
+        // A. AUTO-CURA
         if (user.xp === undefined) { updates.xp = DEFAULT_USER_PROPS.xp; hasUpdates = true; }
         if (user.level === undefined) { updates.level = DEFAULT_USER_PROPS.level; hasUpdates = true; }
         if (user.sharkCoins === undefined) { updates.sharkCoins = DEFAULT_USER_PROPS.sharkCoins; hasUpdates = true; }
@@ -290,14 +325,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             hasUpdates = true;
         }
 
-        // B. LOGIN DIÁRIO
+        if (user.stats && user.stats.albumCollected === undefined) {
+            updates["stats.albumCollected"] = 0;
+            hasUpdates = true;
+        }
+
+        // B. LOGIN DIÃRIO
         const hoje = new Date().toLocaleDateString('pt-BR');
         if (user.ultimoLoginDiario !== hoje) {
             updates["stats.loginCount"] = increment(1);
             updates.ultimoLoginDiario = hoje;
             updates.xp = (user.xp || 0) + 10;
             hasUpdates = true;
-            logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Check-in Diário (+10 XP)");
+            // Log apenas se nÃ£o for guest (redundante, mas seguro)
+            if (!isLocalGuest) {
+                logActivity(user.uid, user.nome, "LOGIN", "Sistema", "Check-in DiÃ¡rio (+10 XP)");
+            }
         }
 
         // C. SINCRONIA DE PATENTE
@@ -312,7 +355,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updates.patente_icon = patenteAlvo.iconName;
                 updates.patente_cor = patenteAlvo.cor;
                 hasUpdates = true;
-                console.log(`🦈 Patente atualizada para: ${patenteAlvo.titulo}`);
             }
         }
 
@@ -330,17 +372,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         }
 
-        // 🦈 SINGLE WRITE: Se houver qualquer atualização, faz tudo em uma única chamada
         if (hasUpdates) {
-            console.log(`🔧 Manutenção executada para ${user.nome}`);
-            await updateDoc(userRef, updates);
+            try {
+                await updateDoc(userRef, updates);
+            } catch (err: unknown) {
+                if (!isFirebasePermissionError(err)) {
+                    console.warn("Erro ao atualizar manutenção do usuário:", err);
+                }
+            }
         }
     };
 
     runMaintenance();
-  }, [user, loading, patentesCache, planosCache, isLocalGuest, calculatePatenteData]); // 🦈 Dependências corrigidas
+  }, [user, loading, patentesCache, planosCache, isLocalGuest, calculatePatenteData]);
 
-  // 4. SEGURANÇA E REDIRECIONAMENTOS
+  // 5. SEGURANÃ‡A E REDIRECIONAMENTOS
   useEffect(() => {
       if (loading || !user) return;
 
@@ -353,11 +399,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
   }, [user, pathname, loading, router]); 
 
-  // --- FUNÇÕES ---
+  // --- FUNÃ‡Ã•ES PÃšBLICAS ---
 
   const loginGoogle = async () => {
     try {
       if (isLocalGuest) {
+          localStorage.removeItem("shark_guest_session");
           setIsLocalGuest(false);
           setUser(null);
       }
@@ -371,16 +418,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     const guestUser: User = {
         ...DEFAULT_USER_PROPS,
-        uid: "guest_virtual_" + Date.now(),
-        nome: "Visitante Tubarão",
+        uid: "guest_virtual_" + Date.now(), // ID Ãºnico para a sessÃ£o
+        nome: "Visitante TubarÃ£o",
         email: "visitante@aaakn.com",
         foto: "/logo.png",
         
         role: "guest",
         status: "ativo",
-        isAnonymous: true,
+        isAnonymous: true, // Flag importante para o RouteGuard
 
-        stats: { ...DEFAULT_STATS, loginCount: 1 },
+        stats: { ...DEFAULT_STATS, loginCount: 1, albumCollected: 0 },
         plano: "Visitante",
         patente: "Visitante",
         tier: "bicho",
@@ -388,10 +435,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         xp: 0
     } as User;
 
+    // ðŸ¦ˆ Salva no LocalStorage para persistir no F5
+    localStorage.setItem("shark_guest_session", JSON.stringify(guestUser));
+
     setIsLocalGuest(true);
     setUser(guestUser);
     setIsAdmin(false);
-    setTimeout(() => setLoading(false), 800);
+    
+    // Pequeno delay para a UI reagir
+    setTimeout(() => {
+        setLoading(false);
+        router.push("/dashboard");
+    }, 500);
   };
 
   const logout = async () => {
@@ -401,10 +456,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await signOut(auth);
         }
     }
+    
+    // ðŸ¦ˆ Limpa sessÃ£o local
+    localStorage.removeItem("shark_guest_session");
+    
     setIsLocalGuest(false);
     setUser(null);
     setIsAdmin(false);
-    lastMaintenanceUid.current = null; // Reseta controle
+    lastMaintenanceUid.current = null;
     router.push("/");
   };
 
@@ -415,17 +474,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUser = async (data: Partial<User>) => {
-    if (!user || isLocalGuest) {
-        if (isLocalGuest && user) {
-            setUser({ ...user, ...data });
-        }
+    if (!user) return;
+    
+    // Se for guest, atualiza sÃ³ localmente
+    if (isLocalGuest) {
+        const newUser = { ...user, ...data };
+        setUser(newUser);
+        localStorage.setItem("shark_guest_session", JSON.stringify(newUser));
         return; 
     }
+
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, data);
-    } catch (error) {
-      console.error("Erro ao atualizar:", error);
+    } catch (error: unknown) {
+      if (!isFirebasePermissionError(error)) {
+        console.error("Erro ao atualizar:", error);
+      }
     }
   };
 
@@ -447,3 +512,6 @@ export const useAuth = () => {
   if (!context) throw new Error("useAuth deve ser usado dentro de um AuthProvider");
   return context;
 };
+
+
+

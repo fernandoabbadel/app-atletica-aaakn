@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { logActivity } from "@/lib/logger"; 
 import { APP_PAGES } from "@/lib/appRoutes"; // Usando a lista centralizada
+import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 
 // --- 1. DEFINIÇÃO DE CARGOS ---
 const ROLES = [
@@ -83,7 +84,12 @@ export default function AdminPermissoesPage() {
                   setPermissionMatrix(defaultMatrix);
               }
 
-          } catch (error) {
+          } catch (error: unknown) {
+              if (isFirebasePermissionError(error)) {
+                  addToast("Sem permissão para abrir o painel de permissões.", "error");
+                  router.push("/sem-permissao");
+                  return;
+              }
               console.error(error);
               addToast("Deu ruim ao carregar os dados do cardume!", "error");
           } finally {
@@ -109,7 +115,11 @@ export default function AdminPermissoesPage() {
           );
           
           addToast(`Cargo atualizado para ${newRole.toUpperCase()}! 🦈`, "success");
-      } catch (error) {
+      } catch (error: unknown) {
+          if (isFirebasePermissionError(error)) {
+              addToast("Sem permissão para alterar cargo.", "error");
+              return;
+          }
           console.error(error);
           addToast("Erro ao trocar a patente do peixe.", "error");
       }
@@ -146,7 +156,11 @@ export default function AdminPermissoesPage() {
           );
           
           addToast("As leis do oceano foram atualizadas! 🦈", "success");
-      } catch (error) {
+      } catch (error: unknown) {
+          if (isFirebasePermissionError(error)) {
+              addToast("Sem permissão para salvar a matriz.", "error");
+              return;
+          }
           console.error(error);
           addToast("Erro ao salvar as regras.", "error");
       } finally {

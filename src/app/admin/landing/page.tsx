@@ -3,16 +3,17 @@
 import React, { useState, useEffect } from "react";
 import { 
   Save, LayoutTemplate, Palette, Users, 
-  MessageSquare, MapPin, Share2, Plus, Trash2, Shield,
+  MessageSquare, MapPin, Share2, Plus, Trash2,
   Smartphone, Instagram, Linkedin, Twitter, Youtube, Music2, Globe
 } from "lucide-react";
 
-// 🦈 IMPORTS DO SISTEMA
+// ðŸ¦ˆ IMPORTS DO SISTEMA
 import { useAuth } from "@/context/AuthContext"; 
 import { useToast } from "@/context/ToastContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { logActivity } from "@/lib/logger"; 
+import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 
 // --- TYPES & INTERFACES (Clean Code) ---
 
@@ -20,13 +21,6 @@ interface SocialLink {
   id: string;
   platform: 'instagram' | 'tiktok' | 'twitter' | 'youtube' | 'linkedin' | 'website';
   url: string;
-}
-
-interface PlanConfig {
-  id: string;
-  title: string;
-  features: string[];
-  recommended: boolean;
 }
 
 interface ReviewConfig {
@@ -55,10 +49,6 @@ interface LandingConfig {
   statPosts: number;
   statPartners: number;
 
-  // Plans Titles
-  plansSectionTitle: string;
-  plansSectionSubtitle: string;
-
   // Contact
   address: string;
   phone: string;
@@ -67,35 +57,28 @@ interface LandingConfig {
   
   // Dynamic Lists
   socialLinks: SocialLink[];
-  plans: PlanConfig[];
   reviews: ReviewConfig[];
 }
 
 // --- ESTADO INICIAL ---
 const INITIAL_CONFIG: LandingConfig = {
-  tagline: "Gestão Esportiva 2.0",
+  tagline: "GestÃ£o Esportiva 2.0",
   taglineColor: "#10b981",
   heroTitle: "SEJA UM",
-  heroSubtitle: "Centralize sua vida universitária. Carteirinha, Loja e Eventos.",
-  heroHighlight: "CARDUME TUBARÃO",
+  heroSubtitle: "Centralize sua vida universitÃ¡ria. Carteirinha, Loja e Eventos.",
+  heroHighlight: "CARDUME TUBARÃƒO",
   titleColor: "#ffffff",
   gradientStart: "#34d399", 
   gradientEnd: "#10b981",   
   statUsers: 120,
   statPosts: 340,
   statPartners: 12,
-  plansSectionTitle: "ESCOLHA SEU NÍVEL",
-  plansSectionSubtitle: "Faça parte da maior atlética da região.",
   address: "Campus Medicina - Bloco C",
   phone: "(12) 99999-9999",
   whatsapp: "5512999999999",
   email: "suporte@aaakn.com.br",
   socialLinks: [
     { id: "1", platform: "instagram", url: "https://instagram.com/aaakn" }
-  ],
-  plans: [
-    { id: "1", title: "Visitante", features: ["Acesso à Loja"], recommended: false },
-    { id: "2", title: "Sócio Tubarão", features: ["Carteirinha", "Descontos"], recommended: true }
   ],
   reviews: []
 };
@@ -107,7 +90,7 @@ export default function AdminLandingPage() {
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState<LandingConfig>(INITIAL_CONFIG);
 
-  // 📡 CARREGAR DADOS (COM BLINDAGEM ANTI-CRASH)
+  // ðŸ“¡ CARREGAR DADOS (COM BLINDAGEM ANTI-CRASH)
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -116,18 +99,21 @@ export default function AdminLandingPage() {
         
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // 🦈 FIX: Garante que arrays nunca sejam undefined, mesmo se o banco for antigo
+          // ðŸ¦ˆ FIX: Garante que arrays nunca sejam undefined
           setConfig({ 
             ...INITIAL_CONFIG, 
             ...data,
             socialLinks: data.socialLinks || INITIAL_CONFIG.socialLinks || [],
-            plans: data.plans || INITIAL_CONFIG.plans || [],
             reviews: data.reviews || INITIAL_CONFIG.reviews || []
           } as LandingConfig);
         }
-      } catch (error) {
-        console.error("Erro ao carregar config:", error);
-        addToast("Erro ao carregar configurações.", "error");
+      } catch (error: unknown) {
+        if (isFirebasePermissionError(error)) {
+          addToast("Sem permissão para carregar a configuração da landing.", "error");
+        } else {
+          console.error("Erro ao carregar config:", error);
+          addToast("Erro ao carregar configurações.", "error");
+        }
       } finally {
         setLoading(false);
       }
@@ -135,7 +121,7 @@ export default function AdminLandingPage() {
     fetchConfig();
   }, [addToast]);
 
-  // 💾 SALVAR DADOS
+  // ðŸ’¾ SALVAR DADOS
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -151,27 +137,26 @@ export default function AdminLandingPage() {
         );
       }
 
-      addToast("Aí sim! O Tubarão atualizou a vitrine! 🦈✅", "success");
-    } catch (error) {
-      console.error(error);
-      addToast("Deu ruim no plantão! Falha ao salvar. 🚨", "error");
+      addToast("AÃ­ sim! O TubarÃ£o atualizou a vitrine! ðŸ¦ˆâœ…", "success");
+    } catch (error: unknown) {
+      if (isFirebasePermissionError(error)) {
+        addToast("Sem permissão para salvar a landing.", "error");
+      } else {
+        console.error(error);
+        addToast("Deu ruim no plantão! Falha ao salvar.", "error");
+      }
     } finally {
       setSaving(false);
     }
   };
 
   // --- HELPERS ---
-  const updatePlan = <K extends keyof PlanConfig>(index: number, field: K, value: PlanConfig[K]) => {
-    const newPlans = [...config.plans];
-    newPlans[index] = { ...newPlans[index], [field]: value };
-    setConfig({ ...config, plans: newPlans });
-  };
 
   // Social Helpers
   const addSocial = () => {
     setConfig({
         ...config, 
-        // 🦈 FIX: Garante array antes de adicionar
+        // ðŸ¦ˆ FIX: Garante array antes de adicionar
         socialLinks: [...(config.socialLinks || []), { id: Date.now().toString(), platform: 'instagram', url: '' }]
     });
   };
@@ -183,8 +168,14 @@ export default function AdminLandingPage() {
 
   const updateSocial = (index: number, field: keyof SocialLink, value: string) => {
       const newSocials = [...config.socialLinks];
-      // @ts-ignore
-      newSocials[index][field] = value;
+      const current = newSocials[index];
+      if (!current) return;
+
+      if (field === "platform") {
+        newSocials[index] = { ...current, platform: value as SocialLink["platform"] };
+      } else {
+        newSocials[index] = { ...current, [field]: value };
+      }
       setConfig({ ...config, socialLinks: newSocials });
   };
 
@@ -212,7 +203,7 @@ export default function AdminLandingPage() {
       }
   };
 
-  if (loading) return <div className="p-8 text-white">Carregando painel do Tubarão... 🦈</div>;
+  if (loading) return <div className="p-8 text-white">Carregando painel do TubarÃ£o... ðŸ¦ˆ</div>;
 
   return (
     <div className="min-h-screen bg-zinc-950 p-6 md:p-12 pb-32">
@@ -222,14 +213,14 @@ export default function AdminLandingPage() {
           <h1 className="text-3xl font-black text-white flex items-center gap-3">
             <LayoutTemplate className="text-emerald-500" /> Editor da Landing Page
           </h1>
-          <p className="text-zinc-400 text-sm">Personalize a vitrine da Atlética em tempo real.</p>
+          <p className="text-zinc-400 text-sm">Personalize a vitrine da AtlÃ©tica em tempo real.</p>
         </div>
         <button 
           onClick={handleSave}
           disabled={saving}
           className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
         >
-          {saving ? "Salvando..." : <><Save size={18} /> Publicar Alterações</>}
+          {saving ? "Salvando..." : <><Save size={18} /> Publicar AlteraÃ§Ãµes</>}
         </button>
       </header>
 
@@ -253,15 +244,15 @@ export default function AdminLandingPage() {
                     />
                 </div>
                 <div>
-                     <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Cor Badge</label>
-                     <div className="flex items-center gap-2 h-full">
-                         <input type="color" value={config.taglineColor} onChange={(e) => setConfig({...config, taglineColor: e.target.value})} className="w-10 h-10 rounded cursor-pointer border-none"/>
-                     </div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Cor Badge</label>
+                      <div className="flex items-center gap-2 h-full">
+                          <input type="color" value={config.taglineColor} onChange={(e) => setConfig({...config, taglineColor: e.target.value})} className="w-10 h-10 rounded cursor-pointer border-none"/>
+                      </div>
                 </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Título Principal</label>
+              <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">TÃ­tulo Principal</label>
               <input 
                 value={config.heroTitle}
                 onChange={(e) => setConfig({...config, heroTitle: e.target.value})}
@@ -277,7 +268,7 @@ export default function AdminLandingPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Subtítulo</label>
+              <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">SubtÃ­tulo</label>
               <textarea 
                 value={config.heroSubtitle}
                 onChange={(e) => setConfig({...config, heroSubtitle: e.target.value})}
@@ -288,11 +279,11 @@ export default function AdminLandingPage() {
 
             <div className="grid grid-cols-3 gap-4 pt-4 border-t border-zinc-800">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-2">Cor Título</label>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-2">Cor TÃ­tulo</label>
                 <input type="color" value={config.titleColor} onChange={(e) => setConfig({...config, titleColor: e.target.value})} className="w-full h-10 rounded cursor-pointer"/>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-2">Gradiente Início</label>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-2">Gradiente InÃ­cio</label>
                 <input type="color" value={config.gradientStart} onChange={(e) => setConfig({...config, gradientStart: e.target.value})} className="w-full h-10 rounded cursor-pointer"/>
               </div>
               <div>
@@ -308,7 +299,7 @@ export default function AdminLandingPage() {
             
             <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
                  <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
-                    <Users className="text-purple-400" size={20} /> Métricas (Stats)
+                    <Users className="text-purple-400" size={20} /> MÃ©tricas (Stats)
                  </h2>
                  <div className="grid grid-cols-3 gap-3">
                      <div>
@@ -333,7 +324,7 @@ export default function AdminLandingPage() {
                 
                 <div className="grid grid-cols-1 gap-4">
                     <div>
-                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 flex items-center gap-1"><MapPin size={12}/> Endereço</label>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 flex items-center gap-1"><MapPin size={12}/> EndereÃ§o</label>
                         <input value={config.address} onChange={(e) => setConfig({...config, address: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-emerald-500 outline-none" />
                     </div>
                     
@@ -358,7 +349,6 @@ export default function AdminLandingPage() {
                         </div>
                         
                         <div className="space-y-2">
-                            {/* 🦈 FIX: Usando || [] para evitar o erro de MAP se for undefined */}
                             {(config.socialLinks || []).map((social, idx) => (
                                 <div key={social.id} className="flex gap-2">
                                     <div className="w-10 flex items-center justify-center bg-zinc-900 rounded border border-zinc-800">
@@ -389,59 +379,6 @@ export default function AdminLandingPage() {
                     </div>
                 </div>
             </div>
-        </section>
-
-        {/* === PLANOS (SEM PREÇOS) === */}
-        <section className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-6 lg:col-span-2">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-zinc-800 pb-4">
-              <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
-                    <Shield className="text-emerald-500" size={20} /> Seção de Planos
-                  </h2>
-                  <p className="text-xs text-zinc-500">Configure os títulos e benefícios visíveis na Landing Page.</p>
-              </div>
-              <div className="w-full md:w-auto flex flex-col gap-2">
-                   <input 
-                      value={config.plansSectionTitle}
-                      onChange={(e) => setConfig({...config, plansSectionTitle: e.target.value})}
-                      placeholder="Título (Ex: ESCOLHA SEU NÍVEL)"
-                      className="bg-zinc-950 border border-zinc-800 rounded px-3 py-1 text-sm font-bold text-white text-right outline-none focus:border-emerald-500"
-                   />
-                   <input 
-                      value={config.plansSectionSubtitle}
-                      onChange={(e) => setConfig({...config, plansSectionSubtitle: e.target.value})}
-                      placeholder="Subtítulo..."
-                      className="bg-zinc-950 border border-zinc-800 rounded px-3 py-1 text-xs text-zinc-400 text-right outline-none focus:border-emerald-500"
-                   />
-              </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(config.plans || []).map((plan, idx) => (
-              <div key={plan.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl relative group">
-                 {plan.recommended && <span className="absolute top-2 right-2 text-[8px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded uppercase font-bold">Destaque</span>}
-                 <input 
-                    value={plan.title}
-                    onChange={(e) => updatePlan(idx, "title", e.target.value)}
-                    className="w-full bg-transparent font-bold text-white text-lg mb-2 border-b border-zinc-800 focus:border-emerald-500 outline-none pb-1"
-                 />
-                 <div className="space-y-2">
-                   {plan.features.map((feat, fIdx) => (
-                     <input 
-                        key={fIdx}
-                        value={feat}
-                        onChange={(e) => {
-                           const newFeatures = [...plan.features];
-                           newFeatures[fIdx] = e.target.value;
-                           updatePlan(idx, "features", newFeatures);
-                        }}
-                        className="w-full bg-zinc-900/50 text-xs text-zinc-300 rounded p-2 outline-none focus:ring-1 ring-emerald-500/50"
-                     />
-                   ))}
-                 </div>
-              </div>
-            ))}
-          </div>
         </section>
 
         {/* === DEPOIMENTOS === */}
@@ -523,3 +460,4 @@ export default function AdminLandingPage() {
     </div>
   );
 }
+

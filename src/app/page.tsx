@@ -2,38 +2,20 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   Sparkles, Users, MapPin, Mail, Phone, Instagram, 
-  Dumbbell, Star, Rocket, Crown, ArrowRight, CheckCircle,
-  Zap, TicketPercent, ShieldAlert, Ghost, ShoppingBag, Trophy, Gem, Fish,
-  Eye // 🦈 CORREÇÃO: Ícone Eye importado corretamente
+  Dumbbell, Star, Rocket, Crown, Eye 
 } from "lucide-react";
 
-// 🦈 IMPORTS DO SISTEMA (Caminhos relativos corrigidos)
+// ðŸ¦ˆ IMPORTS DO SISTEMA
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { db } from "../lib/firebase";
-import { doc, getDoc, collection, getCountFromServer, query, orderBy, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, getCountFromServer } from "firebase/firestore";
+import { isFirebasePermissionError } from "../lib/firebaseErrors";
 
 // --- TIPAGEM ---
-interface Plano {
-  id: string;
-  nome: string;
-  preco: string;
-  precoVal: number;
-  parcelamento: string;
-  descricao: string;
-  cor: string;
-  icon: string;
-  destaque: boolean;
-  beneficios: string[];
-  xpMultiplier: number;    
-  nivelPrioridade: number; 
-  descontoLoja: number;    
-}
-
 interface SocialLink {
   id: string;
   platform: string;
@@ -60,8 +42,6 @@ interface LandingConfig {
   statUsers: number;
   statPosts: number;
   statPartners: number;
-  plansSectionTitle: string;
-  plansSectionSubtitle: string;
   address: string;
   phone: string;
   whatsapp: string;
@@ -70,12 +50,12 @@ interface LandingConfig {
   reviews: ReviewConfig[];
 }
 
-// --- CONFIG PADRÃO (Fallback anti-crash) ---
+// --- CONFIG PADRÃƒO ---
 const DEFAULT_CONFIG: LandingConfig = {
   heroTitle: "SEJA UM",
-  heroSubtitle: "Centralize sua vida universitária. Carteirinha, Loja e Eventos.",
-  heroHighlight: "TUBARÃO REI",
-  tagline: "GESTÃO ESPORTIVA 2.0",
+  heroSubtitle: "Centralize sua vida universitÃ¡ria. Carteirinha, Loja e Eventos.",
+  heroHighlight: "TUBARÃƒO REI",
+  tagline: "GESTÃƒO ESPORTIVA 2.0",
   taglineColor: "#10b981",
   titleColor: "#ffffff",
   gradientStart: "#34d399",
@@ -83,8 +63,6 @@ const DEFAULT_CONFIG: LandingConfig = {
   statUsers: 120,
   statPosts: 340,
   statPartners: 12,
-  plansSectionTitle: "ESCOLHA SEU NÍVEL",
-  plansSectionSubtitle: "Faça parte da maior atlética da região.",
   address: "Campus Medicina - Bloco C",
   phone: "(12) 99999-9999",
   whatsapp: "5512999999999",
@@ -110,10 +88,20 @@ const useCounter = (end: number, duration: number = 2000) => {
   return count;
 };
 
-// --- COMPONENTE: Card de Estatística ---
-const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: any) => {
+// --- COMPONENTE: Card de EstatÃ­stica ---
+type StatColor = "emerald" | "blue" | "amber";
+
+interface StatCardProps {
+  icon: React.ComponentType<{ className?: string }>;
+  value: number;
+  label: string;
+  color: StatColor;
+  suffix?: string;
+}
+
+const StatCard = ({ icon: Icon, value, label, color, suffix = "" }: StatCardProps) => {
   const count = useCounter(value);
-  const colors: any = {
+  const colors: Record<StatColor, string> = {
     emerald: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     blue: "text-blue-400 bg-blue-500/10 border-blue-500/20",
     amber: "text-amber-400 bg-amber-500/10 border-amber-500/20"
@@ -132,93 +120,66 @@ export default function LandingPage() {
   const { user, loginGoogle, loading: authLoading } = useAuth();
   const { addToast } = useToast();
 
-  const [planos, setPlanos] = useState<Plano[]>([]);
   const [config, setConfig] = useState<LandingConfig>(DEFAULT_CONFIG);
   const [realStats, setRealStats] = useState({ users: 0 });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"aluno" | "empresa">("aluno");
 
-  // 🔒 Redirecionamento de Segurança
+  // ðŸ”’ Redirecionamento de SeguranÃ§a
   useEffect(() => {
     if (!authLoading && user) router.push("/dashboard");
   }, [user, authLoading, router]);
 
-  // 📡 Busca Configurações & Planos Oficiais do Firebase
+  // ðŸ“¡ Busca ConfiguraÃ§Ãµes Visuais
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        // 1. Busca Planos Oficiais da coleção 'planos' gerenciada no Admin
-        const qPlanos = query(collection(db, "planos"), orderBy("precoVal", "asc"));
-        const planosSnap = await getDocs(qPlanos);
-        const planosData = planosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plano));
+      let configData = DEFAULT_CONFIG;
+      let usersCount = DEFAULT_CONFIG.statUsers;
 
-        // 2. Busca Configurações Visuais da Landing
+      try {
         const configRef = doc(db, "site_config", "landing_page");
         const configSnap = await getDoc(configRef);
-        let configData = DEFAULT_CONFIG;
         if (configSnap.exists()) {
-           const data = configSnap.data();
-           configData = { 
-             ...DEFAULT_CONFIG, 
-             ...data,
-             socialLinks: data.socialLinks || [],
-             reviews: data.reviews || []
-           } as LandingConfig;
+          const data = configSnap.data();
+          configData = {
+            ...DEFAULT_CONFIG,
+            ...data,
+            socialLinks: data.socialLinks || [],
+            reviews: data.reviews || []
+          } as LandingConfig;
         }
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar configurações da landing:", error);
+        }
+      }
 
-        // 3. Stats Reais (Contagem de Usuários no Banco)
+      try {
         const usersColl = collection(db, "users");
         const usersSnap = await getCountFromServer(usersColl);
-        
-        setPlanos(planosData);
-        setConfig(configData);
-        setRealStats({ users: usersSnap.data().count });
-
-      } catch (error) {
-        console.error("Erro ao carregar Landing Page:", error);
-      } finally {
-        setLoading(false);
+        usersCount = usersSnap.data().count;
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar estatísticas da landing:", error);
+        }
       }
+
+      setConfig(configData);
+      setRealStats({ users: usersCount });
+      setLoading(false);
     };
     fetchData();
   }, []);
 
-  // 🦈 HELPERS VISUAIS (Mapeamento de String para Componente)
-  const getIcon = (iconName: string, className: string) => {
-    switch(iconName) {
-      case 'crown': return <Crown className={className} />;
-      case 'star': return <Star className={className} />;
-      case 'ghost': return <Ghost className={className} />;
-      case 'fish': return <Fish className={className} />;
-      case 'zap': return <Zap className={className} />;
-      case 'gem': return <Gem className={className} />;
-      case 'trophy': return <Trophy className={className} />;
-      case 'shopping': return <ShoppingBag className={className} />;
-      default: return <Star className={className} />;
-    }
-  };
-
-  const getColorClasses = (colorName: string, isDestacado: boolean) => {
-    const base = isDestacado ? "scale-105 shadow-[0_0_40px_rgba(0,0,0,0.3)] z-10" : "hover:scale-105 hover:shadow-xl z-0";
-    switch(colorName) {
-      case 'emerald': return { card: `${base} border-emerald-500/50 bg-zinc-900/80`, text: "text-emerald-400", btn: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
-      case 'yellow': return { card: `${base} border-yellow-500/50 bg-zinc-900/80`, text: "text-yellow-400", btn: "bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-500/20", badge: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" };
-      case 'purple': return { card: `${base} border-purple-500/50 bg-zinc-900/80`, text: "text-purple-400", btn: "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-500/20", badge: "bg-purple-500/10 text-purple-400 border-purple-500/20" };
-      case 'blue': return { card: `${base} border-blue-500/50 bg-zinc-900/80`, text: "text-blue-400", btn: "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
-      case 'red': return { card: `${base} border-red-500/50 bg-zinc-900/80`, text: "text-red-400", btn: "bg-red-600 hover:bg-red-500 text-white shadow-red-500/20", badge: "bg-red-500/10 text-red-400 border-red-500/20" };
-      default: return { card: `${base} border-zinc-700 bg-zinc-950`, text: "text-zinc-400", btn: "bg-zinc-800 hover:bg-zinc-700 text-white", badge: "bg-zinc-800 text-zinc-400 border-zinc-700" };
-    }
-  };
-
   const handleGoogleLogin = async () => { try { await loginGoogle(); } catch { addToast("Erro no login Google", "error"); } };
-  const handleGuest = () => { addToast("Modo Visitante Ativado! 🦈", "info"); router.push("/dashboard"); };
+  const handleGuest = () => { addToast("Modo Visitante Ativado! ðŸ¦ˆ", "info"); router.push("/dashboard"); };
 
   if (loading) return <div className="h-screen bg-[#030a08] flex items-center justify-center text-emerald-500 font-bold animate-pulse">CARREGANDO CARDUME...</div>;
 
   return (
     <div className="min-h-screen bg-[#030a08] text-white selection:bg-emerald-500/30 overflow-x-hidden font-sans">
       
-      {/* 🌊 Background Layers */}
+      {/* ðŸŒŠ Background Layers */}
       <div className="fixed inset-0 pointer-events-none z-0">
          <div className="absolute top-[-10%] left-[-20%] w-[80%] h-[80%] bg-emerald-500/5 rounded-full blur-[120px] animate-pulse-slow" />
          <div className="absolute bottom-[-10%] right-[-20%] w-[80%] h-[80%] bg-teal-600/5 rounded-full blur-[120px] animate-pulse-slow delay-700" />
@@ -227,7 +188,7 @@ export default function LandingPage() {
       {/* ================= HERO SECTION ================= */}
       <main className="relative z-10 container mx-auto px-4 pt-10 pb-20 lg:pt-20 lg:flex lg:items-center lg:gap-16">
         
-        {/* ESQUERDA: Texto Dinâmico */}
+        {/* ESQUERDA: Texto DinÃ¢mico */}
         <div className="flex-1 text-center lg:text-left space-y-8">
             <div className="relative w-48 h-48 lg:w-64 lg:h-64 mx-auto lg:mx-0 animate-float-slow group">
                 <div className="absolute inset-0 bg-emerald-500/20 blur-[50px] rounded-full scale-75" />
@@ -260,17 +221,11 @@ export default function LandingPage() {
                 </p>
             </div>
 
-            {/* Stats Bar */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-2xl mx-auto lg:mx-0">
-                <StatCard icon={Users} value={realStats.users || config.statUsers} label="Sócios" color="emerald" />
+            {/* Stats Bar - ðŸ¦ˆ RANKING REMOVIDO DAQUI */}
+            <div className="grid grid-cols-3 gap-4 w-full max-w-lg mx-auto lg:mx-0">
+                <StatCard icon={Users} value={realStats.users || config.statUsers} label="SÃ³cios" color="emerald" />
                 <StatCard icon={Dumbbell} value={config.statPosts} label="Treinos" color="blue" />
                 <StatCard icon={Rocket} value={config.statPartners} label="Parceiros" color="amber" />
-                
-                <div className="flex flex-col items-center p-3 rounded-2xl bg-gradient-to-b from-zinc-800 to-zinc-900 border border-amber-500/30 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-1 bg-amber-500 text-zinc-900 text-[8px] font-black uppercase">Líder</div>
-                    <Crown size={24} className="text-amber-400 mb-1" />
-                    <span className="text-xl font-black text-white">T-V</span>
-                </div>
             </div>
         </div>
 
@@ -293,83 +248,17 @@ export default function LandingPage() {
                        </button>
                    </div>
                 ) : (
-                   <div className="text-center py-8 text-zinc-500 text-xs">Área restrita a parceiros.</div>
+                   <div className="text-center py-8 text-zinc-500 text-xs">Ãrea restrita a parceiros.</div>
                 )}
             </div>
         </div>
       </main>
 
-      {/* ================= PLANOS DINÂMICOS (OFICIAIS) ================= */}
-      <section className="py-20 bg-gradient-to-b from-[#050505] to-zinc-950/50 border-t border-white/5 relative z-10">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-white mb-4">
-              {config.plansSectionTitle}
-            </h2>
-            <p className="text-zinc-500 font-medium">{config.plansSectionSubtitle}</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 items-start max-w-7xl mx-auto">
-            {planos.map((plano) => {
-               const styles = getColorClasses(plano.cor, plano.destaque);
-               
-               return (
-                 <div key={plano.id} className={`relative flex flex-col p-6 rounded-[2rem] border transition-all duration-300 ${styles.card}`}>
-                    {plano.destaque && (
-                       <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-yellow-500 to-amber-600 text-black text-[10px] font-black uppercase px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1">
-                          <Crown size={12} /> Mais Popular
-                       </div>
-                    )}
-
-                    <div className="mb-6 text-center">
-                       <div className={`w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center bg-black/40 border border-white/5 ${styles.text}`}>
-                          {getIcon(plano.icon, "w-7 h-7")}
-                       </div>
-                       <h3 className="text-xl font-black uppercase italic tracking-tight mb-1">{plano.nome}</h3>
-                       <p className="text-xs text-zinc-500 font-bold">{plano.descricao}</p>
-                    </div>
-
-                    <div className="text-center mb-6 pb-6 border-b border-white/5">
-                       <div className="flex items-start justify-center gap-1">
-                          <span className="text-xs font-bold text-zinc-500 mt-1">R$</span>
-                          <span className="text-4xl font-black text-white tracking-tighter">{plano.preco}</span>
-                       </div>
-                       <p className="text-[10px] text-zinc-500 uppercase font-bold mt-1">{plano.parcelamento}</p>
-                    </div>
-
-                    {/* Stats de Jogo */}
-                    <div className="grid grid-cols-2 gap-2 mb-6">
-                        <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${styles.badge}`}>
-                           <span className="text-[10px] font-bold uppercase flex items-center gap-1"><Zap size={10}/> XP Boost</span>
-                           <span className="text-lg font-black">{plano.xpMultiplier}x</span>
-                        </div>
-                        <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${styles.badge}`}>
-                           <span className="text-[10px] font-bold uppercase flex items-center gap-1"><TicketPercent size={10}/> Loja</span>
-                           <span className="text-lg font-black">{plano.descontoLoja}%</span>
-                        </div>
-                    </div>
-
-                    <ul className="space-y-3 mb-8 flex-1">
-                       {plano.beneficios.map((ben, i) => (
-                          <li key={i} className="flex items-start gap-3 text-xs font-medium text-zinc-300">
-                             <CheckCircle className={`w-4 h-4 shrink-0 ${styles.text}`} />
-                             <span className="leading-tight">{ben}</span>
-                          </li>
-                       ))}
-                    </ul>
-
-                    <Link href={`/cadastro?plano=${plano.id}`} className={`w-full py-4 rounded-xl font-black uppercase text-xs tracking-wider transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 ${styles.btn}`}>
-                       Escolher Plano <ArrowRight size={14} />
-                    </Link>
-                 </div>
-               );
-            })}
-          </div>
-        </div>
-      </section>
+      {/* ================= PLANOS REMOVIDOS ================= */}
+      {/* A seÃ§Ã£o de planos foi totalmente removida conforme solicitado pelo TubarÃ£o */}
 
       {/* ================= DEPOIMENTOS ================= */}
-      <section className="py-20 container mx-auto px-4">
+      <section className="py-20 container mx-auto px-4 border-t border-white/5 bg-zinc-950/30">
         <div className="flex items-center gap-2 mb-8 justify-center lg:justify-start">
             <Star className="text-emerald-500 fill-emerald-500" />
             <h3 className="text-xl font-black text-white uppercase tracking-tight">O Cardume Aprova</h3>
@@ -377,10 +266,9 @@ export default function LandingPage() {
         
         <div className="flex gap-6 overflow-x-auto pb-8 px-4 scrollbar-hide snap-x md:grid md:grid-cols-3 md:overflow-visible">
             {(config.reviews || []).length > 0 ? config.reviews.map((review) => (
-                <div key={review.id} className="flex flex-col gap-4 p-6 bg-zinc-900/80 border border-zinc-800 rounded-2xl min-w-[300px] hover:border-emerald-500/30 transition-all shadow-lg">
+                <div key={review.id} className="flex flex-col gap-4 p-6 bg-zinc-900/80 border border-zinc-800 rounded-2xl min-w-[300px] hover:border-emerald-500/30 transition-all shadow-lg snap-center">
                     <div className="flex items-center gap-3">
                         <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-emerald-500/30 bg-zinc-800">
-                            {/* 🦈 CORREÇÃO: Fallback local para logo e filtro cinza para depoimentos sem foto */}
                             <Image 
                                 src={review.profileUrl || "/logo.png"} 
                                 alt={review.name} 
@@ -410,7 +298,7 @@ export default function LandingPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
                 <div className="space-y-4">
                     <div className="flex items-center gap-2"><Crown className="text-emerald-500 w-5 h-5" /><span className="font-black text-xl text-white">AAAKN</span></div>
-                    <p className="text-zinc-500 text-xs leading-relaxed">Plataforma Oficial da Atlética.</p>
+                    <p className="text-zinc-500 text-xs leading-relaxed">Plataforma Oficial da AtlÃ©tica.</p>
                 </div>
 
                 <div>
@@ -432,10 +320,11 @@ export default function LandingPage() {
             </div>
             <div className="pt-8 border-t border-zinc-900 text-center text-[10px] text-zinc-600">
                 <p>&copy; {new Date().getFullYear()} AAAKN. Todos os direitos reservados.</p>
-                <p className="mt-1">O Tubarão já subiu para a base. 🦈</p>
+                <p className="mt-1">O TubarÃ£o jÃ¡ subiu para a base. ðŸ¦ˆ</p>
             </div>
         </div>
       </footer>
     </div>
   );
 }
+

@@ -14,6 +14,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../lib/firebase";
 import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { isFirebasePermissionError } from "../../lib/firebaseErrors";
 
 // --- 🦈 UTILITÁRIO LOCAL ---
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -133,25 +134,65 @@ export default function BottomNavbar() {
   }, []);
 
   useEffect(() => {
-      if (!user) return;
+      if (!user || user.isAnonymous || user.uid.startsWith("guest_virtual_")) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
+
       const q = query(collection(db, "notifications"), where("userId", "==", user.uid));
-      const unsub = onSnapshot(q, (snap) => {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notification));
-          list.sort((a, b) => (b.createdAt && 'toDate' in b.createdAt ? b.createdAt.toDate().getTime() : 0) - (a.createdAt && 'toDate' in a.createdAt ? a.createdAt.toDate().getTime() : 0));
-          setNotifications(list.slice(0, 20)); setUnreadCount(list.filter(n => !n.read).length);
-      });
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification));
+          list.sort(
+            (a, b) =>
+              (b.createdAt && "toDate" in b.createdAt ? b.createdAt.toDate().getTime() : 0) -
+              (a.createdAt && "toDate" in a.createdAt ? a.createdAt.toDate().getTime() : 0)
+          );
+          setNotifications(list.slice(0, 20));
+          setUnreadCount(list.filter((n) => !n.read).length);
+        },
+        (error: unknown) => {
+          if (!isFirebasePermissionError(error)) {
+            console.error("Erro ao ouvir notificações:", error);
+          }
+          setNotifications([]);
+          setUnreadCount(0);
+        }
+      );
       return () => unsub();
   }, [user]);
 
   useEffect(() => {
-      if (!isAdmin) return;
+      if (!isAdmin) {
+        setBannedMessagesCount(0);
+        return;
+      }
       const q = query(collection(db, "banned_appeals"), where("readByAdmin", "==", false));
-      const unsub = onSnapshot(q, (snap) => setBannedMessagesCount(snap.size));
+      const unsub = onSnapshot(
+        q,
+        (snap) => setBannedMessagesCount(snap.size),
+        (error: unknown) => {
+          if (!isFirebasePermissionError(error)) {
+            console.error("Erro ao ouvir recursos de banimento:", error);
+          }
+          setBannedMessagesCount(0);
+        }
+      );
       return () => unsub();
   }, [isAdmin]);
 
   const handleNotificationClick = async (notif: Notification) => {
-      if (!notif.read) await updateDoc(doc(db, "notifications", notif.id), { read: true });
+      if (!notif.read) {
+        try {
+          await updateDoc(doc(db, "notifications", notif.id), { read: true });
+        } catch (error: unknown) {
+          if (!isFirebasePermissionError(error)) {
+            console.error("Erro ao marcar notificação como lida:", error);
+          }
+        }
+      }
       if (notif.link) { router.push(notif.link); setShowNotifications(false); setIsSidebarOpen(false); }
   };
 

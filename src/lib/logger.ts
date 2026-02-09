@@ -1,5 +1,6 @@
 import { db } from "./firebase"; 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { isFirebasePermissionError } from "./firebaseErrors";
 
 export type ActionType = 
   | "CREATE" 
@@ -39,7 +40,9 @@ export const logActivity = async (
     if (process.env.NODE_ENV === 'development') {
         console.log(`🦈 [LOG]: ${userName} realizou ${action} em ${resource}`);
     }
-  } catch (error) {
-    console.error("Erro ao salvar log:", error);
+  } catch (error: unknown) {
+    if (!isFirebasePermissionError(error)) {
+      console.error("Erro ao salvar log:", error);
+    }
   }
 };
