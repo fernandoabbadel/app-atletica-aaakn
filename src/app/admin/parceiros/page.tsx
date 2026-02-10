@@ -11,20 +11,14 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { 
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, Timestamp 
-} from "firebase/firestore";
-
-// --- HELPERS ---
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
+import {
+  deletePartnerById,
+  fetchAdminPartnersBundle,
+  preparePartnerImageBase64,
+  setPartnerStatus,
+  upsertPartner,
+  type PartnerRecord,
+} from "../../../lib/partnersService";
 
 // --- TIPAGEM ---
 interface Cupom { id: string; titulo: string; regra: string; valor: string; imagem: string; }
@@ -63,7 +57,7 @@ interface ScanHistory {
     userId: string;
     cupom: string;
     valorEconomizado: string;
-    timestamp?: Timestamp | null;
+    timestamp?: unknown;
 }
 
 const CATEGORIAS_PADRAO = ["Alimentação", "Saúde", "Lazer", "Serviços", "Vestuário"];
@@ -100,21 +94,14 @@ export default function AdminParceirosPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const parceirosRef = collection(db, "parceiros");
-            const pSnap = await getDocs(parceirosRef);
-            const pList = pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Parceiro));
-            setParceiros(pList);
-
-            const scansRef = collection(db, "scans");
-            const qScans = query(scansRef, orderBy("timestamp", "desc"));
-            const sSnap = await getDocs(qScans);
-            
-            if (!sSnap.empty) {
-                const sList = sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ScanHistory));
-                setScans(sList);
-            } 
-
-        } catch (error) {
+            const bundle = await fetchAdminPartnersBundle({
+              partnersLimit: 500,
+              scansLimit: 900,
+              forceRefresh: true,
+            });
+            setParceiros(bundle.partners as Parceiro[]);
+            setScans(bundle.scans as ScanHistory[]);
+        } catch (error: unknown) {
             console.error(error);
             addToast("Erro ao carregar dados.", "error");
         } finally {
@@ -128,7 +115,7 @@ export default function AdminParceirosPage() {
 
   const handleApprove = async (id: string) => {
       try {
-          await updateDoc(doc(db, "parceiros", id), { status: 'active' });
+          await setPartnerStatus({ partnerId: id, status: "active" });
           setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
           addToast("Parceiro aprovado!", "success");
       } catch { addToast("Erro ao aprovar.", "error"); }
@@ -137,7 +124,7 @@ export default function AdminParceirosPage() {
   const handleToggleStatus = async (id: string, currentStatus: string) => {
       const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
       try {
-          await updateDoc(doc(db, "parceiros", id), { status: newStatus });
+          await setPartnerStatus({ partnerId: id, status: newStatus });
           setParceiros(prev => prev.map(p => p.id === id ? { ...p, status: newStatus as "active" | "disabled" } : p));
           addToast("Status atualizado.", "success");
       } catch { addToast("Erro.", "error"); }
@@ -195,8 +182,13 @@ export default function AdminParceirosPage() {
       try {
           if (isEditing && currentPartner.id) {
               const { id, ...dataToUpdate } = currentPartner;
-              await updateDoc(doc(db, "parceiros", id), dataToUpdate);
-              setParceiros(prev => prev.map(p => p.id === id ? { ...p, ...dataToUpdate } as Parceiro : p));
+              const saved = await upsertPartner({
+                partnerId: id,
+                data: dataToUpdate as Partial<PartnerRecord>,
+              });
+              if (saved) {
+                setParceiros(prev => prev.map(p => p.id === id ? saved as Parceiro : p));
+              }
               addToast("Dados atualizados!", "success");
           } else {
               const newPartnerData = { 
@@ -206,18 +198,22 @@ export default function AdminParceirosPage() {
                   totalScans: 0,
                   createdAt: new Date().toISOString()
               };
-              const docRef = await addDoc(collection(db, "parceiros"), newPartnerData);
-              setParceiros(prev => [...prev, { ...newPartnerData, id: docRef.id } as Parceiro]);
+              const saved = await upsertPartner({
+                data: newPartnerData as Partial<PartnerRecord>,
+              });
+              if (saved) {
+                setParceiros(prev => [...prev, saved as Parceiro]);
+              }
               addToast("Novo parceiro cadastrado!", "success");
           }
           setShowPartnerModal(false);
-      } catch (error) { console.error(error); addToast("Erro ao salvar.", "error"); }
+      } catch (error: unknown) { console.error(error); addToast("Erro ao salvar.", "error"); }
   };
 
   const handleDelete = async (id: string) => { 
       if (confirm("Remover permanentemente?")) {
           try {
-              await deleteDoc(doc(db, "parceiros", id));
+              await deletePartnerById(id);
               setParceiros(prev => prev.filter(p => p.id !== id));
               addToast("Parceiro removido.", "success");
           } catch { addToast("Erro ao remover.", "error"); }
@@ -227,11 +223,11 @@ export default function AdminParceirosPage() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: string, isCupom = false) => {
       if (e.target.files?.[0]) {
           try {
-              const base64 = await fileToBase64(e.target.files[0]);
+              const base64 = await preparePartnerImageBase64(e.target.files[0]);
               if (isCupom) { setNewCupom(prev => ({ ...prev, imagem: base64 })); }
               else { setCurrentPartner(prev => ({ ...prev, [field]: base64 })); }
               addToast("Imagem carregada!", "success");
-          } catch { addToast("Erro na imagem", "error"); }
+          } catch { addToast("Erro na imagem (tamanho inválido).", "error"); }
       }
   };
 

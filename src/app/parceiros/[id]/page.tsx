@@ -6,8 +6,7 @@ import Link from "next/link";
 import Image from "next/image"; // 🦈 Import correto do Next Image
 import { useParams } from "next/navigation"; 
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { fetchPartnerById } from "../../../lib/partnersService";
 
 // 🦈 Interfaces para Tipagem (Adeus 'any')
 interface Cupom {
@@ -49,14 +48,13 @@ export default function ParceiroDetalhePage() {
       const fetchParceiro = async () => {
           if(!parceiroId) return;
           try {
-              const docRef = doc(db, "parceiros", parceiroId);
-              const docSnap = await getDoc(docRef);
-              if (docSnap.exists()) {
-                  setParceiro({ id: docSnap.id, ...docSnap.data() } as Parceiro);
+              const foundPartner = await fetchPartnerById(parceiroId, { forceRefresh: true });
+              if (foundPartner) {
+                  setParceiro(foundPartner as Parceiro);
               } else {
                   addToast("Parceiro não encontrado.", "error");
               }
-          } catch (error) {
+          } catch (error: unknown) {
               console.error(error);
           } finally {
               setLoading(false);

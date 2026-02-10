@@ -6,8 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
-import { db } from "../../lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { loginPartnerByEmail } from "../../lib/partnersService";
 
 export default function EmpresaLoginPage() {
   const router = useRouter();
@@ -22,39 +21,35 @@ export default function EmpresaLoginPage() {
     setLoading(true);
 
     try {
-      // 1. Busca a empresa no Firebase pelo email exato
-      const q = query(collection(db, "parceiros"), where("email", "==", email));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
+      const loginResult = await loginPartnerByEmail({ email, senha });
+      if (!loginResult) {
         addToast("E-mail não encontrado.", "error");
         setLoading(false);
         return;
       }
 
-      // 2. Verifica a senha e status
-      const docSnapshot = querySnapshot.docs[0];
-      const docData = docSnapshot.data();
-      const docId = docSnapshot.id; // 🦈 AQUI ESTÁ O ID QUE VAMOS USAR NA URL
-
-      // Validação simples de senha (em produção use Auth Provider)
-      if (docData.senha !== senha) {
+      if (!loginResult.passwordValid) {
           addToast("Senha incorreta.", "error");
           setLoading(false);
           return;
       }
 
-      if (docData.status === 'pending') {
+      if (loginResult.status === 'pending') {
           addToast("Cadastro em análise. Aguarde aprovação.", "info");
           setLoading(false);
           return;
       }
 
-      // 3. SUCESSO: Redireciona para a página ESPECÍFICA deste ID
-      addToast(`Bem-vindo, ${docData.nome}!`, "success");
-      router.push(`/empresa/${docId}`);
+      if (loginResult.status === 'disabled') {
+          addToast("Acesso desativado. Contate a Atlética.", "error");
+          setLoading(false);
+          return;
+      }
 
-    } catch (error) {
+      addToast(`Bem-vindo, ${loginResult.nome}!`, "success");
+      router.push(`/empresa/${loginResult.id}`);
+
+    } catch (error: unknown) {
       console.error("Erro no login:", error);
       addToast("Erro de conexão.", "error");
       setLoading(false);

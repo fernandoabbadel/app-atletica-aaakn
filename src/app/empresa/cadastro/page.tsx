@@ -10,8 +10,7 @@ import Image from "next/image"; // 🦈 Importando Image
 import { useRouter } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
-import { db } from "../../../lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { createPartnerLead } from "../../../lib/partnersService";
 
 const PLANOS = [
     { id: 'ouro', nome: 'Ouro', valor: 'R$ 500', icon: Crown, color: 'text-yellow-500', border: 'border-yellow-500/50', bg: 'bg-yellow-500/10' },
@@ -101,20 +100,25 @@ export default function CompanyRegisterPage() {
       setIsLoading(true);
       
       try {
-          await addDoc(collection(db, "parceiros"), {
-              ...formData,
+          await createPartnerLead({
+              nome: formData.nome,
+              cnpj: formData.cnpj,
+              responsavel: formData.responsavel,
+              cpf: formData.cpf,
+              categoria: formData.categoria,
+              email: formData.email,
+              telefone: formData.telefone,
+              senha: formData.senha,
+              descricao: formData.descricao,
+              endereco: formData.endereco,
+              horario: formData.horario,
               tier: selectedPlan,
-              status: 'pending', 
-              createdAt: new Date().toISOString(),
-              vendasTotal: 0,
-              totalScans: 0,
-              cupons: []
           });
 
           addToast("Cadastro enviado para aprovação!", "success");
           setTimeout(() => router.push("/empresa"), 1500);
           
-      } catch (err) {
+      } catch (err: unknown) {
           console.error(err); // 🦈 Log do erro
           addToast("Erro ao salvar cadastro.", "error");
       } finally {

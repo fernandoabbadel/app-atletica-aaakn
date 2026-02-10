@@ -8,18 +8,14 @@ import {
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy, Timestamp } from "firebase/firestore";
-
-// Helper Base64
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
+import {
+  createPartnerScan,
+  fetchPartnerById,
+  fetchPartnerScans,
+  preparePartnerImageBase64,
+  updatePartnerProfile,
+  type PartnerRecord,
+} from "../../../lib/partnersService";
 
 // --- TIPAGEM ---
 interface Cupom {
@@ -34,7 +30,7 @@ interface EmpresaData {
     imgCapa?: string;
     totalScans?: number;
     cupons?: Cupom[];
-    createdAt?: Timestamp;
+    createdAt?: unknown;
     descricao?: string;
     insta?: string;
     whats?: string;
@@ -50,7 +46,7 @@ interface ScanData {
     valorEconomizado: string;
     data: string;
     hora: string;
-    timestamp: Date;
+    timestamp: unknown;
 }
 
 interface EditFormState {
@@ -61,6 +57,26 @@ interface EditFormState {
     imgLogo?: string;
     imgCapa?: string;
 }
+
+const formatPartnerCreatedAt = (raw: unknown): string => {
+  if (!raw) return new Date().toLocaleDateString();
+  if (raw instanceof Date) return raw.toLocaleDateString();
+  if (typeof raw === "string" || typeof raw === "number") {
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
+    return new Date().toLocaleDateString();
+  }
+
+  const obj = raw as { toDate?: () => Date };
+  if (typeof obj.toDate === "function") {
+    const date = obj.toDate();
+    if (date instanceof Date && !Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString();
+    }
+  }
+
+  return new Date().toLocaleDateString();
+};
 
 export default function EmpresaDashboard() {
   const { addToast } = useToast();
@@ -86,25 +102,25 @@ export default function EmpresaDashboard() {
     const fetchCompanyData = async () => {
         if (!empresaId) return;
         try {
-            // 1. Pega dados da Empresa
-            const docRef = doc(db, "parceiros", empresaId);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-                const data = { id: docSnap.id, ...docSnap.data() } as EmpresaData;
+            const [partnerData, partnerScans] = await Promise.all([
+              fetchPartnerById(empresaId, { forceRefresh: true }),
+              fetchPartnerScans({
+                partnerId: empresaId,
+                maxResults: 500,
+                forceRefresh: true,
+              }),
+            ]);
+
+            if (partnerData) {
+                const data = partnerData as EmpresaData;
                 setPartner(data);
                 setEditForm(data); // Prepara form
             } else {
                 addToast("Empresa não encontrada.", "error");
                 router.push("/empresa");
             }
-
-            // 2. Pega histórico de Scans dessa empresa
-            const qScans = query(collection(db, "scans"), where("empresaId", "==", empresaId), orderBy("data", "desc"));
-            const scanSnaps = await getDocs(qScans);
-            setHistory(scanSnaps.docs.map(d => ({id: d.id, ...d.data()} as ScanData)));
-
-        } catch (error) {
+            setHistory(partnerScans as ScanData[]);
+        } catch (error: unknown) {
             console.error(error);
         } finally {
             setLoading(false);
@@ -123,34 +139,26 @@ export default function EmpresaDashboard() {
           setScanning(false);
           
           try {
-              // ID 61: Registra Scan no Firebase
-              const newScan: Omit<ScanData, 'id'> = {
-                  empresaId: empresaId,
-                  empresa: partner.nome,
+              const scanResult = await createPartnerScan({
+                  partnerId: empresaId,
+                  partnerName: partner.nome,
                   usuario: "Aluno Exemplo", // Viria do QR Code lido
                   userId: "u123",
                   cupom: partner.cupons?.[0]?.titulo || "Desconto",
                   valorEconomizado: partner.cupons?.[0]?.valor || "R$ 0,00",
                   data: new Date().toLocaleDateString('pt-BR'),
                   hora: new Date().toLocaleTimeString('pt-BR'),
-                  timestamp: new Date()
-              };
-
-              const docRef = await addDoc(collection(db, "scans"), newScan);
-              const scanWithId = { id: docRef.id, ...newScan } as ScanData;
-              
-              // Atualiza contador na empresa
-              const newTotal = (partner.totalScans || 0) + 1;
-              await updateDoc(doc(db, "parceiros", empresaId), {
-                  totalScans: newTotal
               });
 
-              setHistory(prev => [scanWithId, ...prev]);
-              // 🦈 CORREÇÃO: Tipagem explícita para evitar erro 'implicitly has any type'
-              setPartner((prev) => prev ? ({...prev, totalScans: newTotal}) : null);
+              const nextTotal =
+                scanResult.totalScans > 0
+                  ? scanResult.totalScans
+                  : (partner.totalScans || 0) + 1;
+              setHistory(prev => [scanResult.scan as ScanData, ...prev]);
+              setPartner((prev) => prev ? ({...prev, totalScans: nextTotal}) : null);
               addToast("✅ Cupom Validado com Sucesso!", "success");
 
-          } catch(error) {
+          } catch(error: unknown) {
               console.error(error);
               addToast("Erro ao registrar scan.", "error");
           }
@@ -159,8 +167,10 @@ export default function EmpresaDashboard() {
 
   const handleSaveProfile = async () => {
       try {
-          const editPayload: Record<string, unknown> = { ...editForm };
-          await updateDoc(doc(db, "parceiros", empresaId), editPayload);
+          await updatePartnerProfile({
+            partnerId: empresaId,
+            data: editForm as Partial<PartnerRecord>,
+          });
           setPartner(prev => prev ? ({...prev, ...editForm}) : null);
           setShowEditModal(false);
           addToast("Perfil atualizado!", "success");
@@ -172,9 +182,13 @@ export default function EmpresaDashboard() {
   // Upload Simples
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
       if (e.target.files?.[0]) {
-          const b64 = await fileToBase64(e.target.files[0]);
-          // 🦈 CORREÇÃO: Tipagem explícita para evitar erro 'implicitly has any type'
-          setEditForm((prev) => ({...prev, [field]: b64}));
+          try {
+              const b64 = await preparePartnerImageBase64(e.target.files[0]);
+              setEditForm((prev) => ({...prev, [field]: b64}));
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Imagem muito grande ou inválida.", "error");
+          }
       }
   };
 
@@ -216,7 +230,7 @@ export default function EmpresaDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                     <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 shadow-lg">
                         <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Calendar size={10}/> Cliente Desde</p>
-                        <h3 className="text-xs font-black text-white">{partner.createdAt ? partner.createdAt.toDate().toLocaleDateString() : new Date().toLocaleDateString()}</h3>
+                        <h3 className="text-xs font-black text-white">{formatPartnerCreatedAt(partner.createdAt)}</h3>
                     </div>
                     <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 shadow-lg">
                         <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Ticket size={10}/> Total Scans</p>
