@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
   ArrowLeft, Plus, Trash2, Edit, Tag, ShoppingBag,
   Package, UploadCloud, X, PieChart,
@@ -10,11 +10,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
-import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-  query, orderBy, serverTimestamp, increment, Timestamp
+  approveStoreOrder,
+  createStoreCategory,
+  deleteStoreProduct,
+  fetchAdminStoreBundle,
+  setStoreOrderStatus,
+  setStoreReviewStatus,
+  upsertStoreProduct,
+} from "../../../lib/storeService";
+import {
+  Timestamp,
 } from "firebase/firestore";
 
 // --- TIPAGEM ---
@@ -49,7 +56,7 @@ interface CategoriaData {
     nome: string;
 }
 
-const DEFAULT_CATEGORIES = ["Vestuário", "Acessórios", "Kits", "Ingressos"];
+const DEFAULT_CATEGORIES = ["VestuÃ¡rio", "AcessÃ³rios", "Kits", "Ingressos"];
 
 export default function AdminLojaPage() {
   const { addToast } = useToast();
@@ -79,90 +86,83 @@ export default function AdminLojaPage() {
   const [categoriaNome, setCategoriaNome] = useState("");
   const [savingCategoria, setSavingCategoria] = useState(false);
   const tabs = [
-    { id: 'dashboard', label: 'Visão Geral', icon: PieChart },
+    { id: 'dashboard', label: 'VisÃ£o Geral', icon: PieChart },
     { id: 'produtos', label: 'Produtos', icon: Package },
     { id: 'pedidos', label: 'Pedidos Pendentes', icon: ShoppingBag },
-    { id: 'reviews', label: 'Avaliações', icon: MessageSquare },
+    { id: 'reviews', label: 'AvaliaÃ§Ãµes', icon: MessageSquare },
   ] as const;
 
-  // FETCH DATA
+    const loadStoreData = useCallback(async (forceRefresh = true) => {
+      try {
+          const bundle = await fetchAdminStoreBundle({
+              productsLimit: 500,
+              categoriesLimit: 300,
+              ordersLimit: 1200,
+              reviewsLimit: 900,
+              forceRefresh,
+          });
+
+          setProdutos(bundle.produtos as unknown as ProdutoAdmin[]);
+          setCategorias(bundle.categorias as unknown as CategoriaData[]);
+
+          const ordersList = (bundle.pedidos as unknown as Pedido[]).sort(
+              (left, right) =>
+                  ((right.createdAt as Timestamp | undefined)?.seconds || 0) -
+                  ((left.createdAt as Timestamp | undefined)?.seconds || 0)
+          );
+          setPedidos(ordersList);
+
+          const reviewsList = (bundle.reviews as unknown as Review[]).sort(
+              (left, right) =>
+                  ((right.createdAt as Timestamp | undefined)?.seconds || 0) -
+                  ((left.createdAt as Timestamp | undefined)?.seconds || 0)
+          );
+          setReviews(reviewsList);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar loja admin.", "error");
+      }
+  }, [addToast]);
+
   useEffect(() => {
-    // Produtos
-    const unsubProds = onSnapshot(query(collection(db, "produtos"), orderBy("nome")), (snap) => 
-        setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() } as ProdutoAdmin))));
-    
-    // Categorias
-    const unsubCats = onSnapshot(query(collection(db, "categorias"), orderBy("nome")), (snap) => 
-        setCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() } as CategoriaData))));
-
-    // Pedidos (Sem orderBy para evitar erro de índice se não tiver)
-    const unsubPedidos = onSnapshot(collection(db, "orders"), (snap) => {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Pedido));
-        // Ordenação manual por data
-        list.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setPedidos(list);
-    });
-
-    // Reviews (Sem orderBy para evitar erro de índice)
-    const unsubReviews = onSnapshot(collection(db, "reviews"), (snap) => {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Review));
-        // Ordenação manual
-        list.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setReviews(list);
-    });
-
-    return () => { unsubProds(); unsubCats(); unsubPedidos(); unsubReviews(); };
-  }, []);
+      void loadStoreData(true);
+  }, [loadStoreData]);
 
   // --- ACTIONS ---
 
-  const handleAprovarPedido = async (pedido: Pedido) => {
+    const handleAprovarPedido = async (pedido: Pedido) => {
       if(!confirm(`Confirmar pagamento de ${pedido.userName}?`)) return;
       
       try {
-          // 1. Atualiza status do pedido
-          await updateDoc(doc(db, "orders", pedido.id), { 
-              status: 'approved', 
-              approvedBy: user?.uid || 'admin',
-              updatedAt: serverTimestamp() 
+          await approveStoreOrder({
+              orderId: pedido.id,
+              userId: pedido.userId,
+              userName: pedido.userName,
+              productName: pedido.productName,
+              price: pedido.price || 0,
+              approvedBy: user?.uid || "admin",
           });
 
-          // 2. Credita Fidelidade e XP (Integração Gamificação)
-          const xpGain = Math.floor((pedido.price || 0) * 10); // 10 XP por real
-          
-          if (pedido.userId) {
-              const userRef = doc(db, "users", pedido.userId);
-              await updateDoc(userRef, {
-                  xp: increment(xpGain),
-                  selos: increment(1)
-              });
-
-              // 3. Notifica usuário
-              await addDoc(collection(db, "notifications"), {
-                  userId: pedido.userId,
-                  title: "Pagamento Aprovado! 🎉",
-                  message: `Sua compra de ${pedido.productName} foi confirmada. Você ganhou ${xpGain} XP!`,
-                  read: false,
-                  createdAt: serverTimestamp()
-              });
-          }
-
           addToast("Pedido aprovado e pontos creditados!", "success");
-      } catch (error) {
+          await loadStoreData(true);
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao aprovar pedido.", "error");
       }
   };
 
-  const handleReviewAction = async (reviewId: string, action: 'approved' | 'rejected') => {
+    const handleReviewAction = async (reviewId: string, action: 'approved' | 'rejected') => {
       try {
-          // Define approved como booleano (true/false) e status como string
-          await updateDoc(doc(db, "reviews", reviewId), { 
+          await setStoreReviewStatus({
+              reviewId,
               status: action,
-              approved: action === 'approved' 
           });
           addToast(`Review ${action === 'approved' ? 'aprovada' : 'rejeitada'}.`, "info");
-      } catch { addToast("Erro.", "error"); }
+          await loadStoreData(true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro.", "error");
+      }
   };
 
   // --- HELPER FUNCS ---
@@ -174,7 +174,7 @@ export default function AdminLojaPage() {
   }, [categorias]);
 
   // Handlers de Produto
-  const handleSaveProduto = async () => {
+    const handleSaveProduto = async () => {
       if (saving) return;
       setSaving(true);
       try {
@@ -183,13 +183,19 @@ export default function AdminLojaPage() {
               variantes: variantesTemp, 
               caracteristicas: featuresInput.split(",").map(s=>s.trim()).filter(Boolean),
               estoque: variantesTemp.reduce((a,b)=>a+Number(b.estoque),0),
-              updatedAt: serverTimestamp() 
+              updatedAt: new Date().toISOString() 
           };
-          if(isEditing && formData.id) await updateDoc(doc(db,"produtos",formData.id), payload);
-          else await addDoc(collection(db,"produtos"), {...payload, createdAt: serverTimestamp(), vendidos: 0, cliques: 0});
+          await upsertStoreProduct({
+              productId: isEditing ? formData.id : undefined,
+              data: payload,
+          });
           setShowModalProduto(false);
           addToast("Salvo com sucesso!", "success");
-      } catch { addToast("Erro ao salvar.", "error"); }
+          await loadStoreData(true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao salvar.", "error");
+      }
       setSaving(false);
   };
 
@@ -209,15 +215,19 @@ export default function AdminLojaPage() {
       setNovaVariante({ tamanho: "", cor: "", estoque: 0 });
   };
 
-  // --- GESTÃO CATEGORIAS ---
-  const handleCreateCategoria = async () => {
+  // --- GESTÃƒO CATEGORIAS ---
+    const handleCreateCategoria = async () => {
       if(!categoriaNome) return;
       setSavingCategoria(true);
       try {
-          await addDoc(collection(db, "categorias"), { nome: categoriaNome });
+          await createStoreCategory(categoriaNome);
           setCategoriaNome("");
           addToast("Categoria criada!", "success");
-      } catch { addToast("Erro.", "error"); }
+          await loadStoreData(true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro.", "error");
+      }
       finally { setSavingCategoria(false); }
   };
 
@@ -233,7 +243,7 @@ export default function AdminLojaPage() {
       <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <h1 className="text-lg font-black text-white uppercase tracking-tighter">Gestão da Loja</h1>
+          <h1 className="text-lg font-black text-white uppercase tracking-tighter">GestÃ£o da Loja</h1>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowModalCategoria(true)} className="bg-zinc-800 border border-zinc-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-zinc-700 transition"><Tag size={16} /> Categoria</button>
@@ -255,7 +265,7 @@ export default function AdminLojaPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in">
                 <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Total Vendas</p><p className="text-3xl font-black text-emerald-400 mt-2">R$ {pedidos.filter(p=>p.status==='approved').reduce((a,b)=>a+(b.price || 0),0).toLocaleString('pt-BR')}</p></div>
                 <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Pedidos Pendentes</p><p className="text-3xl font-black text-yellow-500 mt-2">{pedidos.filter(p=>p.status==='pendente').length}</p></div>
-                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Valor em Gôndola</p><p className="text-3xl font-black text-blue-400 mt-2">R$ {stats.valorEstoque.toLocaleString('pt-BR')}</p></div>
+                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Valor em GÃ´ndola</p><p className="text-3xl font-black text-blue-400 mt-2">R$ {stats.valorEstoque.toLocaleString('pt-BR')}</p></div>
             </div>
         )}
 
@@ -274,7 +284,7 @@ export default function AdminLojaPage() {
                   <div className="flex gap-2">
                     <Link href={`/loja/${prod.id}`} target="_blank" className="p-2.5 bg-zinc-800 rounded-lg text-blue-400 hover:bg-zinc-700"><ExternalLink size={18}/></Link>
                     <button onClick={() => { setFormData(prod); setFeaturesInput(prod.caracteristicas?.join(", ") || ""); setVariantesTemp(prod.variantes || []); setIsEditing(true); setShowModalProduto(true); }} className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700"><Edit size={18}/></button>
-                    <button onClick={async () => { if(confirm("Deletar?")) await deleteDoc(doc(db,"produtos",prod.id)); }} className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10"><Trash2 size={18}/></button>
+                    <button onClick={async () => { if(confirm("Deletar?")) { await deleteStoreProduct(prod.id); await loadStoreData(true); } }} className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10"><Trash2 size={18}/></button>
                   </div>
                 </div>
             ))}
@@ -297,12 +307,12 @@ export default function AdminLojaPage() {
                         </div>
                         <div className="flex flex-col gap-2">
                             <button onClick={() => handleAprovarPedido(order)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-emerald-500 flex items-center gap-2 shadow-lg"><CheckCircle size={14}/> Aprovar Pagamento</button>
-                            <button onClick={() => updateDoc(doc(db, "orders", order.id), { status: 'rejected' })} className="bg-red-900/20 text-red-500 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-red-900/40 flex items-center gap-2"><XCircle size={14}/> Rejeitar</button>
+                            <button onClick={async () => { await setStoreOrderStatus({ orderId: order.id, status: "rejected" }); await loadStoreData(true); }} className="bg-red-900/20 text-red-500 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-red-900/40 flex items-center gap-2"><XCircle size={14}/> Rejeitar</button>
                         </div>
                     </div>
                 ))}
                 
-                <h3 className="text-xs font-bold text-zinc-500 uppercase mt-8 mb-2">Histórico Recente</h3>
+                <h3 className="text-xs font-bold text-zinc-500 uppercase mt-8 mb-2">HistÃ³rico Recente</h3>
                 <div className="space-y-2 opacity-60">
                     {pedidos.filter(o => o.status !== 'pendente').slice(0, 5).map(order => (
                         <div key={order.id} className="flex justify-between items-center p-3 bg-zinc-950 rounded-lg border border-zinc-900">
@@ -365,7 +375,7 @@ export default function AdminLojaPage() {
                  <div className="space-y-3">
                      <input type="text" placeholder="Nome" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.nome || ""} onChange={e => setFormData({...formData, nome: e.target.value})}/>
                      <div className="flex gap-2">
-                         <input type="number" placeholder="Preço" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.preco || ""} onChange={e => setFormData({...formData, preco: Number(e.target.value)})}/>
+                         <input type="number" placeholder="PreÃ§o" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.preco || ""} onChange={e => setFormData({...formData, preco: Number(e.target.value)})}/>
                          <select className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-400" value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value})}>
                              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                          </select>
@@ -405,3 +415,5 @@ export default function AdminLojaPage() {
     </div>
   );
 }
+
+

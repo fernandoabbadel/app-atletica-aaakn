@@ -1,4 +1,4 @@
-// src/app/loja/page.tsx
+﻿// src/app/loja/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -8,11 +8,9 @@ import {
   ArrowLeft, ShoppingBag, Search, 
   Package, Zap, AlertCircle 
 } from "lucide-react";
-// addToast removido pois não estava sendo usado, se precisar re-importe
+// addToast removido pois nÃ£o estava sendo usado, se precisar re-importe
 // import { useToast } from "../../context/ToastContext"; 
-import { db } from "../../lib/firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-
+import { fetchStoreProducts } from "../../lib/storeService";
 // --- TIPAGEM EXATA DO SEU FIREBASE ---
 interface Variante {
   id: string;
@@ -38,8 +36,7 @@ interface Produto {
   variantes: Variante[];
   caracteristicas?: string[];
   cliques: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createdAt: any; 
+  createdAt?: unknown;
 }
 
 // Helper de Cores para as Tags
@@ -62,35 +59,40 @@ export default function LojaPage() {
   const [filtroCategoria, setFiltroCategoria] = useState("Todos");
   const [cartCount, setCartCount] = useState(0);
 
-  // 1. CARREGAR DADOS DO FIREBASE
+    // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
-    const q = query(collection(db, "produtos"), orderBy("nome"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const lista = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Produto[];
-      setProdutos(lista);
-      setLoading(false);
-    });
+    let mounted = true;
+
+    const loadProducts = async () => {
+      try {
+        const rows = await fetchStoreProducts({ maxResults: 260, forceRefresh: true });
+        if (!mounted) return;
+        setProdutos(rows as unknown as Produto[]);
+      } catch (error: unknown) {
+        console.error(error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadProducts();
 
     // Atualizar contador do carrinho (LocalStorage)
     const updateCartCount = () => {
         const raw = localStorage.getItem("cart");
         if (raw) {
-            const cart = JSON.parse(raw);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const total = cart.reduce((acc: number, item: any) => acc + (item.qtd || 1), 0);
+            const cart = JSON.parse(raw) as Array<{ qtd?: number }>;
+            const total = cart.reduce((acc, item) => acc + (item.qtd || 1), 0);
             setCartCount(total);
         }
     };
     
     updateCartCount();
-    // Pequeno hack para ouvir mudanças no storage se o usuário voltar do detalhe
+    // Pequeno hack para ouvir mudancas no storage se o usuario voltar do detalhe
     window.addEventListener('storage', updateCartCount);
     
     return () => { 
-        unsubscribe(); 
+        mounted = false;
         window.removeEventListener('storage', updateCartCount);
     };
   }, []);
@@ -138,7 +140,7 @@ export default function LojaPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"/>
             <input 
                 type="text" 
-                placeholder="O que você procura?" 
+                placeholder="O que vocÃª procura?" 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500 outline-none transition placeholder:text-zinc-600"
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
@@ -254,7 +256,7 @@ export default function LojaPage() {
         )}
       </main>
 
-      {/* BANNER PROMOCIONAL XP (INTEGRAÇÃO COM CONQUISTAS/FIDELIDADE) */}
+      {/* BANNER PROMOCIONAL XP (INTEGRAÃ‡ÃƒO COM CONQUISTAS/FIDELIDADE) */}
       <div className="fixed bottom-20 left-0 w-full px-6 pointer-events-none">
           <div className="bg-gradient-to-r from-yellow-600/90 to-yellow-800/90 backdrop-blur-md p-3 rounded-xl border border-yellow-500/30 shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-10 duration-700 pointer-events-auto">
               <div className="bg-black/20 p-2 rounded-lg text-yellow-200"><Zap size={18}/></div>

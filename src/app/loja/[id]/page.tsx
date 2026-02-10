@@ -1,15 +1,17 @@
-// src/app/loja/[id]/page.tsx
+﻿// src/app/loja/[id]/page.tsx
 "use client";
 
 import Image from "next/image";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "../../../lib/firebase";
-import { 
-    doc, onSnapshot, collection, addDoc, serverTimestamp, 
-    query, where, updateDoc, arrayUnion, arrayRemove, Timestamp 
-} from "firebase/firestore";
-import { 
+import {
+    createStoreOrder,
+    createStoreReview,
+    fetchStoreProductDetail,
+    toggleStoreProductLike,
+} from "../../../lib/storeService";
+import { Timestamp } from "firebase/firestore";
+import {
     ArrowLeft, ShoppingBag, Heart, Star, Clock, 
     CheckCircle, AlertTriangle, Loader2 
 } from "lucide-react";
@@ -47,7 +49,7 @@ interface Order {
     price: number;
     status: 'pendente' | 'approved' | 'rejected' | 'delivered';
     createdAt: Timestamp | null;
-    updatedAt?: Timestamp | null; // Data da aprovação
+    updatedAt?: Timestamp | null; // Data da aprovaÃ§Ã£o
 }
 
 export default function DetalheProdutoPage() {
@@ -59,68 +61,62 @@ export default function DetalheProdutoPage() {
     // Estados
     const [produto, setProduto] = useState<Produto | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
-    const [userOrder, setUserOrder] = useState<Order | null>(null); // Último pedido deste produto
+    const [userOrder, setUserOrder] = useState<Order | null>(null); // Ãšltimo pedido deste produto
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'detalhes' | 'avaliacoes'>('detalhes');
     
-    // Estado do Formulário de Review
+    // Estado do FormulÃ¡rio de Review
     const [rating, setRating] = useState(5);
     const [comment, setComment] = useState("");
     const [submittingReview, setSubmittingReview] = useState(false);
 
-    // 1. CARREGAR DADOS
-    useEffect(() => {
-        if (!params.id) return;
-        const prodId = params.id as string;
+        const productId = typeof params.id === "string" ? params.id : "";
 
-        // A. Produto
-        const unsubProd = onSnapshot(doc(db, "produtos", prodId), (snap) => {
-            if (snap.exists()) setProduto({ id: snap.id, ...snap.data() } as Produto);
-            else setLoading(false);
-        });
-
-        // B. Reviews
-        const qReviews = query(collection(db, "reviews"), where("productId", "==", prodId));
-        
-        const unsubReviews = onSnapshot(qReviews, (snap) => {
-            const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Review));
-            // Ordenação manual (Do mais novo para o mais velho)
-            lista.sort((a, b) => {
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-                return dateB - dateA; 
-            });
-            setReviews(lista);
-        });
-
-        // C. Verificar Pedido do Usuário (Para liberar avaliação ou bloquear compra)
-        let unsubOrder = () => {};
-        if (user) {
-            const qOrder = query(
-                collection(db, "orders"), 
-                where("userId", "==", user.uid),
-                where("productId", "==", prodId)
-            );
-            
-            unsubOrder = onSnapshot(qOrder, (snap) => {
-                if (!snap.empty) {
-                    const ordersList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-                    // 🦈 FIX ID 10: Ordena para pegar SEMPRE o mais recente
-                    ordersList.sort((a, b) => {
-                        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-                        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-                        return dateB - dateA;
-                    });
-                    setUserOrder(ordersList[0]); 
-                }
-            });
+    const refreshProductData = useCallback(async (forceRefresh = true) => {
+        if (!productId) {
+            setLoading(false);
+            return;
         }
 
-        setLoading(false);
-        return () => { unsubProd(); unsubReviews(); unsubOrder(); };
-    }, [params.id, user]);
+        setLoading(true);
+        try {
+            const bundle = await fetchStoreProductDetail({
+                productId,
+                userId: user?.uid || null,
+                reviewsLimit: 120,
+                ordersLimit: 40,
+                forceRefresh,
+            });
 
-    // 2. LÓGICA DE PERMISSÃO DE AVALIAÇÃO (5 DIAS APÓS APROVAÇÃO)
+            setProduto(bundle.produto as unknown as Produto | null);
+
+            const reviewsList = (bundle.reviews as unknown as Review[]).sort((left, right) => {
+                const leftDate = left.createdAt?.toDate ? left.createdAt.toDate().getTime() : 0;
+                const rightDate = right.createdAt?.toDate ? right.createdAt.toDate().getTime() : 0;
+                return rightDate - leftDate;
+            });
+            setReviews(reviewsList);
+
+            const userOrders = (bundle.userOrders as unknown as Order[]).sort((left, right) => {
+                const leftDate = left.createdAt?.toDate ? left.createdAt.toDate().getTime() : 0;
+                const rightDate = right.createdAt?.toDate ? right.createdAt.toDate().getTime() : 0;
+                return rightDate - leftDate;
+            });
+            setUserOrder(userOrders[0] || null);
+        } catch (error: unknown) {
+            console.error(error);
+            addToast("Erro ao carregar produto.", "error");
+        } finally {
+            setLoading(false);
+        }
+    }, [productId, user?.uid, addToast]);
+
+    // 1. CARREGAR DADOS
+    useEffect(() => {
+        void refreshProductData(true);
+    }, [refreshProductData]);
+
+    // 2. LÃ“GICA DE PERMISSÃƒO DE AVALIAÃ‡ÃƒO (5 DIAS APÃ“S APROVAÃ‡ÃƒO)
     const canReview = useMemo(() => {
         if (!userOrder || userOrder.status !== 'approved') return false;
         
@@ -135,75 +131,79 @@ export default function DetalheProdutoPage() {
         return diffDays <= 5; 
     }, [userOrder]);
 
-    // 🦈 FIX ID 10: Verifica se existe um pedido ATIVO que impede nova compra
+    // ðŸ¦ˆ FIX ID 10: Verifica se existe um pedido ATIVO que impede nova compra
     const isBlockingOrder = userOrder && (userOrder.status === 'pendente' || userOrder.status === 'approved');
 
     // 3. ACTIONS
-    const handleLike = async () => {
+        const handleLike = async () => {
         if (!user || !produto) return;
         const isLiked = produto.likes?.includes(user.uid);
-        const ref = doc(db, "produtos", produto.id);
-        await updateDoc(ref, { 
-            likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) 
-        });
+
+        try {
+            await toggleStoreProductLike({
+                productId: produto.id,
+                userId: user.uid,
+                currentlyLiked: Boolean(isLiked),
+            });
+
+            setProduto((prev) => {
+                if (!prev) return prev;
+                const likes = Array.isArray(prev.likes) ? [...prev.likes] : [];
+                if (isLiked) {
+                    return { ...prev, likes: likes.filter((entry) => entry !== user.uid) };
+                }
+                return { ...prev, likes: [...likes, user.uid] };
+            });
+        } catch (error: unknown) {
+            console.error(error);
+            addToast("Erro ao curtir produto.", "error");
+        }
     };
 
-    const handleBuy = async () => {
+        const handleBuy = async () => {
         if (!user || !produto) return router.push("/login");
 
         const confirm = window.confirm(`Confirmar pedido de ${produto.nome}?`);
         if (!confirm) return;
 
         try {
-            // Cria o Pedido
-            await addDoc(collection(db, "orders"), {
+            await createStoreOrder({
                 userId: user.uid,
-                userName: user.nome,
+                userName: user.nome || "Aluno",
                 productId: produto.id,
                 productName: produto.nome,
                 price: produto.preco,
-                status: "pendente", 
-                createdAt: serverTimestamp()
             });
 
-            // Notificação
-            await addDoc(collection(db, "notifications"), {
-                userId: user.uid,
-                title: "Compra em Análise",
-                message: `Seu pedido de ${produto.nome} foi enviado para aprovação.`,
-                link: `/loja/${produto.id}`,
-                read: false,
-                type: "order",
-                createdAt: serverTimestamp()
-            });
-
-            addToast("Pedido enviado! Aguarde a liberação.", "success");
-        } catch (error) {
+            addToast("Pedido enviado! Aguarde a liberacao.", "success");
+            await refreshProductData(true);
+        } catch (error: unknown) {
             console.error(error);
             addToast("Erro ao realizar pedido.", "error");
         }
     };
 
-    const handleSubmitReview = async (e: React.FormEvent) => {
+        const handleSubmitReview = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !produto) return;
         setSubmittingReview(true);
 
         try {
-            await addDoc(collection(db, "reviews"), {
+            await createStoreReview({
                 productId: produto.id,
                 userId: user.uid,
-                userName: user.nome,
+                userName: user.nome || "Aluno",
                 userAvatar: user.foto || "",
-                rating: rating,
-                comment: comment,
-                createdAt: serverTimestamp()
+                rating,
+                comment,
             });
             
             setComment("");
             setRating(5);
-            addToast("Avaliação enviada! +10XP", "success");
-        } catch {
+            addToast("Avaliacao enviada! +10XP", "success");
+            await refreshProductData(true);
+        } catch (error: unknown) {
+            console.error(error);
             addToast("Erro ao avaliar.", "error");
         } finally {
             setSubmittingReview(false);
@@ -211,7 +211,7 @@ export default function DetalheProdutoPage() {
     };
 
     if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
-    if (!produto) return <div className="h-screen bg-[#050505] flex items-center justify-center text-white">Produto não encontrado.</div>;
+    if (!produto) return <div className="h-screen bg-[#050505] flex items-center justify-center text-white">Produto nÃ£o encontrado.</div>;
 
     const isLiked = produto.likes?.includes(user?.uid || "");
 
@@ -235,7 +235,7 @@ export default function DetalheProdutoPage() {
                 </button>
             </div>
 
-            {/* CONTEÚDO */}
+            {/* CONTEÃšDO */}
             <div className="relative z-30 -mt-10 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 p-6 shadow-2xl min-h-[60vh]">
                 
                 <div className="flex justify-between items-start mb-6">
@@ -254,22 +254,22 @@ export default function DetalheProdutoPage() {
 
                 <div className="flex gap-4 border-b border-zinc-800 mb-6">
                     <button onClick={() => setActiveTab('detalhes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'detalhes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Detalhes</button>
-                    <button onClick={() => setActiveTab('avaliacoes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Avaliações ({reviews.length})</button>
+                    <button onClick={() => setActiveTab('avaliacoes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>AvaliaÃ§Ãµes ({reviews.length})</button>
                 </div>
 
                 {activeTab === 'detalhes' && (
                     <div className="space-y-6 animate-in fade-in">
                         <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{produto.descricao}</p>
                         
-                        {/* 🦈 STATUS DO PEDIDO OU BOTÃO DE COMPRA */}
+                        {/* ðŸ¦ˆ STATUS DO PEDIDO OU BOTÃƒO DE COMPRA */}
                         <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
                             {isBlockingOrder ? (
                                 <div className="text-center animate-in zoom-in-95">
                                     {userOrder?.status === 'pendente' && (
                                         <div className="flex flex-col items-center gap-2 text-yellow-500">
                                             <Clock size={32}/>
-                                            <h3 className="font-bold uppercase">Aguardando Aprovação</h3>
-                                            <p className="text-xs text-zinc-400">O admin está verificando seu pedido.</p>
+                                            <h3 className="font-bold uppercase">Aguardando AprovaÃ§Ã£o</h3>
+                                            <p className="text-xs text-zinc-400">O admin estÃ¡ verificando seu pedido.</p>
                                         </div>
                                     )}
                                     {userOrder?.status === 'approved' && (
@@ -297,7 +297,7 @@ export default function DetalheProdutoPage() {
                     <div className="space-y-6 animate-in fade-in">
                         {canReview ? (
                             <form onSubmit={handleSubmitReview} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 mb-6">
-                                <h3 className="text-sm font-bold text-white uppercase mb-3">Deixe sua avaliação</h3>
+                                <h3 className="text-sm font-bold text-white uppercase mb-3">Deixe sua avaliaÃ§Ã£o</h3>
                                 <div className="flex gap-2 mb-4">
                                     {[1,2,3,4,5].map(star => (
                                         <button key={star} type="button" onClick={() => setRating(star)}>
@@ -314,14 +314,14 @@ export default function DetalheProdutoPage() {
                                     required
                                 />
                                 <button disabled={submittingReview} type="submit" className="w-full mt-3 bg-emerald-600 py-2 rounded-lg font-bold text-xs uppercase hover:bg-emerald-500 transition">
-                                    {submittingReview ? "Enviando..." : "Publicar Avaliação"}
+                                    {submittingReview ? "Enviando..." : "Publicar AvaliaÃ§Ã£o"}
                                 </button>
                             </form>
                         ) : (
                             userOrder?.status === 'approved' && (
                                 <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-center">
                                     <AlertTriangle size={24} className="mx-auto text-red-500 mb-2"/>
-                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliação expirado ou produto ainda não aprovado.</p>
+                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliaÃ§Ã£o expirado ou produto ainda nÃ£o aprovado.</p>
                                 </div>
                             )
                         )}
