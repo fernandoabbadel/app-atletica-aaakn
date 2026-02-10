@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
   ArrowLeft, Edit, Save, Plus, Trash2, CheckCircle, X, 
   LayoutDashboard, CreditCard, DollarSign, Crown, 
@@ -12,8 +12,19 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc, Timestamp } from "firebase/firestore";
+import {
+  approvePlanRequest,
+  deletePlan,
+  deletePlanRequestAndUnlock,
+  fetchMarketingBannerConfig,
+  fetchPlanCatalog,
+  fetchPlanRequests,
+  fetchPlanSubscriptions,
+  rejectPlanRequest,
+  saveMarketingBannerConfig,
+  seedDefaultPlans,
+  upsertPlan,
+} from "../../../lib/plansService";
 
 // --- TIPAGEM ESTRITA ---
 interface Plano {
@@ -42,7 +53,7 @@ interface Solicitacao {
     planoNome: string;
     valor: number;
     comprovanteUrl: string;
-    dataSolicitacao: Timestamp | null;
+    dataSolicitacao: unknown;
     status: 'pendente' | 'aprovado' | 'rejeitado';
 }
 
@@ -102,15 +113,33 @@ export default function AdminPlanosPage() {
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
   const [editingPlan, setEditingPlan] = useState<Plano | null>(null);
   const [bannerConfig, setBannerConfig] = useState<BannerConfig>({ titulo: "VIRE TUBARÃO REI", subtitulo: "Domine o Oceano", cor: "dourado" });
+  const [loadingData, setLoadingData] = useState(true);
+
+  const loadAdminPlanosData = useCallback(async (forceRefresh = false) => {
+    setLoadingData(true);
+    try {
+      const [planRows, subscriptionRows, requestRows, bannerRows] = await Promise.all([
+        fetchPlanCatalog({ maxResults: 50, forceRefresh }),
+        fetchPlanSubscriptions({ maxResults: 700, forceRefresh }),
+        fetchPlanRequests({ maxResults: 280, forceRefresh }),
+        fetchMarketingBannerConfig({ forceRefresh }),
+      ]);
+
+      setPlanos(planRows as Plano[]);
+      setAssinaturas(subscriptionRows as Assinatura[]);
+      setSolicitacoes(requestRows as Solicitacao[]);
+      setBannerConfig(bannerRows as BannerConfig);
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar dados dos planos.", "error");
+    } finally {
+      setLoadingData(false);
+    }
+  }, [addToast]);
 
   useEffect(() => {
-    const unsubPlanos = onSnapshot(query(collection(db, "planos"), orderBy("precoVal", "asc")), (snap) => setPlanos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Plano))));
-    const unsubAssinaturas = onSnapshot(query(collection(db, "assinaturas"), orderBy("dataInicio", "desc")), (snap) => { setAssinaturas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Assinatura))); });
-    const unsubSolicitacoes = onSnapshot(query(collection(db, "solicitacoes_adesao"), orderBy("dataSolicitacao", "desc")), (snap) => setSolicitacoes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Solicitacao))));
-    getDoc(doc(db, "app_config", "marketing_banner")).then(snap => { if (snap.exists()) setBannerConfig(snap.data() as BannerConfig); });
-
-    return () => { unsubPlanos(); unsubAssinaturas(); unsubSolicitacoes(); };
-  }, []);
+    void loadAdminPlanosData();
+  }, [loadAdminPlanosData]);
 
   // --- LÓGICA DE INTEGRAÇÃO (O CÉREBRO) ---
   const getTierFromPlan = (planName: string, planIcon: string): 'lenda' | 'atleta' | 'cardume' | 'bicho' => {
@@ -126,9 +155,6 @@ export default function AdminPlanosPage() {
       setIsSaving(true);
 
       try {
-          await updateDoc(doc(db, "solicitacoes_adesao", sol.id), { status: "aprovado" });
-
-          // 1. Busca dados REAIS do plano para consistência
           const planoRef = planos.find(p => p.id === sol.planoId) || planos.find(p => p.nome === sol.planoNome);
           
           // Defaults seguros
@@ -139,38 +165,46 @@ export default function AdminPlanosPage() {
           const desconto = planoRef?.descontoLoja || 0;      
           const novoTier = getTierFromPlan(sol.planoNome, iconPlano);
 
-          // 2. APLICA A "MESMA LÍNGUA" NO PERFIL DO USUÁRIO
-          // 🦈 ATUALIZAÇÃO: Gravando 'plano_badge' para garantir exibição correta e resetando 'plano_status'
-          await updateDoc(doc(db, "users", sol.userId), {
-              plano: sol.planoNome,
-              plano_badge: sol.planoNome, 
-              plano_cor: corPlano,
-              plano_icon: iconPlano,
-              tier: novoTier,
-              xpMultiplier: xpMult,        
-              nivel_prioridade: prioridade, 
-              desconto_loja: desconto,      
-              plano_status: "ativo", // LIBERA O USUÁRIO AQUI
-              data_adesao: new Date().toISOString()
-          });
-
-          // 3. Log Financeiro
-          await addDoc(collection(db, "assinaturas"), {
-              aluno: sol.userName,
-              turma: sol.userTurma,
+          await approvePlanRequest({
+              requestId: sol.id,
+              userId: sol.userId,
+              userName: sol.userName,
+              userTurma: sol.userTurma,
               planoId: sol.planoId,
               planoNome: sol.planoNome,
-              valorPago: sol.valor,
-              dataInicio: new Date().toLocaleDateString('pt-BR'),
-              status: 'ativo',
-              metodo: 'pix',
-              userId: sol.userId
+              valor: sol.valor,
+              userPatch: {
+                  plano: sol.planoNome,
+                  planoBadge: sol.planoNome,
+                  planoCor: corPlano,
+                  planoIcon: iconPlano,
+                  tier: novoTier,
+                  xpMultiplier: xpMult,
+                  nivelPrioridade: prioridade,
+                  descontoLoja: desconto,
+              }
           });
+
+          setSolicitacoes(prev => prev.map(entry => entry.id === sol.id ? { ...entry, status: "aprovado" } : entry));
+          setAssinaturas(prev => ([
+              {
+                  id: `local_${Date.now()}`,
+                  aluno: sol.userName,
+                  turma: sol.userTurma,
+                  planoId: sol.planoId,
+                  planoNome: sol.planoNome,
+                  valorPago: sol.valor,
+                  dataInicio: new Date().toLocaleDateString('pt-BR'),
+                  status: 'ativo',
+                  metodo: 'pix',
+              },
+              ...prev
+          ]));
 
           addToast(`Adesão Aprovada! ${sol.userName} agora tem ${desconto}% OFF e Prioridade ${prioridade} 🦈`, "success");
           setViewingReceipt(null); 
 
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro na integração do plano.", "error");
       } finally {
@@ -181,14 +215,12 @@ export default function AdminPlanosPage() {
   const handleReject = async (sol: Solicitacao) => {
       if(!confirm("Rejeitar solicitação?")) return;
       try {
-          await updateDoc(doc(db, "solicitacoes_adesao", sol.id), { status: "rejeitado" });
-          
-          // 🦈 CORREÇÃO: Se rejeitar, também libera o status do usuário para ele tentar de novo
-          await updateDoc(doc(db, "users", sol.userId), { plano_status: "ativo" });
+          await rejectPlanRequest({ requestId: sol.id, userId: sol.userId });
+          setSolicitacoes(prev => prev.map(entry => entry.id === sol.id ? { ...entry, status: "rejeitado" } : entry));
           
           addToast("Solicitação rejeitada e usuário liberado.", "info");
           setViewingReceipt(null);
-      } catch(error) { console.error(error); addToast("Erro.", "error"); }
+      } catch(error: unknown) { console.error(error); addToast("Erro.", "error"); }
   };
 
   // 🦈 NOVA FUNÇÃO: DESTRAVA USUÁRIO NA FORÇA BRUTA
@@ -196,14 +228,11 @@ export default function AdminPlanosPage() {
       if(!confirm("⚠️ EXCLUIR REGISTRO?\nIsso vai apagar a solicitação e destravar o usuário para tentar novamente.")) return;
       
       try {
-          // 1. Apaga a solicitação travada
-          await deleteDoc(doc(db, "solicitacoes_adesao", sol.id));
-          
-          // 2. Reseta o status do usuário para 'ativo' (sem pendências)
-          await updateDoc(doc(db, "users", sol.userId), { plano_status: "ativo" });
+          await deletePlanRequestAndUnlock({ requestId: sol.id, userId: sol.userId });
+          setSolicitacoes(prev => prev.filter(entry => entry.id !== sol.id));
           
           addToast("Registro excluído e usuário destravado!", "success");
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao excluir.", "error");
       }
@@ -213,7 +242,17 @@ export default function AdminPlanosPage() {
   const handleSeedPlanos = async () => {
       if(!confirm("⚠️ ISSO VAI RECRIAR OS PLANOS PADRÃO. Confirmar?")) return;
       setIsSaving(true);
-      try { await Promise.all(INITIAL_PLANOS.map(p => addDoc(collection(db, "planos"), p))); addToast("Planos resetados!", "success"); } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); }
+      try {
+          await seedDefaultPlans(INITIAL_PLANOS);
+          const updatedPlanos = await fetchPlanCatalog({ maxResults: 50, forceRefresh: true });
+          setPlanos(updatedPlanos as Plano[]);
+          addToast("Planos resetados!", "success");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro.", "error");
+      } finally {
+          setIsSaving(false);
+      }
   };
   
   const handleCreate = () => { 
@@ -233,14 +272,27 @@ export default function AdminPlanosPage() {
       const { id, ...data } = editingPlan; 
       const payload = { ...data, precoVal: parseFloat(editingPlan.preco.replace(',', '.')) || 0 }; 
       try { 
-          if (id) { await updateDoc(doc(db, "planos", id), payload); addToast("Plano atualizado!", "success"); } 
-          else { await addDoc(collection(db, "planos"), payload); addToast("Plano criado!", "success"); } 
+          const result = await upsertPlan({ id: id || undefined, data: payload });
+          const savedPlan = { id: id || result.id, ...payload } as Plano;
+
+          if (id) {
+              setPlanos(prev => prev.map(entry => entry.id === id ? savedPlan : entry));
+              addToast("Plano atualizado!", "success");
+          } else {
+              setPlanos(prev => [...prev, savedPlan].sort((a, b) => a.precoVal - b.precoVal));
+              addToast("Plano criado!", "success");
+          }
           setIsModalOpen(false); 
-      } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); } 
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro.", "error");
+      } finally {
+          setIsSaving(false);
+      } 
   };
   
-  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deleteDoc(doc(db, "planos", id)); addToast("Removido.", "info"); } catch(error) { console.error(error); addToast("Erro.", "error"); } };
-  const handleSaveBanner = async () => { setIsSaving(true); try { await setDoc(doc(db, "app_config", "marketing_banner"), bannerConfig); addToast("Banner atualizado!", "success"); } catch (error) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); } };
+  const handleDelete = async (id: string) => { if(!confirm("Excluir plano?")) return; try { await deletePlan(id); setPlanos(prev => prev.filter(entry => entry.id !== id)); addToast("Removido.", "info"); } catch(error: unknown) { console.error(error); addToast("Erro.", "error"); } };
+  const handleSaveBanner = async () => { setIsSaving(true); try { await saveMarketingBannerConfig(bannerConfig); addToast("Banner atualizado!", "success"); } catch (error: unknown) { console.error(error); addToast("Erro.", "error"); } finally { setIsSaving(false); } };
   
   const handleBenefitChange = (index: number, value: string) => { if (!editingPlan) return; const newBenefits = [...editingPlan.beneficios]; newBenefits[index] = value; setEditingPlan({ ...editingPlan, beneficios: newBenefits }); };
   const addBenefit = () => { if (!editingPlan) return; setEditingPlan({ ...editingPlan, beneficios: [...editingPlan.beneficios, "Novo Benefício"] }); };
@@ -260,6 +312,15 @@ export default function AdminPlanosPage() {
       });
       return { totalFaturamento, totalSociosPagantes, totalGeral, ticketMedio, planosCountMap };
   }, [assinaturas, planos]);
+
+  if (loadingData) {
+      return (
+          <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500 gap-2">
+              <Loader2 className="animate-spin" />
+              <span className="text-sm font-bold uppercase tracking-wider">Carregando planos...</span>
+          </div>
+      );
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">

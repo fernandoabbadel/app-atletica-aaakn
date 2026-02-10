@@ -6,29 +6,17 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useToast } from "@/context/ToastContext";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from "firebase/firestore";
+import {
+  createPlanRequest,
+  fetchFinanceConfig,
+  fetchPlanById,
+  fetchUserPlanRequests,
+  type FinanceConfigRecord,
+  type PlanRecord,
+} from "@/lib/plansService";
 
 // Ícones locais
 import { Ghost, Star, Crown, ShoppingBag } from "lucide-react";
-
-// 🦈 1. Definição de Interfaces (O Mapa do Tesouro)
-interface Plano {
-  id: string;
-  nome: string;
-  preco: string;     // Ex: "59,90" (String formatada para exibição)
-  precoVal: number;  // Ex: 59.90 (Number para cálculos/banco)
-  icon: string;
-  cor: string;
-  descricao?: string;
-}
-
-interface PixData {
-  chave: string;
-  banco: string;
-  titular: string;
-  whatsapp?: string;
-}
 
 // 🦈 2. Tipagem do Mapa de Ícones
 const ICONS_MAP: Record<string, LucideIcon> = { 
@@ -47,8 +35,8 @@ export default function AdesaoPage() {
   const planId = searchParams.get('plano');
   
   // 🦈 3. Estados Tipados (Adeus 'any')
-  const [plano, setPlano] = useState<Plano | null>(null);
-  const [pixData, setPixData] = useState<PixData>({ 
+  const [plano, setPlano] = useState<PlanRecord | null>(null);
+  const [pixData, setPixData] = useState<FinanceConfigRecord>({ 
     chave: "Carregando...", 
     banco: "...", 
     titular: "..." 
@@ -61,61 +49,47 @@ export default function AdesaoPage() {
 
   // ID 205 - Buscar Configurações do PIX e WhatsApp do Admin
   useEffect(() => {
+      let mounted = true;
+
       const fetchConfigAndPlan = async () => {
-          if (!planId || !user) return;
+          if (!planId || !user) {
+              setFetching(false);
+              return;
+          }
 
           try {
               // 1. ID 209: Verificar se já existe solicitação pendente
-              const q = query(
-                  collection(db, "solicitacoes_adesao"), 
-                  where("userId", "==", user.uid),
-                  where("status", "==", "pendente")
-              );
-              const pendingSnap = await getDocs(q);
-              if (!pendingSnap.empty) {
+              const userRequests = await fetchUserPlanRequests(user.uid, { maxResults: 40 });
+              const hasPending = userRequests.some((request) => request.status === "pendente");
+              if (hasPending) {
+                  if (!mounted) return;
                   setHasPendingRequest(true);
                   setFetching(false);
                   return;
               }
 
-              // 2. Buscar Plano
-              const docRef = doc(db, "planos", planId);
-              const snap = await getDoc(docRef);
-              if (snap.exists()) {
-                  // Forçamos a tipagem aqui pois confiamos no banco ou tratamos undefined
-                  const data = snap.data();
-                  setPlano({ 
-                    id: snap.id, 
-                    nome: data.nome,
-                    preco: data.preco,
-                    precoVal: data.precoVal,
-                    icon: data.icon,
-                    cor: data.cor,
-                    descricao: data.descricao
-                  } as Plano);
-              }
+              // 2. Buscar Plano e Dados PIX
+              const [planoData, financeData] = await Promise.all([
+                  fetchPlanById(planId),
+                  fetchFinanceConfig(),
+              ]);
+              if (!mounted) return;
+              setPlano(planoData);
+              setPixData(financeData);
 
-              // 3. Buscar Dados PIX (Do banco ou Hardcoded se não tiver config ainda)
-              const configRef = doc(db, "app_config", "financeiro");
-              const configSnap = await getDoc(configRef);
-              if (configSnap.exists()) {
-                  setPixData(configSnap.data() as PixData);
-              } else {
-                  // Fallback
-                  setPixData({
-                      chave: "financeiro@aaakn.com.br",
-                      banco: "Banco Inter",
-                      titular: "Assoc. Atlética Acad. Knight"
-                  });
-              }
-
-          } catch (error) {
+          } catch (error: unknown) {
               console.error("Erro ao carregar:", error);
           } finally {
-              setFetching(false);
+              if (mounted) {
+                  setFetching(false);
+              }
           }
       };
-      fetchConfigAndPlan();
+
+      void fetchConfigAndPlan();
+      return () => {
+          mounted = false;
+      };
   }, [planId, user]);
 
   // ID 206 - Registra intenção e manda pro Zap
@@ -125,17 +99,19 @@ export default function AdesaoPage() {
       setLoading(true);
       try {
           // 1. Criar Solicitação "Pendente" no Banco
-          const userWithTurma = user as { turma?: string };
-          await addDoc(collection(db, "solicitacoes_adesao"), {
+          const userDisplayName =
+            (typeof user.displayName === "string" && user.displayName.trim()) ||
+            (typeof user.nome === "string" && user.nome.trim()) ||
+            "Aluno";
+          const userTurma = typeof user.turma === "string" ? user.turma : "T??";
+
+          await createPlanRequest({
               userId: user.uid,
-              userName: user.displayName || "Aluno", // Ajustado para propriedade padrão do Auth
-              userTurma: typeof userWithTurma.turma === "string" ? userWithTurma.turma : "T??",
+              userName: userDisplayName,
+              userTurma,
               planoId: plano.id,
               planoNome: plano.nome,
               valor: plano.precoVal,
-              dataSolicitacao: serverTimestamp(),
-              status: "pendente", 
-              metodo: "whatsapp"
           });
 
           // 2. ID 208: Gerar Link do WhatsApp

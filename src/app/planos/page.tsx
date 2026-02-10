@@ -4,23 +4,9 @@ import React, { useEffect, useState } from "react";
 import { ArrowLeft, Crown, Star, Ghost, CheckCircle, ArrowRight, Loader2, ShoppingBag, Check, Zap, Gem, Trophy, Fish, LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
-
-// 🦈 1. Interface para o Objeto Plano
-interface Plano {
-  id: string;
-  nome: string;
-  preco: string;
-  precoVal: number;
-  icon: string;
-  cor: string;
-  descricao: string;
-  parcelamento?: string;
-  beneficios: string[];
-  destaque?: boolean;
-}
+import { useToast } from "@/context/ToastContext";
+import { fetchPlanCatalog, type PlanRecord } from "@/lib/plansService";
 
 // 🦈 2. Tipagem Correta do Mapa de Ícones
 const ICONS_MAP: Record<string, LucideIcon> = {
@@ -37,21 +23,36 @@ const ICONS_MAP: Record<string, LucideIcon> = {
 export default function PlanosPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { addToast } = useToast();
   
   // 🦈 3. Estado Tipado (Adeus 'any[]')
-  const [planos, setPlanos] = useState<Plano[]>([]);
+  const [planos, setPlanos] = useState<PlanRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, "planos"), orderBy("precoVal", "asc")); 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Cast forçado 'as Plano' para garantir a estrutura
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plano));
-      setPlanos(data);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    let mounted = true;
+
+    const loadPlanos = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchPlanCatalog({ maxResults: 30 });
+        if (!mounted) return;
+        setPlanos(data);
+      } catch (error: unknown) {
+        console.error(error);
+        addToast("Nao foi possivel carregar os planos agora.", "error");
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadPlanos();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
 
   // 🦈 CORREÇÃO: Respeita EXATAMENTE a cor que vem do banco
   const getColorClasses = (cor: string) => {
