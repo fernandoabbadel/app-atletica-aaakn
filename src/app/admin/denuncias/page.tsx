@@ -9,7 +9,7 @@ import {
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
-import { collection, query, onSnapshot, orderBy, updateDoc, doc, deleteDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, limit, orderBy, query, updateDoc } from "firebase/firestore";
 
 // --- TIPAGEM ---
 type ReportCategory = 'comunidade' | 'gym' | 'suporte' | 'banidos'; // 🦈 Adicionado 'banidos'
@@ -57,36 +57,57 @@ export default function AdminDenunciaPage() {
   const [responseText, setResponseText] = useState("");
   // 🦈 Removido isEditing não utilizado
 
-  // --- 1. INTEGRAÇÃO FIREBASE (APELOS DE BANIDOS) ---
+    // --- 1. INTEGRACAO FIREBASE (APELOS DE BANIDOS) ---
   useEffect(() => {
-      const q = query(collection(db, "banned_appeals"), orderBy("createdAt", "desc"));
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const firebaseAppeals = snapshot.docs.map(docSnap => {
-              const data = docSnap.data();
-              // Converte Timestamp para string legível
-              const date = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString('pt-BR') : "Data desconhecida";
-              
-              return {
-                  id: docSnap.id,
-                  autor: data.userName || "Usuário Desconhecido",
-                  alvo: "Administração",
-                  categoria: 'banidos' as ReportCategory,
-                  motivo: "Solicitação de Desbloqueio",
-                  descricao: data.message,
-                  data: date,
-                  status: data.status === 'resolved' ? 'resolvida' : 'pendente',
-                  respostaAdmin: data.response,
-                  originCollection: 'banned_appeals' // Marca para sabermos onde atualizar
-              } as Report;
-          });
+      let mounted = true;
 
-          // Funde os Mocks com os dados reais do Firebase
-          setReports([...INITIAL_REPORTS, ...firebaseAppeals]);
-      });
+      const loadAppeals = async () => {
+          try {
+              const q = query(
+                  collection(db, "banned_appeals"),
+                  orderBy("createdAt", "desc"),
+                  limit(200)
+              );
+              const snapshot = await getDocs(q);
 
-      return () => unsubscribe();
-  }, []);
+              const firebaseAppeals = snapshot.docs.map((docSnap) => {
+                  const data = docSnap.data() as {
+                      createdAt?: { toDate?: () => Date };
+                      userName?: string;
+                      message?: string;
+                      status?: string;
+                      response?: string;
+                  };
+                  const date = data.createdAt?.toDate
+                      ? data.createdAt.toDate().toLocaleString("pt-BR")
+                      : "Data desconhecida";
+
+                  return {
+                      id: docSnap.id,
+                      autor: data.userName || "Usuario Desconhecido",
+                      alvo: "Administracao",
+                      categoria: "banidos" as ReportCategory,
+                      motivo: "Solicitacao de Desbloqueio",
+                      descricao: data.message || "",
+                      data: date,
+                      status: data.status === "resolved" ? "resolvida" : "pendente",
+                      respostaAdmin: data.response,
+                      originCollection: "banned_appeals",
+                  } satisfies Report;
+              });
+
+              if (mounted) setReports([...INITIAL_REPORTS, ...firebaseAppeals]);
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) addToast("Erro ao carregar apelacoes.", "error");
+          }
+      };
+
+      void loadAppeals();
+      return () => {
+          mounted = false;
+      };
+  }, [addToast]);
 
   // --- FILTRAGEM ---
   const filteredReports = reports.filter(report => {
@@ -103,46 +124,59 @@ export default function AdminDenunciaPage() {
       setResponseText(report.respostaAdmin || ""); 
   };
 
-  const handleResolve = async () => {
+    const handleResolve = async () => {
       if (!selectedReport) return;
       if (!responseText.trim()) {
           addToast("Escreva uma resposta!", "error");
           return;
       }
 
-      // Se for do Firebase (Banidos), atualiza lá
-      if (selectedReport.originCollection === 'banned_appeals') {
+      if (selectedReport.originCollection === "banned_appeals") {
           try {
               await updateDoc(doc(db, "banned_appeals", selectedReport.id), {
                   response: responseText,
-                  status: 'resolved',
-                  readByAdmin: true // Marca como lido pelo admin
+                  status: "resolved",
+                  readByAdmin: true,
               });
-              addToast("Resposta enviada para o usuário banido!", "success");
-          } catch (error) {
-              console.error("Erro ao resolver apelação:", error); // 🦈 Tratamento de erro
+              addToast("Resposta enviada para o usuario banido!", "success");
+          } catch (error: unknown) {
+              console.error("Erro ao resolver apelacao:", error);
               addToast("Erro ao salvar no Firebase.", "error");
               return;
           }
       } else {
-          // Se for Mock, apenas atualiza estado local
-          const updatedReports = reports.map(r => r.id === selectedReport.id ? { ...r, status: 'resolvida' as ReportStatus, respostaAdmin: responseText } : r);
-          setReports(updatedReports);
-          addToast("Denúncia local resolvida.", "success");
+          addToast("Denuncia local resolvida.", "success");
       }
+
+      setReports((prev) =>
+          prev.map((report) =>
+              report.id === selectedReport.id
+                  ? {
+                        ...report,
+                        status: "resolvida" as ReportStatus,
+                        respostaAdmin: responseText,
+                    }
+                  : report
+          )
+      );
 
       setSelectedReport(null);
       setResponseText("");
   };
 
   const handleDelete = async (report: Report) => {
-      if(confirm("Excluir este registro?")) {
-          if (report.originCollection === 'banned_appeals') {
-              await deleteDoc(doc(db, "banned_appeals", report.id));
+      if (confirm("Excluir este registro?")) {
+          try {
+              if (report.originCollection === "banned_appeals") {
+                  await deleteDoc(doc(db, "banned_appeals", report.id));
+              }
+              setReports((prev) => prev.filter((item) => item.id !== report.id));
+              addToast("Registro apagado.", "info");
+              if (selectedReport?.id === report.id) setSelectedReport(null);
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao apagar registro.", "error");
           }
-          setReports(reports.filter(r => r.id !== report.id));
-          addToast("Registro apagado.", "info");
-          if (selectedReport?.id === report.id) setSelectedReport(null);
       }
   };
 

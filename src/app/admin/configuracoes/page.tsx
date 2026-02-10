@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import { db } from "../../../lib/firebase";
 import {
-  addDoc, collection, deleteDoc, doc, onSnapshot,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit,
   orderBy, query, serverTimestamp, setDoc, updateDoc
 } from "firebase/firestore";
 
@@ -81,30 +81,60 @@ export default function AdminConfiguracoesPage() {
   const [selectedDocId, setSelectedDocId] = useState<string>("");
   const [savingDoc, setSavingDoc] = useState(false);
 
-  // 🦈 CARREGAR MENU EM TEMPO REAL
+    // 🦈 CARREGAR MENU COM LEITURA CONTROLADA
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "app_config", "menu"), (snap) => {
-        if (snap.exists()) {
-            const data = snap.data();
-            if (data.sections) setSections(data.sections);
-        }
-    });
-    return () => unsub();
-  }, []);
+    let mounted = true;
+    const loadMenu = async () => {
+      try {
+        const snap = await getDoc(doc(db, "app_config", "menu"));
+        if (!mounted || !snap.exists()) return;
 
-  // 🦈 CARREGAR DOCS EM TEMPO REAL
+        const data = snap.data() as { sections?: ConfigSection[] };
+        if (Array.isArray(data.sections)) {
+          setSections(data.sections);
+        }
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar menu.", "error");
+      }
+    };
+
+    void loadMenu();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
+
+  // 🦈 CARREGAR DOCS COM LIMITE
   useEffect(() => {
-    const q = query(collection(db, "legal_docs"), orderBy("titulo"));
-    const unsub = onSnapshot(q, (snap) => {
-        const docs = snap.docs.map(d => ({
-            id: d.id,
-            ...d.data(),
-            icon: LEGAL_ICON_MAP[d.data().iconName] || FileText
-        })) as LegalDoc[];
-        setDocuments(docs);
-    });
-    return () => unsub();
-  }, []);
+    let mounted = true;
+    const loadDocs = async () => {
+      try {
+        const q = query(collection(db, "legal_docs"), orderBy("titulo"), limit(80));
+        const snap = await getDocs(q);
+
+        const docs = snap.docs.map((row) => {
+          const data = row.data() as Omit<LegalDoc, "id" | "icon">;
+          const iconName = typeof data.iconName === "string" ? data.iconName : "FileText";
+          return {
+            id: row.id,
+            ...data,
+            icon: LEGAL_ICON_MAP[iconName] || FileText,
+          } as LegalDoc;
+        });
+
+        if (mounted) setDocuments(docs);
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar documentos.", "error");
+      }
+    };
+
+    void loadDocs();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
 
   // 🦈 SELEÇÃO AUTOMÁTICA DO PRIMEIRO DOC (Correção do ESLint useEffect dependency)
   useEffect(() => {
@@ -161,6 +191,21 @@ export default function AdminConfiguracoesPage() {
           iconName: "FileText",
           createdAt: serverTimestamp()
       });
+      setDocuments((prev) => {
+          const next = [
+              ...prev,
+              {
+                  id: ref.id,
+                  titulo: "Novo Regulamento",
+                  conteudo: "Escreva aqui...",
+                  tipo: "publico",
+                  iconName: "FileText",
+                  icon: FileText,
+              } as LegalDoc,
+          ];
+          next.sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR"));
+          return next;
+      });
       setSelectedDocId(ref.id);
       addToast("Documento criado.", "success");
   };
@@ -182,8 +227,15 @@ export default function AdminConfiguracoesPage() {
 
   const handleDeleteDoc = async (id: string) => {
       if(!confirm("Apagar documento?")) return;
-      await deleteDoc(doc(db, "legal_docs", id));
-      addToast("Documento removido.", "info");
+      try {
+          await deleteDoc(doc(db, "legal_docs", id));
+          setDocuments((prev) => prev.filter((docItem) => docItem.id !== id));
+          if (selectedDocId === id) setSelectedDocId("");
+          addToast("Documento removido.", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao remover documento.", "error");
+      }
   };
 
   const currentDoc = documents.find(d => d.id === selectedDocId);
