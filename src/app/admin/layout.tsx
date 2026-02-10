@@ -32,7 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Loja", path: "/admin/loja", icon: <ShoppingBag size={18} /> },
     { name: "Usuários", path: "/admin/usuarios", icon: <Users size={18} /> },
     { name: "Álbum da Galera", path: "/admin/album", icon: <Camera size={18} /> },
-    { name: "Gym Champ", path: "/admin/gymchamp", icon: <Dumbbell size={18} />, badge: "Em Breve" },
+    { name: "Gym Champ", path: "/admin/gym", icon: <Dumbbell size={18} />, badge: "Em Breve" },
     { name: "Arena Games", path: "/admin/games", icon: <Gamepad2 size={18} /> },
     { name: "Fidelidade", path: "/admin/fidelidade", icon: <Star size={18} /> },
     { name: "Conquistas", path: "/admin/conquistas", icon: <Trophy size={18} /> },

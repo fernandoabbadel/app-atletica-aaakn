@@ -7,34 +7,43 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Correção: Next Image
-import { db } from "../../lib/firebase";
-import { collection, query, orderBy, limit, getDocs, getCountFromServer, Timestamp } from "firebase/firestore";
+import {
+  fetchAdminDashboardBundle,
+  type AdminDashboardActivityLog,
+  type AdminDashboardRecentUser,
+  type AdminDashboardStats,
+} from "@/lib/adminDashboardService";
 
 // --- INTERFACES (FIM DO ANY) ---
-interface DashboardStats {
-    totalUsers: number;
-    totalEvents: number;
-    totalSales: number;
-    activeChamps: number;
-}
+type DashboardStats = AdminDashboardStats;
+type RecentUser = AdminDashboardRecentUser;
+type ActivityLog = AdminDashboardActivityLog;
 
-interface RecentUser {
-    id: string;
-    nome: string;
-    email: string;
-    foto: string;
-    turma: string;
-    role: string;
-    createdAt?: Timestamp | null;
-}
+const toDateValue = (value: unknown): Date | null => {
+  if (value instanceof Date) return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return new Date(parsed);
+    return null;
+  }
+  if (typeof value === "object" && value !== null) {
+    const toDate = (value as { toDate?: unknown }).toDate;
+    if (typeof toDate === "function") {
+      const result = toDate.call(value) as Date;
+      if (result instanceof Date) return result;
+    }
+  }
+  return null;
+};
 
-interface ActivityLog {
-    id: string;
-    userName: string;
-    action: string;
-    resource: string;
-    timestamp: Timestamp;
-}
+const formatLogTime = (value: unknown): string => {
+  const parsedDate = toDateValue(value);
+  if (!parsedDate) return "Agora";
+  return parsedDate.toLocaleTimeString();
+};
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({ totalUsers: 0, totalEvents: 0, totalSales: 0, activeChamps: 0 });
@@ -45,47 +54,21 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
         try {
-            // 1. Contadores (Usando count aggregations para performance)
-            const usersColl = collection(db, "users");
-            const eventsColl = collection(db, "eventos");
-            const usersSnapshot = await getCountFromServer(usersColl);
-            const eventsSnapshot = await getCountFromServer(eventsColl);
-            // Simulação de vendas se não tiver a coleção ainda
-            const salesCount = 1250; 
-
-            // 2. Usuários Recentes
-            const qUsers = query(usersColl, orderBy("data_adesao", "desc"), limit(5));
-            const usersSnap = await getDocs(qUsers);
-            const usersData = usersSnap.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as RecentUser[];
-
-            // 3. Logs Recentes
-            const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(5));
-            const logsSnap = await getDocs(qLogs);
-            const logsData = logsSnap.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as ActivityLog[];
-
-            setStats({
-                totalUsers: usersSnapshot.data().count,
-                totalEvents: eventsSnapshot.data().count,
-                totalSales: salesCount,
-                activeChamps: 2 // Mock ou fetch real
-            });
-            setRecentUsers(usersData);
-            setRecentActivity(logsData);
-
-        } catch (error) {
+        const data = await fetchAdminDashboardBundle({
+          usersLimit: 5,
+          logsLimit: 5,
+        });
+        setStats(data.stats);
+        setRecentUsers(data.recentUsers);
+        setRecentActivity(data.recentActivity);
+      } catch (error: unknown) {
             console.error("Erro ao carregar dashboard:", error);
         } finally {
             setLoading(false);
         }
     }
 
-    fetchDashboardData();
+    void fetchDashboardData();
   }, []);
 
   if (loading) {
@@ -184,7 +167,7 @@ export default function AdminDashboardPage() {
                       <div key={log.id || idx} className="pl-6 relative">
                           <div className="absolute -left-[5px] top-1 w-2.5 h-2.5 bg-zinc-800 rounded-full border-2 border-[#050505]"></div>
                           <p className="text-[10px] text-zinc-500 font-mono mb-1 flex items-center gap-1">
-                              <Clock size={10}/> {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleTimeString() : "Agora"}
+                              <Clock size={10}/> {formatLogTime(log.timestamp)}
                           </p>
                           <p className="text-xs text-zinc-300">
                               <span className="text-emerald-500 font-bold">{log.userName}</span> realizou 

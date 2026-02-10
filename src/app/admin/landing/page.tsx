@@ -10,55 +10,16 @@ import {
 // ðŸ¦ˆ IMPORTS DO SISTEMA
 import { useAuth } from "@/context/AuthContext"; 
 import { useToast } from "@/context/ToastContext";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  fetchLandingConfig,
+  saveLandingConfig,
+  type LandingConfig,
+  type SocialLink,
+} from "@/lib/adminLandingService";
 import { logActivity } from "@/lib/logger"; 
 import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 
 // --- TYPES & INTERFACES (Clean Code) ---
-
-interface SocialLink {
-  id: string;
-  platform: 'instagram' | 'tiktok' | 'twitter' | 'youtube' | 'linkedin' | 'website';
-  url: string;
-}
-
-interface ReviewConfig {
-  id: string;
-  name: string;
-  role: string;
-  text: string;
-  profileUrl: string;
-}
-
-interface LandingConfig {
-  // Hero Section
-  tagline: string;
-  taglineColor: string;
-  heroTitle: string;
-  heroSubtitle: string;
-  heroHighlight: string;
-  
-  // CSS Controls
-  titleColor: string;
-  gradientStart: string;
-  gradientEnd: string;
-
-  // Stats
-  statUsers: number;
-  statPosts: number;
-  statPartners: number;
-
-  // Contact
-  address: string;
-  phone: string;
-  whatsapp: string;
-  email: string;
-  
-  // Dynamic Lists
-  socialLinks: SocialLink[];
-  reviews: ReviewConfig[];
-}
 
 // --- ESTADO INICIAL ---
 const INITIAL_CONFIG: LandingConfig = {
@@ -94,19 +55,13 @@ export default function AdminLandingPage() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const docRef = doc(db, "site_config", "landing_page");
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          // ðŸ¦ˆ FIX: Garante que arrays nunca sejam undefined
-          setConfig({ 
-            ...INITIAL_CONFIG, 
-            ...data,
-            socialLinks: data.socialLinks || INITIAL_CONFIG.socialLinks || [],
-            reviews: data.reviews || INITIAL_CONFIG.reviews || []
-          } as LandingConfig);
-        }
+        const data = await fetchLandingConfig({ fallbackConfig: INITIAL_CONFIG });
+        setConfig({
+          ...INITIAL_CONFIG,
+          ...data,
+          socialLinks: data.socialLinks || INITIAL_CONFIG.socialLinks || [],
+          reviews: data.reviews || INITIAL_CONFIG.reviews || [],
+        });
       } catch (error: unknown) {
         if (isFirebasePermissionError(error)) {
           addToast("Sem permissão para carregar a configuração da landing.", "error");
@@ -118,14 +73,14 @@ export default function AdminLandingPage() {
         setLoading(false);
       }
     };
-    fetchConfig();
+    void fetchConfig();
   }, [addToast]);
 
   // ðŸ’¾ SALVAR DADOS
   const handleSave = async () => {
     setSaving(true);
     try {
-      await setDoc(doc(db, "site_config", "landing_page"), config);
+      await saveLandingConfig(config);
 
       if (user) {
         await logActivity(
@@ -460,4 +415,3 @@ export default function AdminLandingPage() {
     </div>
   );
 }
-
