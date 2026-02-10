@@ -10,11 +10,12 @@ import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { 
-  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-  arrayUnion, arrayRemove 
-} from "firebase/firestore";
+import {
+  fetchTreinoById,
+  fetchTreinoChamada,
+  fetchTreinoRsvps,
+  setTreinoRsvp
+} from "../../../lib/treinosService";
 
 // --- TIPAGENS (O Escudo do Código) ---
 interface TreinoData {
@@ -72,42 +73,56 @@ export default function TreinoDetalhesPage() {
   const [chamadaAdmin, setChamadaAdmin] = useState<ChamadaData[]>([]); 
   
   const [loading, setLoading] = useState(true);
-  const [userRsvp, setUserRsvp] = useState<string | null>(null);
+  const [userRsvp, setUserRsvp] = useState<"going" | "not_going" | null>(null);
   const [loadingAction, setLoadingAction] = useState(false);
 
   // 1. CARREGAR DADOS (TREINO + RSVPS + CHAMADA OFICIAL)
+  const treinoId = typeof params.id === "string" ? params.id : "";
+  const userId = user?.uid ?? null;
+
   useEffect(() => {
-      if (!params.id) return;
+      if (!treinoId) return;
 
-      // A. Dados do Treino
-      const unsubTreino = onSnapshot(doc(db, "treinos", params.id as string), (docSnap) => {
-          if (docSnap.exists()) {
-              setTreino({ id: docSnap.id, ...docSnap.data() } as TreinoData);
-          } else {
-              addToast("Treino não encontrado.", "error");
-              router.push("/treinos");
+      const loadData = async () => {
+          setLoading(true);
+          try {
+              const [treinoDoc, listaRsvp, listaChamada] = await Promise.all([
+                  fetchTreinoById(treinoId, { forceRefresh: true }),
+                  fetchTreinoRsvps(treinoId, { maxResults: 220, forceRefresh: true }),
+                  fetchTreinoChamada(treinoId, { maxResults: 220, forceRefresh: true }),
+              ]);
+
+              if (!treinoDoc) {
+                  addToast("Treino não encontrado.", "error");
+                  router.push("/treinos");
+                  return;
+              }
+
+              setTreino(treinoDoc as TreinoData);
+              setRsvps(listaRsvp as RSVPData[]);
+              setChamadaAdmin(
+                  listaChamada.map((row) => ({
+                      userId: row.userId,
+                      status: row.status === "falta" ? "falta" : "presente",
+                  }))
+              );
+
+              if (userId) {
+                  const me = listaRsvp.find((p) => p.userId === userId);
+                  setUserRsvp(me ? me.status : null);
+              } else {
+                  setUserRsvp(null);
+              }
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao carregar treino.", "error");
+          } finally {
+              setLoading(false);
           }
-          setLoading(false);
-      });
+      };
 
-      // B. Lista de Intenção (Quem clicou "Eu Vou")
-      const unsubRsvps = onSnapshot(collection(db, "treinos", params.id as string, "rsvps"), (snap) => {
-          const lista = snap.docs.map(d => d.data() as RSVPData);
-          setRsvps(lista);
-          if (user) {
-              const me = lista.find((p) => p.userId === user.uid);
-              setUserRsvp(me ? me.status : null);
-          }
-      });
-
-      // C. Lista Oficial (Admin confirmou ou deu falta)
-      const unsubChamada = onSnapshot(collection(db, "treinos", params.id as string, "chamada"), (snap) => {
-          const lista = snap.docs.map(d => d.data() as ChamadaData);
-          setChamadaAdmin(lista);
-      });
-
-      return () => { unsubTreino(); unsubRsvps(); unsubChamada(); };
-  }, [params.id, user, router, addToast]); // 🦈 Adicionado addToast à dependência
+      void loadData();
+  }, [treinoId, userId, router, addToast]);
 
   // 2. FUSÃO INTELIGENTE DAS LISTAS (RSVP + ADMIN)
   const listaFinal = useMemo(() => {
@@ -163,28 +178,35 @@ export default function TreinoDetalhesPage() {
       setLoadingAction(true);
 
       try {
-          await runTransaction(db, async (t) => {
-              const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
-              const treinoRef = doc(db, "treinos", treino.id);
-
-              if (status === 'not_going') {
-                  t.delete(rsvpRef);
-                  // 🦈 Remove do array global para o perfil saber
-                  t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
-              } else {
-                  const userWithTurma = user as { turma?: string };
-                  t.set(rsvpRef, {
-                      userId: user.uid,
-                      userName: user.displayName || "Atleta", // Ajustado para displayName padrão
-                      userAvatar: user.photoURL || "",       // Ajustado para photoURL padrão
-                      userTurma: typeof userWithTurma.turma === "string" ? userWithTurma.turma : "Geral",
-                      status: 'going',
-                      timestamp: serverTimestamp()
-                  });
-                  // 🦈 Adiciona ao array global para o perfil saber
-                  t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
-              }
+          await setTreinoRsvp({
+              treinoId: treino.id,
+              userId: user.uid,
+              userName: user.nome || "Atleta",
+              userAvatar: user.foto || "",
+              userTurma: user.turma || "Geral",
+              status,
           });
+
+          const treinoAtualizado = await fetchTreinoById(treino.id, { forceRefresh: true });
+          const [listaRsvp, listaChamada] = await Promise.all([
+              fetchTreinoRsvps(treino.id, { maxResults: 220, forceRefresh: true }),
+              fetchTreinoChamada(treino.id, { maxResults: 220, forceRefresh: true }),
+          ]);
+
+          if (treinoAtualizado) {
+              setTreino(treinoAtualizado as TreinoData);
+          }
+          setRsvps(listaRsvp as RSVPData[]);
+          setChamadaAdmin(
+              listaChamada.map((row) => ({
+                  userId: row.userId,
+                  status: row.status === "falta" ? "falta" : "presente",
+              }))
+          );
+
+          const me = listaRsvp.find((p) => p.userId === user.uid);
+          setUserRsvp(me ? me.status : null);
+
           addToast(status === 'going' ? "Presença confirmada! 💪" : "Inscrição removida.", "success");
       } catch (error) {
           console.error(error);

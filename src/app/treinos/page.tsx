@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { ArrowLeft, MapPin, Clock, ChevronLeft, ChevronRight, Dumbbell, Calendar as CalendarIcon, AlertCircle, CheckCircle, Users, Trophy } from "lucide-react";
 import Link from "next/link";
 // 🦈 Removido useRouter não utilizado
 import Image from "next/image"; // 🦈 Importado componente Image
-import { db } from "../../lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, doc, runTransaction, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
+import {
+  fetchTreinoRsvps,
+  fetchTreinosByDateRange,
+  setTreinoRsvp
+} from "../../lib/treinosService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -71,6 +74,7 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
     // 🦈 Router removido pois não era usado (navegação via Link)
     
     const [userRsvp, setUserRsvp] = useState<"going" | "not_going" | null>(null);
+    const [rsvpsLocal, setRsvpsLocal] = useState<RsvpData[]>([]);
     const [stats, setStats] = useState({ 
         confirmados: 0, 
         avatares: [] as string[], 
@@ -78,38 +82,56 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
     });
     const [loadingAction, setLoadingAction] = useState(false);
 
-    useEffect(() => {
-        const unsub = onSnapshot(collection(db, "treinos", treino.id, "rsvps"), (snap) => {
-            const rsvps = snap.docs.map(d => d.data() as RsvpData);
-            
-            if (user) {
-                const me = rsvps.find((r) => r.userId === user.uid);
-                setUserRsvp(me ? me.status : null);
+    const applyRsvps = useCallback((rows: RsvpData[]) => {
+        setRsvpsLocal(rows);
+
+        if (user) {
+            const me = rows.find((r) => r.userId === user.uid);
+            setUserRsvp(me ? me.status : null);
+        } else {
+            setUserRsvp(null);
+        }
+
+        const goingRows = rows.filter((r) => r.status === "going");
+        const avatares = goingRows.map((r) => r.userAvatar).slice(0, 4);
+
+        const counts: Record<string, number> = {};
+        goingRows.forEach((r) => {
+            if (r.userTurma) {
+                const t = r.userTurma.toUpperCase();
+                counts[t] = (counts[t] || 0) + 1;
             }
-
-            // Pega os últimos 4 avatares
-            const avatares = rsvps
-                .filter((r) => r.status === 'going')
-                .map((r) => r.userAvatar)
-                .slice(0, 4);
-
-            // Ranking de Turmas
-            const counts: Record<string, number> = {};
-            rsvps.forEach((r) => {
-                if (r.status === 'going' && r.userTurma) {
-                    const t = r.userTurma.toUpperCase();
-                    counts[t] = (counts[t] || 0) + 1;
-                }
-            });
-            const ranking = Object.entries(counts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3)
-                .map(([turma, count]) => ({ turma, count, img: TURMA_IMAGENS[turma] }));
-
-            setStats({ confirmados: rsvps.length, avatares, turmas: ranking });
         });
-        return () => unsub();
-    }, [treino.id, user]);
+
+        const ranking = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([turma, count]) => ({ turma, count, img: TURMA_IMAGENS[turma] }));
+
+        setStats({ confirmados: goingRows.length, avatares, turmas: ranking });
+    }, [user]);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const loadRsvps = async () => {
+            try {
+                const rows = await fetchTreinoRsvps(treino.id, { maxResults: 180, forceRefresh: true });
+                if (!mounted) return;
+                applyRsvps(rows as RsvpData[]);
+            } catch (error: unknown) {
+                console.error(error);
+                if (mounted) {
+                    applyRsvps([]);
+                }
+            }
+        };
+
+        void loadRsvps();
+        return () => {
+            mounted = false;
+        };
+    }, [treino.id, user?.uid, applyRsvps]);
 
     const handleRSVP = async (e: React.MouseEvent, status: "going" | "not_going") => {
         e.preventDefault(); 
@@ -120,25 +142,29 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
         setLoadingAction(true);
 
         try {
-            await runTransaction(db, async (t) => {
-                const rsvpRef = doc(db, "treinos", treino.id, "rsvps", user.uid);
-                const treinoRef = doc(db, "treinos", treino.id); 
-                
-                if (status === "not_going") {
-                    t.delete(rsvpRef);
-                    t.update(treinoRef, { confirmados: arrayRemove(user.uid) });
-                } else {
-                    t.set(rsvpRef, {
+            await setTreinoRsvp({
+                treinoId: treino.id,
+                userId: user.uid,
+                userName: user.nome || "Atleta",
+                userAvatar: user.foto || "",
+                userTurma: user.turma || "Geral",
+                status,
+            });
+
+            const next = status === "not_going"
+                ? rsvpsLocal.filter((row) => row.userId !== user.uid)
+                : [
+                    ...rsvpsLocal.filter((row) => row.userId !== user.uid),
+                    {
                         userId: user.uid,
-                        userName: user.nome,
+                        userName: user.nome || "Atleta",
                         userAvatar: user.foto || "",
                         userTurma: user.turma || "Geral",
-                        status: 'going',
-                        timestamp: serverTimestamp()
-                    });
-                    t.update(treinoRef, { confirmados: arrayUnion(user.uid) });
-                }
-            });
+                        status: "going",
+                    } as RsvpData,
+                ];
+            applyRsvps(next);
+
             if (status === 'going') {
                  addToast("Bora treinar! 💪", "success");
             } else {
@@ -303,19 +329,25 @@ export default function TreinosPage() {
     const startOfMonth = formatDateString(new Date(year, month, 1));
     const endOfMonth = formatDateString(new Date(year, month + 1, 0));
 
-    const q = query(
-        collection(db, "treinos"),
-        where("dia", ">=", startOfMonth),
-        where("dia", "<=", endOfMonth),
-        orderBy("dia", "asc")
-    );
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-        const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TreinoData));
-        setTreinosDoMes(lista);
+    const loadTreinos = async () => {
+      setLoading(true);
+      try {
+        const lista = await fetchTreinosByDateRange({
+          startDate: startOfMonth,
+          endDate: endOfMonth,
+          maxResults: 220,
+          forceRefresh: true,
+        });
+        setTreinosDoMes(lista as TreinoData[]);
+      } catch (error: unknown) {
+        console.error(error);
+        setTreinosDoMes([]);
+      } finally {
         setLoading(false);
-    });
-    return () => unsubscribe();
+      }
+    };
+
+    void loadTreinos();
   }, [currentDate]);
 
   // Calendário

@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { 
   Power, Loader2, ArrowLeft, Copy
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image'; // 🦈 Importando Image
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase"; 
-import { doc, collection, updateDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { fetchSharkroundLeagues, setSharkroundLeagueActive } from "../../../lib/sharkroundService";
 
 // 🦈 Interface para Questão (Fim do any)
 interface Questao {
@@ -35,15 +34,25 @@ export default function AdminSharkRound() {
   const [stats, setStats] = useState({ ativas: 0, total: 0 });
 
   // UNIFICAÇÃO: Usando a coleção "ligas"
+  const loadLigas = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    try {
+      const loaded = await fetchSharkroundLeagues({
+        maxResults: 160,
+        forceRefresh,
+      });
+      setLigas(loaded as LigaConfig[]);
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar ligas.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
   useEffect(() => {
-    const q = query(collection(db, "ligas"), orderBy("nome", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        const loaded = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LigaConfig));
-        setLigas(loaded);
-        setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    void loadLigas();
+  }, [loadLigas]);
 
   useEffect(() => {
       const ativas = ligas.filter(l => l.ativa).length;
@@ -58,12 +67,22 @@ export default function AdminSharkRound() {
           return addToast(`Bloqueado! A liga precisa de 10 perguntas (Atual: ${qCount})`, "error");
       }
 
+      const previous = ligas;
+      setLigas((current) =>
+          current.map((entry) =>
+              entry.id === liga.id ? { ...entry, ativa: novoStatus } : entry
+          )
+      );
+
       try {
-          await updateDoc(doc(db, "ligas", liga.id), { ativa: novoStatus });
+          await setSharkroundLeagueActive({ leagueId: liga.id, ativa: novoStatus });
           addToast(novoStatus ? "Liga ATIVADA no SharkRound!" : "Liga removida do tabuleiro.", "success");
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
+          setLigas(previous);
           addToast("Erro ao atualizar status.", "error");
+      } finally {
+          void loadLigas(true);
       }
   };
 

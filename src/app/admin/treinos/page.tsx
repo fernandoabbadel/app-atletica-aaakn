@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, 
   Dumbbell, Image as ImageIcon, CheckCircle, X, 
@@ -10,22 +10,31 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
-import { 
-    collection, addDoc, updateDoc, deleteDoc, doc, 
-    onSnapshot, query, serverTimestamp, setDoc, 
-    getDocs, getDoc, collectionGroup 
-} from "firebase/firestore";
+import {
+    addUserToChamada,
+    createRecurringTreinos,
+    deleteChamadaEntry,
+    deleteTreino,
+    fetchTreinoChamada,
+    fetchTreinoDashboardMetrics,
+    fetchTreinoRsvps,
+    fetchTreinoSettings,
+    fetchTreinosAdminList,
+    fetchUserDirectory,
+    saveTreinoSettings,
+    toggleTreinoStatus,
+    type TreinoDashboardMetrics,
+    type TreinoRecord,
+    type TreinoRsvpRecord,
+    type TreinoUserDirectoryItem,
+    upsertChamadaPresence,
+    updateChamadaStatus,
+    upsertTreino
+} from "../../../lib/treinosService";
 
 // --- TIPAGEM ---
-interface UserBase {
-    uid: string;
-    nome: string;
-    turma: string;
-    foto: string;
-    email: string;
-}
+type UserBase = TreinoUserDirectoryItem;
 
 interface AlunoChamada {
     id: string; 
@@ -38,29 +47,8 @@ interface AlunoChamada {
     pagamento?: "pago" | "pendente";
 }
 
-interface RSVP {
-    userId: string;
-    userName: string;
-    userAvatar: string;
-    userTurma: string;
-    status: 'going' | 'not_going';
-}
-
-interface Treino {
-  id: string;
-  modalidade: string;
-  diaSemana: string;
-  dia: string; 
-  horario: string;
-  local: string;
-  treinador: string;
-  treinadorId?: string;
-  treinadorAvatar?: string;
-  descricao?: string;
-  imagem: string;
-  ordemDia: number;
-  status: "ativo" | "cancelado";
-}
+type RSVP = TreinoRsvpRecord;
+type Treino = TreinoRecord;
 
 interface RankingItem {
     userId: string;
@@ -157,49 +145,75 @@ export default function AdminTreinosPage() {
     status: "ativo"
   });
 
+  const loadTreinos = useCallback(async (forceRefresh = false) => {
+      try {
+          const lista = await fetchTreinosAdminList({ maxResults: 220, forceRefresh });
+          setTreinos(lista);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar treinos.", "error");
+      }
+  }, [addToast]);
+
+  const loadUsers = useCallback(async (forceRefresh = false) => {
+      try {
+          const users = await fetchUserDirectory({ maxResults: 420, forceRefresh });
+          setAllUsers(users);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar usuarios.", "error");
+      }
+  }, [addToast]);
+
+  const loadExpandedData = useCallback(async (treinoId: string, forceRefresh = false) => {
+      const [chamada, rsvps] = await Promise.all([
+          fetchTreinoChamada(treinoId, { maxResults: 220, forceRefresh }),
+          fetchTreinoRsvps(treinoId, { maxResults: 220, forceRefresh }),
+      ]);
+      setChamadaReal(chamada as AlunoChamada[]);
+      setRsvpsAtuais(rsvps as RSVP[]);
+  }, []);
+
   // --- 1. LOADERS ---
   useEffect(() => {
       const fetchMods = async () => {
           try {
-            const docSnap = await getDoc(doc(db, "settings", "treinos"));
-            if(docSnap.exists() && docSnap.data().modalidades) {
-                setModalidades(docSnap.data().modalidades);
-                setNovoTreino(prev => ({...prev, modalidade: docSnap.data().modalidades[0] || "Futsal"}));
-            } else {
-                setModalidades(["Futsal", "Vôlei"]); 
-                setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
-            }
-          } catch { console.log("Configurações não encontradas."); }
+              const mods = await fetchTreinoSettings();
+              setModalidades(mods);
+              setNovoTreino(prev => ({...prev, modalidade: mods[0] || "Futsal"}));
+          } catch (error: unknown) {
+              console.error(error);
+              setModalidades(["Futsal", "Volei"]); 
+              setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
+          }
       };
-      fetchMods();
+      void fetchMods();
   }, []);
 
   useEffect(() => {
-      const q = query(collection(db, "treinos"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Treino));
-          lista.sort((a, b) => new Date(b.dia).getTime() - new Date(a.dia).getTime());
-          setTreinos(lista);
-      });
-      return () => unsubscribe();
-  }, []);
+      void loadTreinos();
+  }, [loadTreinos]);
 
   useEffect(() => {
-      getDocs(collection(db, "users")).then(snap => {
-          setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserBase)));
-      });
-  }, []);
+      void loadUsers();
+  }, [loadUsers]);
 
   useEffect(() => {
-      if (!expandedRow) return;
-      const unsubChamada = onSnapshot(collection(db, "treinos", expandedRow, "chamada"), (snap) => {
-          setChamadaReal(snap.docs.map(d => ({ id: d.id, ...d.data() } as AlunoChamada)));
-      });
-      const unsubRsvps = onSnapshot(collection(db, "treinos", expandedRow, "rsvps"), (snap) => {
-          setRsvpsAtuais(snap.docs.map(d => d.data() as RSVP));
-      });
-      return () => { unsubChamada(); unsubRsvps(); };
-  }, [expandedRow]);
+      if (!expandedRow) {
+          setChamadaReal([]);
+          setRsvpsAtuais([]);
+          return;
+      }
+      const fetchRowData = async () => {
+          try {
+              await loadExpandedData(expandedRow, true);
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao carregar chamada.", "error");
+          }
+      };
+      void fetchRowData();
+  }, [expandedRow, loadExpandedData, addToast]);
 
   // 🦈 LISTA UNIFICADA
   const listaChamadaUnificada = useMemo(() => {
@@ -241,55 +255,20 @@ export default function AdminTreinosPage() {
       const calculateStats = async () => {
           setLoadingStats(true);
           try {
-              const chamadasSnap = await getDocs(collectionGroup(db, 'chamada'));
-              const rankingMap: Record<string, Record<string, RankingItem>> = {}; 
-              const mapTreinoModalidade = new Map(treinos.map(t => [t.id, t.modalidade]));
-
-              chamadasSnap.forEach(docSnap => {
-                  const data = docSnap.data();
-                  if (data.status !== 'presente') return; 
-                  const treinoRef = docSnap.ref.parent.parent;
-                  if (!treinoRef) return;
-                  const modalidade = mapTreinoModalidade.get(treinoRef.id) || "Geral";
-                  if (!rankingMap[modalidade]) rankingMap[modalidade] = {};
-                  if (!rankingMap[modalidade][data.userId]) {
-                      rankingMap[modalidade][data.userId] = {
-                          userId: data.userId, nome: data.nome, avatar: data.avatar, turma: data.turma, count: 0
-                      };
-                  }
-                  rankingMap[modalidade][data.userId].count++;
+              const metrics: TreinoDashboardMetrics = await fetchTreinoDashboardMetrics({
+                  treinos,
+                  maxRankingTreinos: 20,
+                  maxGhostTreinos: 5,
+                  formatDate: (d: string) => d ? d.split('-').reverse().join('/') : "-"
               });
-
-              const finalRankings: Record<string, RankingItem[]> = {};
-              Object.keys(rankingMap).forEach(mod => {
-                  finalRankings[mod] = Object.values(rankingMap[mod]).sort((a, b) => b.count - a.count);
-              });
-              setRankings(finalRankings);
-
-              const treinosPassados = [...treinos]
-                .sort((a,b) => new Date(b.dia).getTime() - new Date(a.dia).getTime())
-                .filter(t => new Date(t.dia) < new Date())
-                .slice(0, 5);
-              const vergonhaTemp: VergonhaItem[] = [];
-              for (const treino of treinosPassados) {
-                  const rsvpsSnap = await getDocs(collection(db, "treinos", treino.id, "rsvps"));
-                  const chamadaSnap = await getDocs(collection(db, "treinos", treino.id, "chamada"));
-                  const presentesIds = new Set(chamadaSnap.docs.map(d => d.data().status === 'presente' ? d.data().userId : null));
-                  rsvpsSnap.docs.forEach(rDoc => {
-                      const rData = rDoc.data();
-                      if (rData.status === 'going' && !presentesIds.has(rData.userId)) {
-                          vergonhaTemp.push({
-                              id: rDoc.id, nome: rData.userName, avatar: rData.userAvatar, 
-                              turma: rData.userTurma, treinoData: formatDate(treino.dia), treinoMod: treino.modalidade
-                          });
-                      }
-                  });
-              }
-              setListaVergonha(vergonhaTemp);
-          } catch (error) { console.error("Stats error", error); } 
+              setRankings(metrics.rankings as Record<string, RankingItem[]>);
+              setListaVergonha(metrics.listaVergonha as VergonhaItem[]);
+          } catch (error) { console.error("Stats error", error); }
           finally { setLoadingStats(false); }
       };
-      if (treinos.length > 0) calculateStats();
+      if (treinos.length > 0) {
+          void calculateStats();
+      }
   }, [activeTab, treinos]);
 
   // --- 4. FILTROS ---
@@ -310,9 +289,14 @@ export default function AdminTreinosPage() {
       if(!novaModalidadeNome.trim()) return;
       if(modalidades.includes(novaModalidadeNome)) return addToast("Já existe!", "error");
       const novas = [...modalidades, novaModalidadeNome];
-      await setDoc(doc(db, "settings", "treinos"), { modalidades: novas }, { merge: true });
-      setModalidades(novas); setNovaModalidadeNome(""); setShowNovaModalidade(false);
-      addToast("Modalidade criada!", "success");
+      try {
+          await saveTreinoSettings(novas);
+          setModalidades(novas); setNovaModalidadeNome(""); setShowNovaModalidade(false);
+          addToast("Modalidade criada!", "success");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao salvar modalidade.", "error");
+      }
   };
 
   const handleOpenCreate = () => {
@@ -333,67 +317,112 @@ export default function AdminTreinosPage() {
   const handleSave = async () => {
     if (!novoTreino.modalidade || !novoTreino.dia) return addToast("Dados incompletos!", "error");
     const diaObj = new Date(novoTreino.dia + "T12:00:00");
-    const basePayload = { ...novoTreino, diaSemana: DIAS_SEMANA[diaObj.getDay()].label, ordemDia: DIAS_SEMANA[diaObj.getDay()].val, updatedAt: serverTimestamp() };
+    const basePayload = { ...novoTreino, diaSemana: DIAS_SEMANA[diaObj.getDay()].label, ordemDia: DIAS_SEMANA[diaObj.getDay()].val };
     try {
         if (isEditing && editingId) {
-            await updateDoc(doc(db, "treinos", editingId), basePayload);
+            await upsertTreino({ id: editingId, data: basePayload });
             addToast("Atualizado!", "success");
         } else {
             if (recurrenceDate) {
-                const current = new Date(novoTreino.dia + "T12:00:00");
-                const stop = new Date(recurrenceDate + "T12:00:00");
-                let count = 0;
-                while (current <= stop && count < 20) {
-                    const dataIso = current.toISOString().split('T')[0];
-                    const diaLoop = new Date(dataIso + "T12:00:00");
-                    await addDoc(collection(db, "treinos"), { ...basePayload, dia: dataIso, diaSemana: DIAS_SEMANA[diaLoop.getDay()].label, createdAt: serverTimestamp() });
-                    current.setDate(current.getDate() + 7); count++;
-                }
-                addToast(`${count} treinos criados!`, "success");
+                const result = await createRecurringTreinos({
+                    data: basePayload,
+                    startDate: novoTreino.dia,
+                    endDate: recurrenceDate,
+                });
+                addToast(`${result.count} treinos criados!`, "success");
             } else {
-                await addDoc(collection(db, "treinos"), { ...basePayload, createdAt: serverTimestamp() });
+                await upsertTreino({ data: basePayload });
                 addToast("Criado!", "success");
             }
         }
+        await loadTreinos(true);
         setShowModal(false); setRecurrenceDate("");
-    } catch { addToast("Erro ao salvar.", "error"); }
+    } catch (error: unknown) {
+        console.error(error);
+        addToast("Erro ao salvar.", "error");
+    }
   };
 
   const handleTogglePresenca = async (aluno: AlunoChamada) => {
       if(!expandedRow) return;
-      if (aluno.status === 'inscrito') {
-          await setDoc(doc(db, "treinos", expandedRow, "chamada", aluno.userId), {
-              userId: aluno.userId, nome: aluno.nome, turma: aluno.turma, avatar: aluno.avatar, status: 'presente', origem: 'app', timestamp: serverTimestamp()
-          });
-          return;
+      try {
+          if (aluno.status === 'inscrito') {
+              await upsertChamadaPresence({
+                  treinoId: expandedRow,
+                  userId: aluno.userId,
+                  nome: aluno.nome,
+                  turma: aluno.turma,
+                  avatar: aluno.avatar,
+                  origem: "app",
+                  status: "presente"
+              });
+          } else {
+              const novoStatus = aluno.status === "presente" ? "falta" : "presente";
+              await updateChamadaStatus({
+                  treinoId: expandedRow,
+                  chamadaId: aluno.id,
+                  status: novoStatus
+              });
+          }
+          await loadExpandedData(expandedRow, true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar presenca.", "error");
       }
-      const novoStatus = aluno.status === "presente" ? "falta" : "presente";
-      await updateDoc(doc(db, "treinos", expandedRow, "chamada", aluno.id), { status: novoStatus });
   };
 
   const handleAddUserToChamada = async (user: UserBase) => {
       if(!expandedRow) return;
       if (chamadaReal.some(a => a.userId === user.uid)) return addToast("Já na lista.", "info");
-      await setDoc(doc(db, "treinos", expandedRow, "chamada", user.uid), {
-          userId: user.uid, nome: user.nome, turma: user.turma || "Geral", avatar: user.foto || "", status: "presente", origem: "manual", timestamp: serverTimestamp()
-      });
-      addToast("Adicionado!", "success"); setBuscaAluno(""); setResultadoBusca([]);
+      try {
+          await addUserToChamada({ treinoId: expandedRow, user });
+          await loadExpandedData(expandedRow, true);
+          addToast("Adicionado!", "success"); setBuscaAluno(""); setResultadoBusca([]);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao adicionar aluno.", "error");
+      }
   };
 
   const handleDeleteAluno = async (alunoId: string) => {
       if(!expandedRow) return;
       if(confirm("Remover da lista oficial?")) {
-          try { await deleteDoc(doc(db, "treinos", expandedRow, "chamada", alunoId)); } catch { console.log("Removido visualmente ou apenas RSVP"); }
+          try {
+              await deleteChamadaEntry({ treinoId: expandedRow, chamadaId: alunoId });
+              await loadExpandedData(expandedRow, true);
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao remover da chamada.", "error");
+          }
       }
   }
 
   const handleToggleStatusTreino = async (treino: Treino) => {
       const novo = treino.status === 'ativo' ? 'cancelado' : 'ativo';
-      await updateDoc(doc(db, "treinos", treino.id), { status: novo });
+      try {
+          await toggleTreinoStatus({ treinoId: treino.id, status: novo });
+          await loadTreinos(true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar status.", "error");
+      }
   };
 
   const handleDeleteTreino = async (id: string) => {
-      if(confirm("Apagar tudo?")) await deleteDoc(doc(db, "treinos", id));
+      if(confirm("Apagar tudo?")) {
+          try {
+              await deleteTreino(id);
+              if (expandedRow === id) {
+                  setExpandedRow(null);
+                  setChamadaReal([]);
+                  setRsvpsAtuais([]);
+              }
+              await loadTreinos(true);
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao apagar treino.", "error");
+          }
+      }
   };
 
   const handleExportCSV = () => {
