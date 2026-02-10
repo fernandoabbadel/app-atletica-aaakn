@@ -10,8 +10,11 @@ import {
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importado para otimização
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { useToast } from "@/context/ToastContext";
+import {
+  fetchCarteirinhaConfig,
+  type CarteirinhaConfig,
+} from "@/lib/carteirinhaService";
 import { QRCodeSVG } from "qrcode.react";
 import SharkLoader from "@/app/components/SharkLoader";
 
@@ -21,11 +24,6 @@ interface StyleConfig {
     border: string;
     bgBadge: string;
     glow: string;
-}
-
-interface CarteirinhaConfig {
-    backgrounds?: Record<string, string>;
-    validade?: string;
 }
 
 // 🦈 CONFIGURAÇÃO VISUAL POR COR
@@ -70,27 +68,32 @@ const COLOR_STYLES: Record<string, StyleConfig> = {
 
 export default function CarteirinhaPage() {
   const { user, loading } = useAuth();
+  const { addToast } = useToast();
   const [config, setConfig] = useState<CarteirinhaConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [showQrModal, setShowQrModal] = useState(false);
 
   // 1. Buscar Configuração Visual do Admin
   useEffect(() => {
+      let mounted = true;
+
       const fetchConfig = async () => {
           try {
-              const docRef = doc(db, "app_config", "carteirinha");
-              const snap = await getDoc(docRef);
-              if (snap.exists()) {
-                  setConfig(snap.data() as CarteirinhaConfig);
-              }
-          } catch (error) {
+              const loadedConfig = await fetchCarteirinhaConfig();
+              if (mounted) setConfig(loadedConfig);
+          } catch (error: unknown) {
               console.error("Erro config carteirinha", error);
+              if (mounted) addToast("Erro ao carregar dados da carteirinha.", "error");
           } finally {
-              setLoadingConfig(false);
+              if (mounted) setLoadingConfig(false);
           }
       };
-      fetchConfig();
-  }, []);
+      void fetchConfig();
+
+      return () => {
+          mounted = false;
+      };
+  }, [addToast]);
 
   if (loading) return <SharkLoader />;
   if (!user) return null;
@@ -303,3 +306,5 @@ export default function CarteirinhaPage() {
     </div>
   );
 }
+
+
