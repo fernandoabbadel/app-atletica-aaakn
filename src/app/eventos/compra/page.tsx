@@ -1,16 +1,14 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, Suspense } from "react";
 import { ArrowLeft, MessageCircle, Loader2, Copy, Ticket, Minus, Plus, Wallet, Clock } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // 🦈 Importando Image
+import Image from "next/image"; // ðŸ¦ˆ Importando Image
 import { useSearchParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
-import { db } from "../../../lib/firebase";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
-
-// 🦈 Interfaces para tipagem forte (Fim do any)
+import { createEventTicketRequest, fetchEventCheckoutData } from "../../../lib/eventsService";
+// ðŸ¦ˆ Interfaces para tipagem forte (Fim do any)
 interface Lote {
     id: string;
     nome: string;
@@ -51,48 +49,47 @@ function CompraContent() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  useEffect(() => {
+    useEffect(() => {
       const loadData = async () => {
-          if (!eventoId || !loteId) return;
+          if (!eventoId || !loteId) {
+              setFetching(false);
+              return;
+          }
 
           try {
-              // 1. Buscar Evento
-              const docRef = doc(db, "eventos", eventoId);
-              const snap = await getDoc(docRef);
-              
-              if (snap.exists()) {
-                  const evtData = snap.data();
-                  setEvento({ id: snap.id, ...evtData } as EventoData);
-                  
-                  // 2. Encontrar o Lote
-                  const foundLote = evtData.lotes?.find((l: Lote) => String(l.id) === String(loteId));
-                  if (foundLote) {
-                      setLote(foundLote);
-                  }
+              const checkoutData = await fetchEventCheckoutData({
+                  eventId: eventoId,
+                  loteId,
+                  forceRefresh: true,
+              });
+
+              if (checkoutData.evento) {
+                  setEvento(checkoutData.evento as unknown as EventoData);
               }
 
-              // 3. Buscar Dados PIX
-              const configRef = doc(db, "app_config", "financeiro");
-              const configSnap = await getDoc(configRef);
-              if (configSnap.exists()) {
-                  setPixData(configSnap.data() as PixData);
+              if (checkoutData.lote) {
+                  setLote(checkoutData.lote as unknown as Lote);
+              }
+
+              if (checkoutData.financeiro) {
+                  setPixData(checkoutData.financeiro as unknown as PixData);
               } else {
                   setPixData({
                       chave: "financeiro@aaakn.com.br",
                       banco: "Banco Inter",
-                      titular: "Assoc. Atlética Acad. Knight"
+                      titular: "Assoc. Atletica Acad. Knight"
                   });
               }
 
-          } catch (error) {
+          } catch (error: unknown) {
               console.error("Erro ao carregar:", error);
               addToast("Erro ao carregar dados do evento.", "error");
           } finally {
               setFetching(false);
           }
       };
-      loadData();
-  }, [eventoId, loteId, addToast]); // 🦈 Dependências corrigidas
+      void loadData();
+  }, [eventoId, loteId, addToast]); // ðŸ¦ˆ DependÃªncias corrigidas
 
   const handleFinish = async () => {
       if (!user || !evento || !lote) return;
@@ -101,8 +98,7 @@ function CompraContent() {
       try {
           const valorTotal = parseFloat(lote.preco.replace(',', '.')) * quantidade;
 
-          // 1. Criar Solicitação de Ingresso
-          const docRef = await addDoc(collection(db, "solicitacoes_ingressos"), {
+          const ticketRequest = await createEventTicketRequest({
               userId: user.uid,
               userName: user.nome || "Aluno",
               userTurma: user.turma || "T??",
@@ -111,17 +107,15 @@ function CompraContent() {
               eventoNome: evento.titulo,
               loteNome: lote.nome,
               loteId: lote.id,
-              quantidade: quantidade,
+              quantidade,
               valorUnitario: lote.preco,
               valorTotal: valorTotal.toFixed(2),
-              dataSolicitacao: serverTimestamp(),
-              status: "pendente", 
-              metodo: "whatsapp"
+              metodo: "whatsapp",
           });
 
           // 2. Gerar Link do WhatsApp
           const adminPhone = pixData.whatsapp || "5512999999999"; 
-          const message = `🦈 Fala Tubarão! Quero garantir meu lugar no *${evento.titulo}*.\n\n🎟️ *${quantidade}x ${lote.nome}*\n💰 Valor Total: R$ ${valorTotal.toFixed(2)}\n🆔 Pedido: ${docRef.id.slice(0,5)}\n\nSegue o comprovante!`;
+          const message = `ðŸ¦ˆ Fala TubarÃ£o! Quero garantir meu lugar no *${evento.titulo}*.\n\nðŸŽŸï¸ *${quantidade}x ${lote.nome}*\nðŸ’° Valor Total: R$ ${valorTotal.toFixed(2)}\nðŸ†” Pedido: ${ticketRequest.id.slice(0,5)}\n\nSegue o comprovante!`;
           const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
 
           // 3. Redirecionar
@@ -148,7 +142,7 @@ function CompraContent() {
   };
 
   if (fetching) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500"><Loader2 className="animate-spin"/></div>;
-  if (!evento || !lote) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Lote ou Evento inválido.</div>;
+  if (!evento || !lote) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Lote ou Evento invÃ¡lido.</div>;
 
   const valorTotalDisplay = (parseFloat(lote.preco.replace(',', '.')) * quantidade).toFixed(2).replace('.', ',');
 
@@ -177,7 +171,7 @@ function CompraContent() {
             </div>
         </div>
 
-        {/* PASSO 1: QUANTIDADE E CONFIRMAÇÃO */}
+        {/* PASSO 1: QUANTIDADE E CONFIRMAÃ‡ÃƒO */}
         {step === 1 && (
             <div className="space-y-6 animate-in slide-in-from-right">
                 
@@ -273,9 +267,9 @@ function CompraContent() {
                 </div>
 
                 <div className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 text-left">
-                    <p className="text-xs text-zinc-300 mb-2">ℹ️ <span className="font-bold text-white">Status do Pedido:</span></p>
+                    <p className="text-xs text-zinc-300 mb-2">â„¹ï¸ <span className="font-bold text-white">Status do Pedido:</span></p>
                     <div className="flex items-center gap-2 text-yellow-500 font-bold text-xs uppercase tracking-wide bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
-                        <Clock size={14}/> Análise Financeira
+                        <Clock size={14}/> AnÃ¡lise Financeira
                     </div>
                 </div>
 
@@ -288,7 +282,7 @@ function CompraContent() {
   );
 }
 
-// 🦈 SUSPENSE WRAPPER (Obrigatório para useSearchParams no Next.js 15)
+// ðŸ¦ˆ SUSPENSE WRAPPER (ObrigatÃ³rio para useSearchParams no Next.js 15)
 export default function EventoCompraPage() {
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -306,3 +300,4 @@ export default function EventoCompraPage() {
     </div>
   );
 }
+

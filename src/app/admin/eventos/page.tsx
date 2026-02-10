@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Calendar, 
   Image as ImageIcon, X, Tag, Users, 
@@ -13,10 +13,20 @@ import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
 import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
-import { 
-  collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, 
-  orderBy, serverTimestamp, getDocs, where, increment, Timestamp, limit 
-} from "firebase/firestore";
+import {
+  createAdminEventPoll,
+  deleteAdminEventById,
+  deleteAdminEventPoll,
+  fetchAdminEventParticipants,
+  fetchAdminEventPolls,
+  fetchEventsFeed,
+  setAdminEventLowStock,
+  setAdminEventStatus,
+  setAdminTicketPayment,
+  updateAdminEventPollOptions,
+  upsertAdminEvent,
+} from "../../../lib/eventsService";
+import { doc, increment, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 
 // --- TIPAGEM ---
 type StatusLote = "ativo" | "encerrado" | "agendado";
@@ -59,7 +69,7 @@ interface Participante {
   dataAprovacao?: Timestamp | Date | null; 
   aprovadoPor?: string | null; 
   tipo: 'rsvp' | 'venda';
-  origemVenda?: boolean; // 🦈 Adicionado para evitar @ts-ignore
+  origemVenda?: boolean; // ðŸ¦ˆ Adicionado para evitar @ts-ignore
 }
 
 interface Evento {
@@ -80,22 +90,22 @@ interface Evento {
   stats?: { confirmados: number; talvez: number; likes: number; };
   vendasTotais?: { vendidos: number; total: number; receita?: number; };
   
-  // 🦈 ID 12: Campos Financeiros Específicos do Evento
+  // ðŸ¦ˆ ID 12: Campos Financeiros EspecÃ­ficos do Evento
   pixChave?: string;
   pixBanco?: string;
   pixTitular?: string;
   contatoComprovante?: string;
 }
 
-// LÓGICA DO CONTADOR COOL
+// LÃ“GICA DO CONTADOR COOL
 const calculateTimeLeft = (dateStr: string, timeStr: string) => {
     if (!dateStr || !timeStr) return "DATA INDEFINIDA";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return "FORMATO ANTIGO";
     const eventDate = new Date(`${dateStr}T${timeStr}:00`);
-    if (isNaN(eventDate.getTime())) return "DATA INVÁLIDA";
+    if (isNaN(eventDate.getTime())) return "DATA INVÃLIDA";
     const now = new Date();
     const diff = eventDate.getTime() - now.getTime();
-    if (diff < 0 && diff > -1000 * 60 * 60 * 4) return "AO VIVO 🔴"; 
+    if (diff < 0 && diff > -1000 * 60 * 60 * 4) return "AO VIVO ðŸ”´"; 
     if (diff < 0) return "ENCERRADO";
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -128,103 +138,164 @@ export default function AdminEventosPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
+  const [loadingAllParticipants, setLoadingAllParticipants] = useState(false);
 
   const [novoEvento, setNovoEvento] = useState<Partial<Evento>>({
     titulo: "", data: "", hora: "", local: "", tipo: "Festa", destaque: "", mapsUrl: "", imagem: "", descricao: "", lotes: [],
     imagePositionY: 50,
-    // 🦈 Inicialização dos novos campos
+    // ðŸ¦ˆ InicializaÃ§Ã£o dos novos campos
     pixChave: "", pixBanco: "", pixTitular: "", contatoComprovante: ""
   });
   const [novoLote, setNovoLote] = useState<{ nome: string; preco: string; status: StatusLote }>({ nome: "", preco: "", status: "ativo" });
   
   const [novaEnquete, setNovaEnquete] = useState({ question: "", allowUserOptions: true });
 
-  // FIREBASE LISTENER OTIMIZADO
-  useEffect(() => {
-      const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"), limit(50));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const lista = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-              lotes: doc.data().lotes || [],
-              stats: doc.data().stats || { confirmados: 0, talvez: 0, likes: 0 },
-              vendasTotais: doc.data().vendasTotais || { vendidos: 0, total: 500, receita: 0 },
-              imagePositionY: doc.data().imagePositionY ?? 50 
-          })) as Evento[];
-          setEventos(lista);
-      });
-      return () => unsubscribe();
-  }, []);
+  const mapEventRow = (raw: Record<string, unknown>): Evento => ({
+      id: String(raw.id || ""),
+      titulo: String(raw.titulo || "Evento"),
+      data: String(raw.data || ""),
+      hora: String(raw.hora || ""),
+      local: String(raw.local || ""),
+      tipo: String(raw.tipo || "Evento"),
+      destaque: String(raw.destaque || ""),
+      mapsUrl: String(raw.mapsUrl || ""),
+      imagem: String(raw.imagem || ""),
+      descricao: String(raw.descricao || ""),
+      status: (String(raw.status || "ativo") as "ativo" | "encerrado"),
+      lotes: (Array.isArray(raw.lotes) ? raw.lotes : []) as Lote[],
+      imagePositionY: typeof raw.imagePositionY === "number" ? raw.imagePositionY : 50,
+      stats: (raw.stats as Evento["stats"]) || { confirmados: 0, talvez: 0, likes: 0 },
+      vendasTotais: (raw.vendasTotais as Evento["vendasTotais"]) || { vendidos: 0, total: 500, receita: 0 },
+      isLowStock: Boolean(raw.isLowStock),
+      pixChave: String(raw.pixChave || ""),
+      pixBanco: String(raw.pixBanco || ""),
+      pixTitular: String(raw.pixTitular || ""),
+      contatoComprovante: String(raw.contatoComprovante || ""),
+  });
 
-  // GESTÃO LISTA
+  const loadEventos = useCallback(async (forceRefresh = true) => {
+      try {
+          const rows = await fetchEventsFeed({ maxResults: 50, forceRefresh });
+          setEventos(rows.map((row) => mapEventRow(row)));
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar eventos.", "error");
+      }
+  }, [addToast]);
+
+  const mapParticipantsFromRows = (
+      rsvpsRows: Record<string, unknown>[],
+      vendasRows: Record<string, unknown>[]
+  ): Participante[] => {
+      const map = new Map<string, Participante>();
+
+      rsvpsRows.forEach((raw) => {
+          const userId = String(raw.userId || "");
+          if (!userId) return;
+          map.set(userId, {
+              id: String(raw.id || userId),
+              userId,
+              userName: String(raw.userName || "Aluno"),
+              userAvatar: String(raw.userAvatar || ""),
+              userTurma: String(raw.userTurma || ""),
+              status: (String(raw.status || "maybe") as "going" | "maybe"),
+              pagamento: "pendente",
+              lote: "-",
+              valorTotal: "-",
+              tipo: "rsvp",
+          });
+      });
+
+      vendasRows.forEach((raw) => {
+          const userId = String(raw.userId || "");
+          if (!userId) return;
+          const existing = map.get(userId);
+          map.set(userId, {
+              id: String(raw.id || userId),
+              userId,
+              userName: String(raw.userName || existing?.userName || "Aluno"),
+              userAvatar: existing?.userAvatar || "https://github.com/shadcn.png",
+              userTurma: String(raw.userTurma || existing?.userTurma || ""),
+              status: "going",
+              pagamento: (String(raw.status) === "aprovado" ? "pago" : "analise"),
+              lote: String(raw.loteNome || "-"),
+              quantidade: Number(raw.quantidade || 1),
+              valorTotal: String(raw.valorTotal || "-"),
+              dataAprovacao: raw.dataAprovacao as Timestamp | Date | null | undefined,
+              aprovadoPor: String(raw.aprovadoPor || ""),
+              tipo: "venda",
+              origemVenda: true,
+          });
+      });
+
+      return Array.from(map.values());
+  };
+
+  const loadParticipantes = useCallback(async (loadAll = false) => {
+      if (!showGestaoModal) return;
+      if (loadAll) {
+          setLoadingAllParticipants(true);
+      } else {
+          setLoadingList(true);
+      }
+
+      try {
+          const rows = await fetchAdminEventParticipants({
+              eventId: showGestaoModal.id,
+              rsvpsLimit: loadAll ? 1500 : 350,
+              vendasLimit: loadAll ? 1500 : 350,
+              forceRefresh: true,
+          });
+          setParticipantesReais(mapParticipantsFromRows(rows.rsvps, rows.vendas));
+      } catch (error: unknown) {
+          console.error("Erro lista:", error);
+          addToast("Erro ao carregar lista.", "error");
+      } finally {
+          setLoadingList(false);
+          setLoadingAllParticipants(false);
+      }
+  }, [showGestaoModal, addToast]);
+
+  const loadPolls = useCallback(async () => {
+      if (!showPollModal) return;
+      try {
+          const rows = await fetchAdminEventPolls({
+              eventId: showPollModal.id,
+              maxResults: 80,
+              forceRefresh: true,
+          });
+          setPolls(
+            rows.map((row) => ({
+              id: String(row.id || crypto.randomUUID()),
+              question: String(row.question || ""),
+              options: (Array.isArray(row.options) ? row.options : []) as PollOption[],
+              allowUserOptions: Boolean(row.allowUserOptions),
+              voters: Array.isArray(row.voters)
+                ? row.voters
+                    .map((entry) => String(entry || ""))
+                    .filter((entry) => entry.length > 0)
+                : [],
+            }))
+          );
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar enquetes.", "error");
+      }
+  }, [showPollModal, addToast]);
+
+  useEffect(() => {
+      void loadEventos(true);
+  }, [loadEventos]);
+
   useEffect(() => {
       if (!showGestaoModal) return;
-      setLoadingList(true);
+      void loadParticipantes(false);
+  }, [showGestaoModal, loadParticipantes]);
 
-      const fetchLista = async () => {
-          try {
-              const qRsvp = collection(db, "eventos", showGestaoModal.id, "rsvps");
-              const rsvpSnap = await getDocs(qRsvp);
-              const rsvps = rsvpSnap.docs.map(d => ({ 
-                  id: d.id, ...d.data(), tipo: 'rsvp' as const
-              }));
-
-              const qVendas = query(collection(db, "solicitacoes_ingressos"), where("eventoId", "==", showGestaoModal.id));
-              const vendasSnap = await getDocs(qVendas);
-              const vendas = vendasSnap.docs.map(d => {
-                  const data = d.data();
-                  return {
-                      id: d.id, userId: data.userId, userName: data.userName, userTurma: data.userTurma,
-                      userAvatar: "", status: "comprador" as const,
-                      pagamento: (data.status === 'aprovado' ? 'pago' : 'analise') as "pago" | "analise", 
-                      lote: data.loteNome, quantidade: data.quantidade, valorTotal: data.valorTotal,
-                      dataAprovacao: data.dataAprovacao, aprovadoPor: data.aprovadoPor, tipo: 'venda' as const
-                  };
-              });
-
-              const map = new Map<string, Participante>();
-
-              // 🦈 Tipagem explícita para evitar 'any'
-              rsvps.forEach((r) => {
-                  const dadosRsvp = r as unknown as Participante; // Asserção segura baseada no map acima
-                  map.set(dadosRsvp.userId, {
-                      id: dadosRsvp.id, userId: dadosRsvp.userId, userName: dadosRsvp.userName, userAvatar: dadosRsvp.userAvatar,
-                      userTurma: dadosRsvp.userTurma, status: dadosRsvp.status, pagamento: "pendente",
-                      lote: "-", valorTotal: "-", tipo: 'rsvp'
-                  });
-              });
-
-              vendas.forEach((v) => {
-                  const dadosVenda = v as unknown as Participante;
-                  const existing = map.get(dadosVenda.userId);
-                  map.set(dadosVenda.userId, {
-                      ...dadosVenda, 
-                      userAvatar: existing?.userAvatar || "https://github.com/shadcn.png", 
-                      status: "going",
-                      origemVenda: true 
-                  });
-              });
-
-              setParticipantesReais(Array.from(map.values()));
-          } catch (error) {
-              console.error("Erro lista:", error);
-              addToast("Erro ao carregar lista.", "error");
-          } finally {
-              setLoadingList(false);
-          }
-      };
-      fetchLista();
-  }, [showGestaoModal, addToast]); // 🦈 Dependência addToast adicionada
-
-  // GESTÃO ENQUETES
   useEffect(() => {
       if (!showPollModal) return;
-      const q = collection(db, "eventos", showPollModal.id, "enquetes");
-      const unsub = onSnapshot(q, (snap) => {
-          setPolls(snap.docs.map(d => ({ id: d.id, ...d.data() } as Poll)));
-      });
-      return () => unsub();
-  }, [showPollModal]);
+      void loadPolls();
+  }, [showPollModal, loadPolls]);
 
   const dashboardStats = useMemo(() => {
       const totalEventos = eventos.length;
@@ -265,31 +336,35 @@ export default function AdminEventosPage() {
   };
 
   const handleSave = async () => {
-    if (!novoEvento.titulo?.trim()) return addToast("Título obrigatório!", "error");
-    if (!novoEvento.data || !novoEvento.hora) return addToast("Data e Hora obrigatórios!", "error");
+    if (!novoEvento.titulo?.trim()) return addToast("Titulo obrigatorio!", "error");
+    if (!novoEvento.data || !novoEvento.hora) return addToast("Data e hora obrigatorios!", "error");
 
-    const eventoPayload = {
+    const eventoPayload: Record<string, unknown> = {
         ...novoEvento,
         lotes: novoEvento.lotes || [],
         status: novoEvento.status || "ativo",
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
     };
 
     try {
         if (isEditing && editingId) {
-            await updateDoc(doc(db, "eventos", editingId), eventoPayload);
+            await upsertAdminEvent({ eventId: editingId, data: eventoPayload });
             addToast("Evento atualizado!", "success");
         } else {
-            await addDoc(collection(db, "eventos"), {
-                ...eventoPayload,
-                stats: { confirmados: 0, talvez: 0, likes: 0 },
-                vendasTotais: { vendidos: 0, total: 500, receita: 0 },
-                createdAt: serverTimestamp()
+            await upsertAdminEvent({
+                data: {
+                    ...eventoPayload,
+                    stats: { confirmados: 0, talvez: 0, likes: 0 },
+                    vendasTotais: { vendidos: 0, total: 500, receita: 0 },
+                },
             });
             addToast("Evento criado!", "success");
         }
+
         setShowModal(false);
-    } catch {
+        await loadEventos(true);
+    } catch (error: unknown) {
+        console.error(error);
         addToast("Erro ao salvar.", "error");
     }
   };
@@ -297,9 +372,11 @@ export default function AdminEventosPage() {
   const handleDelete = async (id: string) => {
     if (confirm("Excluir evento permanentemente?")) {
       try {
-          await deleteDoc(doc(db, "eventos", id));
+          await deleteAdminEventById(id);
           addToast("Evento cancelado.", "info");
-      } catch {
+          await loadEventos(true);
+      } catch (error: unknown) {
+          console.error(error);
           addToast("Erro ao excluir.", "error");
       }
     }
@@ -334,7 +411,7 @@ export default function AdminEventosPage() {
 
   const exportarCSV = () => {
       if(!showGestaoModal) return;
-      const headers = ["Nome", "Turma", "Status Presença", "Pagamento", "Lote", "Qtd", "Valor", "Data Aprov.", "Hora Aprov.", "Aprovado Por"];
+      const headers = ["Nome", "Turma", "Status PresenÃ§a", "Pagamento", "Lote", "Qtd", "Valor", "Data Aprov.", "Hora Aprov.", "Aprovado Por"];
       const rows = participantesReais.map(p => [
           p.userName, p.userTurma, p.status, p.pagamento || "pendente", p.lote || "-", p.quantidade || "1", p.valorTotal || "-",
           formatTimestamp(p.dataAprovacao, 'date'), formatTimestamp(p.dataAprovacao, 'time'), p.aprovadoPor || "-"
@@ -353,16 +430,25 @@ export default function AdminEventosPage() {
   const toggleEventoStatus = async (evento: Evento) => {
       const newStatus = evento.status === "ativo" ? "encerrado" : "ativo";
       try {
-          await updateDoc(doc(db, "eventos", evento.id), { status: newStatus });
+          await setAdminEventStatus({ eventId: evento.id, status: newStatus });
           addToast(`Evento marcado como ${newStatus}.`, "info");
-      } catch { addToast("Erro ao atualizar status.", "error"); }
+          await loadEventos(true);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar status.", "error");
+      }
   };
 
   const toggleLowStock = async (evento: Evento) => {
       try {
-          await updateDoc(doc(db, "eventos", evento.id), { isLowStock: !evento.isLowStock });
+          await setAdminEventLowStock({
+              eventId: evento.id,
+              isLowStock: !evento.isLowStock,
+          });
           addToast(`Status de vagas ${!evento.isLowStock ? 'ATIVADO' : 'DESATIVADO'}`, "success");
-      } catch {
+          await loadEventos(true);
+      } catch (error: unknown) {
+          console.error(error);
           addToast("Erro ao atualizar.", "error");
       }
   };
@@ -376,14 +462,14 @@ export default function AdminEventosPage() {
       if (isApproving) {
           if (!confirm(`Confirmar pagamento de ${p.userName} no valor de R$ ${p.valorTotal}?`)) return;
       } else {
-          if (!confirm(`ATENÇÃO: Desaprovar pagamento de ${p.userName}? Isso irá remover o XP ganho.`)) return;
+          if (!confirm(`ATENCAO: Desaprovar pagamento de ${p.userName}? Isso ira remover o XP ganho.`)) return;
       }
 
       try {
-          await updateDoc(doc(db, "solicitacoes_ingressos", p.id), {
-              status: isApproving ? "aprovado" : "pendente",
-              dataAprovacao: isApproving ? serverTimestamp() : null,
-              aprovadoPor: isApproving ? (currentUser?.nome || "Admin") : null
+          await setAdminTicketPayment({
+              ticketRequestId: p.id,
+              isApproving,
+              approvedBy: currentUser?.nome || "Admin",
           });
 
           if (!isNaN(valorGasto) && p.userId) {
@@ -400,45 +486,63 @@ export default function AdminEventosPage() {
               aprovadoPor: isApproving ? (currentUser?.nome || "Admin") : null 
           } : item));
 
-          addToast(isApproving ? "Pagamento aprovado! 🦈" : "Pagamento estornado.", isApproving ? "success" : "info");
-      } catch (error) {
+          addToast(isApproving ? "Pagamento aprovado!" : "Pagamento estornado.", isApproving ? "success" : "info");
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao atualizar pagamento.", "error");
       }
   };
 
-  // --- GESTÃO DE ENQUETES ---
+  // --- GESTÃƒO DE ENQUETES ---
   const handleCreatePoll = async () => {
       if (!showPollModal || !novaEnquete.question) return;
       try {
-          await addDoc(collection(db, "eventos", showPollModal.id, "enquetes"), {
-              question: novaEnquete.question, allowUserOptions: novaEnquete.allowUserOptions, options: [], voters: [], createdAt: serverTimestamp()
+          await createAdminEventPoll({
+              eventId: showPollModal.id,
+              question: novaEnquete.question,
+              allowUserOptions: novaEnquete.allowUserOptions,
           });
           setNovaEnquete({ question: "", allowUserOptions: true });
           addToast("Enquete criada!", "success");
-      } catch { addToast("Erro ao criar enquete.", "error"); }
+          await loadPolls();
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao criar enquete.", "error");
+      }
   };
 
   const handleDeletePoll = async (pollId: string) => {
       if (!showPollModal) return;
       if (!confirm("Excluir enquete?")) return;
       try {
-          await deleteDoc(doc(db, "eventos", showPollModal.id, "enquetes", pollId));
-          addToast("Enquete excluída.", "info");
-      } catch { addToast("Erro ao excluir.", "error"); }
+          await deleteAdminEventPoll({ eventId: showPollModal.id, pollId });
+          addToast("Enquete excluida.", "info");
+          await loadPolls();
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao excluir.", "error");
+      }
   };
 
   const handleDeleteOption = async (poll: Poll, optionIndex: number) => {
       if (!showPollModal) return;
-      if (!confirm("Remover esta opção da enquete?")) return;
+      if (!confirm("Remover esta opcao da enquete?")) return;
       const newOptions = poll.options.filter((option, i) => {
           void option;
           return i !== optionIndex;
       });
       try {
-          await updateDoc(doc(db, "eventos", showPollModal.id, "enquetes", poll.id), { options: newOptions });
-          addToast("Opção removida.", "info");
-      } catch { addToast("Erro ao remover opção.", "error"); }
+          await updateAdminEventPollOptions({
+              eventId: showPollModal.id,
+              pollId: poll.id,
+              options: newOptions,
+          });
+          addToast("Opcao removida.", "info");
+          await loadPolls();
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao remover opcao.", "error");
+      }
   };
 
   return (
@@ -446,7 +550,7 @@ export default function AdminEventosPage() {
       <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <h1 className="text-lg font-black text-white uppercase tracking-tighter">Gestão de Eventos</h1>
+          <h1 className="text-lg font-black text-white uppercase tracking-tighter">GestÃ£o de Eventos</h1>
         </div>
         <button onClick={handleOpenCreate} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20">
           <Plus size={16} /> Novo Evento
@@ -473,7 +577,7 @@ export default function AdminEventosPage() {
                         <Image src={evento.imagem} alt={evento.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 transition" style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }} unoptimized/>
                         <div className="absolute top-2 left-2 flex gap-1 z-10"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-black/60 text-white backdrop-blur-sm border border-white/10">{evento.tipo}</span></div>
                         <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[10px] font-mono font-bold text-emerald-400 border border-emerald-500/30 z-10">{calculateTimeLeft(evento.data, evento.hora)}</div>
-                        <button onClick={(e) => { e.stopPropagation(); toggleLowStock(evento); }} className={`absolute top-2 right-2 p-1.5 rounded-lg border transition shadow-lg z-10 ${evento.isLowStock ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-black/50 text-zinc-400 border-zinc-700 hover:text-white'}`} title="Alternar 'Últimas Vagas'"><Star size={14} className={evento.isLowStock ? 'fill-black' : ''}/></button>
+                        <button onClick={(e) => { e.stopPropagation(); toggleLowStock(evento); }} className={`absolute top-2 right-2 p-1.5 rounded-lg border transition shadow-lg z-10 ${evento.isLowStock ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-black/50 text-zinc-400 border-zinc-700 hover:text-white'}`} title="Alternar 'Ãšltimas Vagas'"><Star size={14} className={evento.isLowStock ? 'fill-black' : ''}/></button>
                     </div>
                     <div className="p-4 flex-1 flex flex-col">
                         <h3 className="font-bold text-white text-lg leading-tight mb-1">{evento.titulo}</h3>
@@ -492,19 +596,31 @@ export default function AdminEventosPage() {
         </div>
       </main>
 
-      {/* MODAL GESTÃO LISTA (MANTIDO IGUAL AO ANTERIOR) */}
+      {/* MODAL GESTÃƒO LISTA (MANTIDO IGUAL AO ANTERIOR) */}
       {showGestaoModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={(e) => e.stopPropagation()}>
               <div className="bg-zinc-900 w-full max-w-7xl h-[90vh] rounded-2xl border border-zinc-800 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-black/40">
-                      <div><h2 className="font-black text-white text-xl uppercase tracking-tighter flex items-center gap-2"><Tag size={20} className="text-emerald-500"/> Gestão: {showGestaoModal.titulo}</h2></div>
+                      <div><h2 className="font-black text-white text-xl uppercase tracking-tighter flex items-center gap-2"><Tag size={20} className="text-emerald-500"/> GestÃ£o: {showGestaoModal.titulo}</h2></div>
                       <button onClick={() => setShowGestaoModal(null)} className="p-2 hover:bg-zinc-800 rounded-full transition"><X size={20}/></button>
                   </div>
                   <div className="flex-1 p-6 overflow-hidden flex flex-col">
                       <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-sm font-bold text-zinc-400 uppercase">Lista de Presença ({participantesReais.length})</h3>
+                          <h3 className="text-sm font-bold text-zinc-400 uppercase">Lista de PresenÃ§a ({participantesReais.length})</h3>
                           <div className="flex items-center gap-4">
-                              {loadingList && <span className="text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="animate-spin" size={14}/> Atualizando...</span>}
+                              {(loadingList || loadingAllParticipants) && (
+                                <span className="text-xs text-zinc-500 flex items-center gap-2">
+                                  <Loader2 className="animate-spin" size={14}/>
+                                  Atualizando...
+                                </span>
+                              )}
+                              <button
+                                onClick={() => void loadParticipantes(true)}
+                                disabled={loadingAllParticipants}
+                                className="text-xs text-yellow-400 font-bold hover:underline disabled:opacity-50"
+                              >
+                                {loadingAllParticipants ? "Carregando tudo..." : "Carregar tudo"}
+                              </button>
                               <button onClick={exportarCSV} className="text-xs text-emerald-500 font-bold hover:underline flex items-center gap-1"><Download size={14}/> CSV</button>
                           </div>
                       </div>
@@ -512,7 +628,7 @@ export default function AdminEventosPage() {
                           <table className="w-full text-left text-xs whitespace-nowrap">
                               <thead className="text-zinc-500 border-b border-zinc-800 bg-zinc-950 sticky top-0 z-10">
                                   <tr>
-                                      <th className="p-3">Usuário</th><th className="p-3">Turma</th><th className="p-3">RSVP</th><th className="p-3">Pagamento</th><th className="p-3 text-center">Ação</th>
+                                      <th className="p-3">UsuÃ¡rio</th><th className="p-3">Turma</th><th className="p-3">RSVP</th><th className="p-3">Pagamento</th><th className="p-3 text-center">AÃ§Ã£o</th>
                                       <th className="p-3 text-center">Data Aprov.</th><th className="p-3 text-center">Hora Aprov.</th><th className="p-3">Aprovado Por</th><th className="p-3">Valor</th><th className="p-3">Lote</th><th className="p-3 text-center">Qtd</th>
                                   </tr>
                               </thead>
@@ -522,8 +638,8 @@ export default function AdminEventosPage() {
                                           <td className="p-3 font-bold"><Link href={`/admin/usuarios/${p.userId}`} className="flex items-center gap-2 hover:text-emerald-400 transition" target="_blank"><div className="relative w-6 h-6 rounded-full overflow-hidden bg-zinc-800"><Image src={p.userAvatar || "https://github.com/shadcn.png"} alt="Avatar" fill className="object-cover" unoptimized/></div>{p.userName}</Link></td>
                                           <td className="p-3 text-zinc-400">{p.userTurma || "-"}</td>
                                           <td className="p-3"><span className={`px-2 py-0.5 rounded font-bold uppercase ${p.status === 'going' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{p.status === 'going' ? 'Vou' : 'Talvez'}</span></td>
-                                          <td className="p-3"><span className={`px-2 py-0.5 rounded font-bold uppercase ${p.pagamento === 'pago' ? 'bg-blue-500/10 text-blue-500' : p.pagamento === 'analise' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-zinc-800 text-zinc-500'}`}>{p.pagamento === 'pago' ? 'Pago' : p.pagamento === 'analise' ? 'Em Análise' : 'Pendente'}</span></td>
-                                          <td className="p-3 text-center">{p.tipo === 'venda' ? (<div className="flex justify-center gap-2">{p.pagamento !== 'pago' ? (<button onClick={() => handleTogglePayment(p)} className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-lg transition" title="Aprovar Pagamento"><Check size={14}/></button>) : (<button onClick={() => handleTogglePayment(p)} className="bg-zinc-800 hover:bg-red-500/20 hover:text-red-500 text-zinc-500 p-1.5 rounded-lg transition" title="Desfazer Aprovação"><RotateCcw size={14}/></button>)}</div>) : (<span className="text-zinc-600">-</span>)}</td>
+                                          <td className="p-3"><span className={`px-2 py-0.5 rounded font-bold uppercase ${p.pagamento === 'pago' ? 'bg-blue-500/10 text-blue-500' : p.pagamento === 'analise' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-zinc-800 text-zinc-500'}`}>{p.pagamento === 'pago' ? 'Pago' : p.pagamento === 'analise' ? 'Em AnÃ¡lise' : 'Pendente'}</span></td>
+                                          <td className="p-3 text-center">{p.tipo === 'venda' ? (<div className="flex justify-center gap-2">{p.pagamento !== 'pago' ? (<button onClick={() => handleTogglePayment(p)} className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-lg transition" title="Aprovar Pagamento"><Check size={14}/></button>) : (<button onClick={() => handleTogglePayment(p)} className="bg-zinc-800 hover:bg-red-500/20 hover:text-red-500 text-zinc-500 p-1.5 rounded-lg transition" title="Desfazer AprovaÃ§Ã£o"><RotateCcw size={14}/></button>)}</div>) : (<span className="text-zinc-600">-</span>)}</td>
                                           <td className="p-3 text-center text-zinc-400">{formatTimestamp(p.dataAprovacao, 'date')}</td>
                                           <td className="p-3 text-center text-zinc-400">{formatTimestamp(p.dataAprovacao, 'time')}</td>
                                           <td className="p-3 text-zinc-400 italic text-[10px] truncate max-w-[100px]">{p.aprovadoPor || "-"}</td>
@@ -543,7 +659,7 @@ export default function AdminEventosPage() {
       {/* MODAL ENQUETES (MANTIDO) */}
       {showPollModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={(e) => e.stopPropagation()}>
-              {/* Conteúdo do Modal de Enquetes */}
+              {/* ConteÃºdo do Modal de Enquetes */}
               <div className="bg-zinc-900 w-full max-w-lg rounded-2xl border border-zinc-800 flex flex-col h-[80vh]">
                   <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-black/40">
                       <div><h2 className="font-black text-white text-lg uppercase flex items-center gap-2"><MessageCircle size={20} className="text-purple-500"/> Enquetes</h2></div>
@@ -622,7 +738,7 @@ export default function AdminEventosPage() {
                     <input type="text" placeholder="Local" className="flex-1 bg-black border border-zinc-700 rounded-xl p-3 text-sm text-white" value={novoEvento.local} onChange={(e) => setNovoEvento({ ...novoEvento, local: e.target.value })} />
                 </div>
 
-                {/* 🦈 NOVO: SEÇÃO FINANCEIRA (PIX) */}
+                {/* ðŸ¦ˆ NOVO: SEÃ‡ÃƒO FINANCEIRA (PIX) */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2 mb-1">
                         <Wallet size={16} className="text-emerald-500"/>
@@ -640,12 +756,12 @@ export default function AdminEventosPage() {
                     <input type="text" placeholder="Telefone/WhatsApp para Comprovante" className="w-full bg-black border border-zinc-700 rounded-lg p-2 text-xs text-white" value={novoEvento.contatoComprovante} onChange={e => setNovoEvento({...novoEvento, contatoComprovante: e.target.value})} />
                 </div>
                 
-                {/* Gestão de Lotes */}
+                {/* GestÃ£o de Lotes */}
                 <div className="bg-black/40 border border-zinc-800 rounded-xl p-4">
                     <label className="text-xs text-zinc-500 font-bold uppercase mb-3 block border-b border-zinc-800 pb-2">Configurar Lotes</label>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                         <input type="text" placeholder="Nome (ex: Lote 1)" className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-xs text-white" value={novoLote.nome} onChange={e => setNovoLote({...novoLote, nome: e.target.value})} />
-                        <input type="text" placeholder="Preço (R$)" className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-xs text-white" value={novoLote.preco} onChange={e => setNovoLote({...novoLote, preco: e.target.value})} />
+                        <input type="text" placeholder="PreÃ§o (R$)" className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-xs text-white" value={novoLote.preco} onChange={e => setNovoLote({...novoLote, preco: e.target.value})} />
                     </div>
                     <button onClick={handleAddLote} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold text-xs uppercase hover:bg-emerald-500">Adicionar Lote</button>
                     <div className="space-y-1 mt-2 max-h-24 overflow-y-auto custom-scrollbar">
@@ -664,7 +780,7 @@ export default function AdminEventosPage() {
                 </div>
             </div>
 
-            <div><label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">Descrição Completa</label><textarea className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" value={novoEvento.descricao} onChange={(e) => setNovoEvento({ ...novoEvento, descricao: e.target.value })}></textarea></div>
+            <div><label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">DescriÃ§Ã£o Completa</label><textarea className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-white h-24 resize-none focus:border-emerald-500 outline-none" value={novoEvento.descricao} onChange={(e) => setNovoEvento({ ...novoEvento, descricao: e.target.value })}></textarea></div>
 
             <div className="flex gap-3 pt-2 border-t border-zinc-800">
               <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-xl border border-zinc-700 text-zinc-400 font-bold text-xs uppercase hover:bg-zinc-800 transition">Cancelar</button>
@@ -676,3 +792,4 @@ export default function AdminEventosPage() {
     </div>
   );
 }
+

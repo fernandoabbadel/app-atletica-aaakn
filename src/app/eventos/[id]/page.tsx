@@ -1,7 +1,7 @@
-// src/app/eventos/[id]/page.tsx
+﻿// src/app/eventos/[id]/page.tsx
 "use client";
 import Image from "next/image";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
   ArrowLeft, Calendar, MapPin, Share2, Ticket, Clock,
   Users, CheckCircle, HelpCircle, XCircle,
@@ -13,9 +13,13 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
+import {
+  cancelEventTicketRequest,
+  fetchEventDetailsBundle,
+} from "../../../lib/eventsService";
 import { 
-  doc, onSnapshot, collection, runTransaction, serverTimestamp, 
-  increment, addDoc, updateDoc, query, orderBy, arrayUnion, arrayRemove, deleteDoc, getDocs, where,
+  doc, collection, runTransaction, serverTimestamp, 
+  increment, addDoc, updateDoc, arrayUnion, arrayRemove, deleteDoc,
   Timestamp
 } from "firebase/firestore";
 import { useAuth } from "../../../context/AuthContext";
@@ -46,7 +50,7 @@ interface Evento {
     likes?: number;
   };
   lotes?: Lote[];
-  // 🦈 ID 12: Dados financeiros locais do evento
+  // ðŸ¦ˆ ID 12: Dados financeiros locais do evento
   pixChave?: string;
   pixBanco?: string;
   pixTitular?: string;
@@ -112,7 +116,7 @@ interface PatenteConfig {
     iconName: string;
 }
 
-// --- CONFIGURAÇÃO DE ÍCONES ---
+// --- CONFIGURAÃ‡ÃƒO DE ÃCONES ---
 const ICON_COMPONENTS: Record<string, React.ElementType> = {
     Fish, Swords, Crown, Skull, Rocket,
     Star, Zap, Trophy, Medal, Heart,
@@ -120,11 +124,11 @@ const ICON_COMPONENTS: Record<string, React.ElementType> = {
 };
 
 const DEFAULT_PATENTES: PatenteConfig[] = [
-    { titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
-    { titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
+    { titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
     { titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
-    { titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
-    { titulo: "Tubarão Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
     { titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
@@ -168,7 +172,7 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
         const diff = target.getTime() - now.getTime();
 
         if (diff <= 0) {
-            setStatus("ESTÁ ROLANDO!");
+            setStatus("ESTÃ ROLANDO!");
             setTimeLeft(null);
             return;
         }
@@ -199,12 +203,12 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
   );
 }
 
-// --- BADGES DO USUÁRIO ---
+// --- BADGES DO USUÃRIO ---
 const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: PatenteConfig[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
     const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
     const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
-    const patenteName = data.userPatente || "Plâncton";
+    const patenteName = data.userPatente || "PlÃ¢ncton";
     const patenteConfig = patentesConfig.find(p => p.titulo === patenteName) || patentesConfig[0] || DEFAULT_PATENTES[0];
     const PatenteIcon = ICON_COMPONENTS[patenteConfig.iconName] || Fish;
     const patenteColor = patenteConfig.cor || "text-zinc-400";
@@ -237,7 +241,7 @@ export default function DetalhesEventoPage() {
   
   const [currentPollIndex, setCurrentPollIndex] = useState(0);
 
-  // 🦈 NOVOS ESTADOS PARA PEDIDOS
+  // ðŸ¦ˆ NOVOS ESTADOS PARA PEDIDOS
   const [meusPedidos, setMeusPedidos] = useState<PedidoIngresso[]>([]);
   // Usando Record<string, unknown> para evitar 'any'
   const [globalFinanceiro, setGlobalFinanceiro] = useState<Record<string, unknown> | null>(null);
@@ -249,85 +253,74 @@ export default function DetalhesEventoPage() {
       return undefined;
   })();
 
-  // --- SINC INICIAL ---
-  useEffect(() => {
-      if (!params.id) return;
-      const eventId = params.id as string;
+    const eventId = typeof params.id === "string" ? params.id : "";
 
-      // 1. Evento
-      const unsubEvent = onSnapshot(doc(db, "eventos", eventId), (docSnap) => {
-          if (docSnap.exists()) setEvento({ id: docSnap.id, ...docSnap.data() } as Evento);
-          else setEvento(null);
-          setLoading(false);
-      });
-
-      // 2. RSVPs
-      const unsubRsvp = onSnapshot(collection(db, "eventos", eventId, "rsvps"), (snap) => {
-          const lista = snap.docs.map(d => d.data() as Rsvp);
-          setRsvps(lista);
-          if (user) {
-              const me = lista.find((p) => p.userId === user.uid);
-              setUserRsvp(me ? me.status : null);
+  const refreshEventData = useCallback(
+      async (withLoading = false) => {
+          if (!eventId) {
+              setLoading(false);
+              return;
           }
-      });
 
-      // 3. Comentários
-      const qCom = query(collection(db, "eventos", eventId, "comentarios"), orderBy("createdAt", "desc"));
-      const unsubCom = onSnapshot(qCom, (snap) => {
-          setComentarios(snap.docs.map(d => ({id: d.id, ...d.data()} as Comentario)));
-      });
+          if (withLoading) setLoading(true);
+          try {
+              const bundle = await fetchEventDetailsBundle({
+                  eventId,
+                  userId: user?.uid || null,
+                  rsvpsLimit: 600,
+                  commentsLimit: 180,
+                  pollsLimit: 60,
+                  pedidosLimit: 60,
+                  forceRefresh: true,
+              });
 
-      // 4. Enquetes
-      const unsubPolls = onSnapshot(collection(db, "eventos", eventId, "enquetes"), (snap) => {
-          setEnquetes(snap.docs.map(d => ({id: d.id, ...d.data()} as Enquete)));
-      });
+              setEvento(bundle.evento as Evento | null);
+              setRsvps(bundle.rsvps as unknown as Rsvp[]);
+              setComentarios(bundle.comentarios as unknown as Comentario[]);
+              setEnquetes(bundle.enquetes as unknown as Enquete[]);
+              setPatentesConfig(
+                  bundle.patentes.length > 0
+                      ? (bundle.patentes as unknown as PatenteConfig[])
+                      : DEFAULT_PATENTES
+              );
+              setGlobalFinanceiro(bundle.financeiro);
+              setMeusPedidos(bundle.meusPedidos as unknown as PedidoIngresso[]);
 
-      // 5. Patentes (Global Config)
-      const unsubPatentes = onSnapshot(query(collection(db, "patentes_config"), orderBy("minXp", "asc")), (snap) => {
-          const data = snap.docs.map(d => d.data() as PatenteConfig);
-          if (data.length > 0) setPatentesConfig(data);
-      });
+              if (user) {
+                  const me = (bundle.rsvps as unknown as Rsvp[]).find((p) => p.userId === user.uid);
+                  setUserRsvp(me ? me.status : null);
+              } else {
+                  setUserRsvp(null);
+              }
+          } catch (error: unknown) {
+              console.error(error);
+              addToast("Erro ao carregar evento.", "error");
+          } finally {
+              setLoading(false);
+          }
+      },
+      [eventId, user, addToast]
+  );
 
-      // 6. Config Financeira Global (Backup)
-      getDocs(collection(db, "app_config")).then(snap => {
-          snap.docs.forEach(d => {
-              if (d.id === "financeiro") setGlobalFinanceiro(d.data());
-          });
-      });
-
-      return () => { unsubEvent(); unsubRsvp(); unsubCom(); unsubPolls(); unsubPatentes(); };
-  }, [params.id, user]);
-
-  // 🦈 LISTENER DE PEDIDOS DO USUÁRIO
   useEffect(() => {
-      if (!user || !params.id) return;
-      
-      const qPedidos = query(
-          collection(db, "solicitacoes_ingressos"), 
-          where("userId", "==", user.uid),
-          where("eventoId", "==", params.id)
-      );
-      const unsubPedidos = onSnapshot(qPedidos, (snap) => {
-          setMeusPedidos(snap.docs.map(d => ({ id: d.id, ...d.data() } as PedidoIngresso)));
-      });
-
-      return () => unsubPedidos();
-  }, [user, params.id]);
+      void refreshEventData(true);
+  }, [refreshEventData]);
 
   // --- ACTIONS ---
 
   const handleCancelOrder = async (pedidoId: string) => {
       if (!confirm("Tem certeza que deseja cancelar este pedido?")) return;
       try {
-          await deleteDoc(doc(db, "solicitacoes_ingressos", pedidoId));
+          await cancelEventTicketRequest(pedidoId);
           addToast("Pedido cancelado.", "info");
+          await refreshEventData();
       } catch {
           addToast("Erro ao cancelar.", "error");
       }
   };
 
   const handleRSVP = async (status: "going" | "maybe") => {
-      if (!user || !evento) return addToast("Faça login para confirmar!", "error");
+      if (!user || !evento) return addToast("FaÃ§a login para confirmar!", "error");
       try {
           await runTransaction(db, async (t) => {
               const ref = doc(db, "eventos", evento.id, "rsvps", user.uid);
@@ -347,7 +340,7 @@ export default function DetalhesEventoPage() {
                       t.update(eventRef, { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
                   }
                   t.set(ref, {
-                      userId: user.uid, status, userName: user.nome || "Anônimo", 
+                      userId: user.uid, status, userName: user.nome || "AnÃ´nimo", 
                       userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
                   t.update(eventRef, { 
@@ -357,23 +350,25 @@ export default function DetalhesEventoPage() {
               }
           });
           addToast("Lista atualizada!", "success");
+          await refreshEventData();
       } catch { addToast("Erro ao atualizar.", "error"); }
   };
 
   const handleSendComment = async () => {
       if (!newComment.trim() || !user || !evento) return;
       const newCommentData = {
-          text: newComment, userId: user.uid, userName: user.nome || "Anônimo",
+          text: newComment, userId: user.uid, userName: user.nome || "AnÃ´nimo",
           userAvatar: user.foto || "", userTurma: user.turma || "Geral",
           userPlanoCor: user.plano_cor || "zinc", userPlanoIcon: user.plano_icon || "ghost",
-          userPatente: user.patente || "Plâncton", role: user.role || 'user',
+          userPatente: user.patente || "PlÃ¢ncton", role: user.role || 'user',
           createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
       };
       try {
           await addDoc(collection(db, "eventos", evento.id, "comentarios"), newCommentData);
           await updateDoc(doc(db, "users", user.uid), { "stats.commentsCount": increment(1) });
           setNewComment("");
-          addToast("Comentário enviado!", "success");
+          addToast("ComentÃ¡rio enviado!", "success");
+          await refreshEventData();
       } catch { addToast("Erro ao comentar.", "error"); }
   };
 
@@ -390,33 +385,42 @@ export default function DetalhesEventoPage() {
               await updateDoc(doc(db, "users", authorId), { "stats.likesReceived": increment(incrementVal) });
               await updateDoc(doc(db, "users", user.uid), { "stats.likesGiven": increment(incrementVal) });
           }
+          await refreshEventData();
       } catch (error) { console.error(error); }
   };
 
   const handleDeleteComment = async (comId: string) => {
-      if (!evento || !confirm("Apagar este comentário?")) return;
-      try { await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId)); addToast("Comentário apagado.", "info"); } catch { addToast("Erro ao apagar.", "error"); }
+      if (!evento || !confirm("Apagar este comentÃ¡rio?")) return;
+      try {
+          await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
+          addToast("ComentÃ¡rio apagado.", "info");
+          await refreshEventData();
+      } catch {
+          addToast("Erro ao apagar.", "error");
+      }
   };
 
   const handleReportComment = async (comId: string) => {
       if (!user || !evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { reports: arrayUnion(user.uid) });
-      addToast("Comentário denunciado.", "info");
+      addToast("ComentÃ¡rio denunciado.", "info");
+      await refreshEventData();
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
       if(!evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
-      addToast(currentStatus ? "Comentário restaurado." : "Comentário ocultado.", "info");
+      addToast(currentStatus ? "ComentÃ¡rio restaurado." : "ComentÃ¡rio ocultado.", "info");
+      await refreshEventData();
   };
 
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
-      if (!user || !evento) return addToast("Login necessário.", "error");
+      if (!user || !evento) return addToast("Login necessÃ¡rio.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       try {
         await runTransaction(db, async (t) => {
             const pollDoc = await t.get(pollRef);
-            if (!pollDoc.exists()) throw "Enquete não existe";
+            if (!pollDoc.exists()) throw "Enquete nÃ£o existe";
             const data = pollDoc.data() as Enquete;
             const newOptions = [...data.options];
             const userVotes = data.userVotes || {}; 
@@ -429,7 +433,7 @@ export default function DetalhesEventoPage() {
                 userVotes[user.uid] = newMyVotes;
                 t.update(pollRef, { options: newOptions, userVotes: userVotes });
             } else {
-                if (myVotes.length >= 3) { throw "Você já escolheu 3 opções!"; }
+                if (myVotes.length >= 3) { throw "VocÃª jÃ¡ escolheu 3 opÃ§Ãµes!"; }
                 newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
                 const userTurma = user.turma || "Geral";
                 if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
@@ -438,6 +442,7 @@ export default function DetalhesEventoPage() {
                 t.update(pollRef, { options: newOptions, userVotes: userVotes, voters: arrayUnion(user.uid) });
             }
         });
+        await refreshEventData();
       } catch (e: unknown) { 
         const errorMsg = typeof e === 'string' ? e : "Erro ao votar.";
         addToast(errorMsg, "error"); 
@@ -449,15 +454,16 @@ export default function DetalhesEventoPage() {
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ 
-              text: newPollOption, votes: 0, creatorId: user.uid, creatorName: user.nome?.split(" ")[0] || "Anônimo", creatorAvatar: user.foto || "", votesByTurma: {} 
+              text: newPollOption, votes: 0, creatorId: user.uid, creatorName: user.nome?.split(" ")[0] || "AnÃ´nimo", creatorAvatar: user.foto || "", votesByTurma: {} 
           })
       });
       setNewPollOption("");
-      addToast("Opção adicionada!", "success");
+      addToast("OpÃ§Ã£o adicionada!", "success");
+      await refreshEventData();
   };
 
-  const handleReportPoll = async (_pollId: string) => { if(!user) return; void _pollId; addToast("Enquete reportada à moderação.", "info"); };
-  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; void _pollId; addToast(`Opção "${optionText}" denunciada.`, "info"); };
+  const handleReportPoll = async (_pollId: string) => { if(!user) return; void _pollId; addToast("Enquete reportada Ã  moderaÃ§Ã£o.", "info"); };
+  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; void _pollId; addToast(`OpÃ§Ã£o "${optionText}" denunciada.`, "info"); };
 
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
@@ -495,7 +501,7 @@ export default function DetalhesEventoPage() {
   }, [rsvps]);
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
-  if (!evento) return <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4"><XCircle size={40} className="text-red-500"/> <p>Evento não encontrado.</p> <Link href="/eventos" className="text-emerald-500 underline">Voltar</Link></div>;
+  if (!evento) return <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4"><XCircle size={40} className="text-red-500"/> <p>Evento nÃ£o encontrado.</p> <Link href="/eventos" className="text-emerald-500 underline">Voltar</Link></div>;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
@@ -508,7 +514,7 @@ export default function DetalhesEventoPage() {
                 fill
                 className="object-cover" 
                 style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}
-                unoptimized // Adicione isso para evitar erros de domínio externo
+                unoptimized // Adicione isso para evitar erros de domÃ­nio externo
             />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
@@ -550,10 +556,10 @@ export default function DetalhesEventoPage() {
         </div>
       </div>
 
-      {/* CONTEÚDO */}
+      {/* CONTEÃšDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
-        {/* 🦈 NOVO: ÁREA DE STATUS DOS PEDIDOS (Prioridade no topo) */}
+        {/* ðŸ¦ˆ NOVO: ÃREA DE STATUS DOS PEDIDOS (Prioridade no topo) */}
         {meusPedidos.length > 0 && (
             <div className="space-y-3">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-purple-500"/> Seus Pedidos</h3>
@@ -566,7 +572,7 @@ export default function DetalhesEventoPage() {
                             </div>
                             <span className={`text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 ${pedido.status === 'aprovado' ? 'bg-emerald-500 text-black' : 'bg-yellow-500 text-black'}`}>
                                 {pedido.status === 'aprovado' ? <CheckCircle size={12}/> : <Clock size={12}/>}
-                                {pedido.status === 'aprovado' ? 'Confirmado' : 'Aguardando Aprovação'}
+                                {pedido.status === 'aprovado' ? 'Confirmado' : 'Aguardando AprovaÃ§Ã£o'}
                             </span>
                         </div>
 
@@ -602,11 +608,11 @@ export default function DetalhesEventoPage() {
                     <div className="flex items-center gap-3">
                         <Star className="text-yellow-400 fill-yellow-400" size={24}/>
                         <div>
-                            <p className="text-yellow-400 font-black uppercase text-sm tracking-widest">Últimas Vagas</p>
+                            <p className="text-yellow-400 font-black uppercase text-sm tracking-widest">Ãšltimas Vagas</p>
                             <p className="text-zinc-400 text-[10px]">O lote vai virar em breve!</p>
                         </div>
                     </div>
-                    {/* 🦈 Link para nova compra */}
+                    {/* ðŸ¦ˆ Link para nova compra */}
                     {evento.lotes && evento.lotes.length > 0 && evento.lotes[0].status === 'ativo' && (
                           <Link href={`/eventos/compra?evento=${evento.id}&lote=${evento.lotes[0].id}`} className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
                     )}
@@ -641,7 +647,7 @@ export default function DetalhesEventoPage() {
                         <p className="text-emerald-400 font-bold">R$ {l.preco}</p>
                     </div>
                     {l.status === 'ativo' ? 
-                        // 🦈 ID 4: Link atualizado para a nova página de compra com query params
+                        // ðŸ¦ˆ ID 4: Link atualizado para a nova pÃ¡gina de compra com query params
                         <Link 
                             href={`/eventos/compra?evento=${evento.id}&lote=${l.id}`} 
                             className="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-400 transition shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
@@ -653,7 +659,7 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* 🦈 ENQUETES CARROSSEL */}
+        {/* ðŸ¦ˆ ENQUETES CARROSSEL */}
         <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -734,7 +740,7 @@ export default function DetalhesEventoPage() {
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleReportOption(currentPoll.id, opt.text); }}
                                         className="absolute right-[-20px] top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                        title="Reportar Opção"
+                                        title="Reportar OpÃ§Ã£o"
                                     >
                                         <Flag size={10}/>
                                     </button>
@@ -753,16 +759,16 @@ export default function DetalhesEventoPage() {
                         />
                         <button onClick={() => handleCreatePollOption(currentPoll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
                     </div>
-                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">* Máximo 3 escolhas por usuário.</p>
+                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">* MÃ¡ximo 3 escolhas por usuÃ¡rio.</p>
                 </div>
             ) : (
                 <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
             )}
         </div>
 
-        {/* COMENTÁRIOS */}
+        {/* COMENTÃRIOS */}
         <div className="space-y-6 pt-4 border-t border-zinc-800">
-            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do Rolê</h3>
+            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do RolÃª</h3>
             
             <div className="flex gap-2">
                 <input 
@@ -802,7 +808,7 @@ export default function DetalhesEventoPage() {
                                             <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
                                                 {c.userName}
                                             </p>
-                                            {/* ID 651: Nova Lógica de Badge baseada na Config Global */}
+                                            {/* ID 651: Nova LÃ³gica de Badge baseada na Config Global */}
                                             <UserBadges data={c} patentesConfig={patentesConfig} />
                                         </div>
                                         {/* ID 653: Foto da Turma + Nome */}
@@ -886,7 +892,7 @@ export default function DetalhesEventoPage() {
                       {modalUsers.length === 0 && (
                           <div className="flex flex-col items-center justify-center py-12 text-zinc-600 gap-2">
                               <Users size={32} className="opacity-20"/>
-                              <p className="text-xs">Ninguém nesta lista ainda.</p>
+                              <p className="text-xs">NinguÃ©m nesta lista ainda.</p>
                           </div>
                       )}
                   </div>
@@ -897,3 +903,4 @@ export default function DetalhesEventoPage() {
     </div>
   );
 }
+

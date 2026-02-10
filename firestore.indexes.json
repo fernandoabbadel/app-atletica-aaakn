@@ -47,6 +47,23 @@
         { "fieldPath": "empresaId", "order": "ASCENDING" },
         { "fieldPath": "data", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "solicitacoes_ingressos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eventoId", "order": "ASCENDING" },
+        { "fieldPath": "dataSolicitacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "solicitacoes_ingressos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "eventoId", "order": "ASCENDING" },
+        { "fieldPath": "dataSolicitacao", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

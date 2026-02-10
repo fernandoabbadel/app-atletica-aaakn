@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import { 
@@ -6,14 +6,11 @@ import {
   Loader2, ArrowRight, Heart, Clock, Zap, Users
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // 🦈 Importado para corrigir erro de LCP
+import Image from "next/image"; // ðŸ¦ˆ Importado para corrigir erro de LCP
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { 
-  collection, query, orderBy, onSnapshot, doc, updateDoc, 
-  increment, getDocs, limit 
-} from "firebase/firestore";
-
+import { useToast } from "../../context/ToastContext";
+import { toggleEventLike } from "../../lib/eventCardService";
+import { fetchEventsFeed } from "../../lib/eventsService";
 // --- INTERFACES ---
 interface Evento {
   id: string;
@@ -38,10 +35,12 @@ interface Evento {
     preco: string;
     status: 'ativo' | 'esgotado' | 'em_breve';
   }>;
+  likesList?: string[];
+  topTurmas?: string[];
   interessados?: string[]; // Array de UIDs para controle
 }
 
-// --- CONFIGURAÇÃO DE IMAGENS ---
+// --- CONFIGURAÃ‡ÃƒO DE IMAGENS ---
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -69,7 +68,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         const months: Record<string, number> = {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
-            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÇO': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
+            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÃ‡O': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
             'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
         };
         const cleanDate = dateStr.toUpperCase().trim();
@@ -82,9 +81,9 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             const monthKey = Object.keys(months).find(m => m.startsWith(monthStr));
             
             if (monthKey && !isNaN(day)) {
-                // 🦈 Fix: 'const' aqui pois a referência do objeto não muda, só suas propriedades
+                // ðŸ¦ˆ Fix: 'const' aqui pois a referÃªncia do objeto nÃ£o muda, sÃ³ suas propriedades
                 const eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
-                // Se a data já passou (ex: JAN sendo que estamos em DEZ), assume próximo ano
+                // Se a data jÃ¡ passou (ex: JAN sendo que estamos em DEZ), assume prÃ³ximo ano
                 if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
                     eventDate.setFullYear(currentYear + 1);
                 }
@@ -93,72 +92,54 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         }
         return null;
     } catch {
-        // 🦈 Fix: removido argumento 'e' não usado
+        // ðŸ¦ˆ Fix: removido argumento 'e' nÃ£o usado
         return null;
     }
 };
 
 // --- COMPONENTE: RANKING DE TURMAS (RSVP) ---
-function EventClassRanking({ eventId }: { eventId: string }) {
-  const [ranking, setRanking] = useState<{turma: string, count: number, img: string}[]>([]);
-  const [totalConfirmados, setTotalConfirmados] = useState(0);
+function EventClassRanking({ event }: { event: Evento }) {
+  const totalConfirmados = event.stats?.confirmados || 0;
+  const rankingTurmas = (event.topTurmas || [])
+    .slice(0, 3)
+    .map((turma) => ({ turma, img: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"] }));
 
-  useEffect(() => {
-    // Busca apenas os 20 primeiros RSVPs para montar um preview rápido
-    const q = query(collection(db, "eventos", eventId, "rsvps"), limit(50));
-    getDocs(q).then((snap) => {
-        const counts: Record<string, number> = {};
-        let total = 0;
-        snap.docs.forEach(doc => {
-            const data = doc.data();
-            if (data.status === 'going') {
-                const t = (data.userTurma || "Geral").toUpperCase();
-                counts[t] = (counts[t] || 0) + 1;
-                total++;
-            }
-        });
-        const sorted = Object.entries(counts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([turma, count]) => ({
-                turma, count, img: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]
-            }));
-        setRanking(sorted);
-        setTotalConfirmados(total);
-    });
-  }, [eventId]);
-
-  if (totalConfirmados === 0) return (
+  if (totalConfirmados === 0)
+    return (
       <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold uppercase bg-black/20 px-3 py-2 rounded-xl border border-dashed border-zinc-800 w-full justify-center">
-          <Users size={12}/> Seja o primeiro a ir!
+        <Users size={12} /> Seja o primeiro a ir!
       </div>
-  );
+    );
 
   return (
     <div className="flex items-center gap-3 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
+      {rankingTurmas.length > 0 && (
         <div className="flex -space-x-2">
-            {ranking.map((r, i) => (
-                <div key={r.turma} className="relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden" style={{ zIndex: 30 - i * 10 }}>
-                    {/* 🦈 Fix: Image otimizada */}
-                    <Image 
-                        src={r.img} 
-                        alt={`Avatar ${r.turma}`}
-                        width={32}
-                        height={32}
-                        className="w-full h-full object-cover"
-                        unoptimized
-                    />
-                </div>
-            ))}
+          {rankingTurmas.map((r, i) => (
+            <div
+              key={r.turma}
+              className="relative w-8 h-8 rounded-full border-2 border-zinc-900 overflow-hidden"
+              style={{ zIndex: 30 - i * 10 }}
+            >
+              <Image
+                src={r.img}
+                alt={`Avatar ${r.turma}`}
+                width={32}
+                height={32}
+                className="w-full h-full object-cover"
+                unoptimized
+              />
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-zinc-400 uppercase">Presença</span>
-            <span className="text-xs font-black text-emerald-400">+{totalConfirmados} Tubarões</span>
-        </div>
+      )}
+      <div className="flex flex-col">
+        <span className="text-[9px] font-bold text-zinc-400 uppercase">Presenca</span>
+        <span className="text-xs font-black text-emerald-400">+{totalConfirmados} Tubaroes</span>
+      </div>
     </div>
   );
 }
-
 // --- COMPONENTE: CONTADOR ---
 function EventCountdown({ targetDate, targetTime }: { targetDate: string, targetTime: string }) {
   const [timeLeft, setTimeLeft] = useState("CALCULANDO...");
@@ -168,7 +149,7 @@ function EventCountdown({ targetDate, targetTime }: { targetDate: string, target
         if (!targetDate) return "EM BREVE";
         
         const eventDate = parseEventDate(targetDate, targetTime);
-        if (!eventDate) return targetDate; // Fallback se não conseguir parsear
+        if (!eventDate) return targetDate; // Fallback se nÃ£o conseguir parsear
 
         const now = new Date();
         const diff = eventDate.getTime() - now.getTime();
@@ -196,25 +177,53 @@ function EventCountdown({ targetDate, targetTime }: { targetDate: string, target
 }
 
 // --- COMPONENTE: CARD DO EVENTO ---
-function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
-  const [liked, setLiked] = useState(false);
+function EventCard({
+  ev,
+  userId,
+  onLikeError,
+}: {
+  ev: Evento;
+  userId?: string;
+  onLikeError: (message: string) => void;
+}) {
+  const [liked, setLiked] = useState(Boolean(userId && ev.likesList?.includes(userId)));
   const [likesCount, setLikesCount] = useState(ev.stats?.likes || 0);
+
+  useEffect(() => {
+    setLiked(Boolean(userId && ev.likesList?.includes(userId)));
+    setLikesCount(ev.stats?.likes || 0);
+  }, [userId, ev.likesList, ev.stats?.likes]);
 
   const loteAtivo = ev.lotes?.find((l) => l.status === 'ativo');
   const precoDisplay = loteAtivo ? `R$ ${loteAtivo.preco}` : (ev.lotes && ev.lotes.length > 0 ? "Esgotado" : "Em breve");
 
   const handleLike = async (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation(); 
-    if (!userId) return; 
-    
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikesCount((prev) => newLiked ? prev + 1 : prev - 1);
-    
-    // Atualiza no Firebase (apenas stats visual, não salva array de likes aqui para economizar escrita)
-    const eventRef = doc(db, "eventos", ev.id);
-    await updateDoc(eventRef, { [`stats.likes`]: increment(newLiked ? 1 : -1) });
+    e.stopPropagation();
+    if (!userId) {
+      onLikeError("Faca login para curtir eventos.");
+      return;
+    }
+
+    const previousLiked = liked;
+    const previousCount = likesCount;
+    const nextLiked = !liked;
+
+    setLiked(nextLiked);
+    setLikesCount((prev) => (nextLiked ? prev + 1 : Math.max(0, prev - 1)));
+
+    try {
+      await toggleEventLike({
+        eventId: ev.id,
+        userId,
+        currentlyLiked: previousLiked,
+      });
+    } catch (error: unknown) {
+      console.error(error);
+      setLiked(previousLiked);
+      setLikesCount(previousCount);
+      onLikeError("Nao foi possivel atualizar a curtida agora.");
+    }
   };
 
   return (
@@ -223,7 +232,7 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
         
         {/* 1. IMAGEM */}
         <div className="relative h-56 w-full shrink-0 overflow-hidden">
-            {/* 🦈 Fix: Image otimizada com fill e unoptimized */}
+            {/* ðŸ¦ˆ Fix: Image otimizada com fill e unoptimized */}
             <Image 
                 src={ev.imagem || "https://placehold.co/600x400/111/333?text=Evento"} 
                 alt={ev.titulo}
@@ -252,10 +261,10 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
             </div>
         </div>
 
-        {/* 2. CONTEÚDO */}
+        {/* 2. CONTEÃšDO */}
         <div className="flex flex-col flex-1 p-5 gap-4">
             
-            {/* Título */}
+            {/* TÃ­tulo */}
             <div>
                 <h2 className="text-xl font-black italic uppercase leading-tight text-white mb-2 line-clamp-2">
                     {ev.titulo}
@@ -268,19 +277,19 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
             </div>
 
             {/* Ranking (RSVP) */}
-            <EventClassRanking eventId={ev.id} />
+            <EventClassRanking event={ev} />
 
             {/* Footer do Card */}
             <div className="mt-auto pt-4 border-t border-zinc-800 flex items-center justify-between">
                 
-                {/* Preço */}
+                {/* PreÃ§o */}
                 <div>
                     <p className="text-[10px] text-zinc-500 font-bold uppercase">A partir de</p>
                     <p className={`text-lg font-black ${loteAtivo ? 'text-white' : 'text-zinc-600'}`}>{precoDisplay}</p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* BOTÃO DE LIKE */}
+                    {/* BOTÃƒO DE LIKE */}
                     <button 
                         onClick={handleLike}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-all ${liked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'}`}
@@ -302,35 +311,35 @@ function EventCard({ ev, userId }: { ev: Evento, userId?: string }) {
   );
 }
 
-// --- PÁGINA PRINCIPAL ---
+// --- PÃGINA PRINCIPAL ---
 export default function EventosPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("Todos");
 
   useEffect(() => {
-    const q = query(collection(db, "eventos"), orderBy("createdAt", "desc"));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        try {
-            const lista = snapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data() 
-            } as Evento));
-            setEventos(lista);
-        } catch (error) {
-            console.error("Erro eventos:", error);
-        } finally {
-            setLoading(false);
-        }
-    }, (error) => {
-        console.error("Erro conexão:", error);
-        setLoading(false);
-    });
+    let mounted = true;
 
-    return () => unsubscribe();
-  }, []);
+    const loadEvents = async () => {
+      try {
+        const rows = await fetchEventsFeed({ maxResults: 60, forceRefresh: true });
+        if (!mounted) return;
+        setEventos(rows as unknown as Evento[]);
+      } catch (error: unknown) {
+        console.error("Erro eventos:", error);
+        if (mounted) addToast("Erro ao carregar eventos.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadEvents();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
 
   const filteredEvents = filter === "Todos" 
       ? eventos 
@@ -353,8 +362,8 @@ export default function EventosPage() {
                 <ArrowLeft size={20} className="text-zinc-400"/>
             </Link>
             <div>
-                <h1 className="text-3xl font-black uppercase tracking-tighter italic">Agenda<span className="text-emerald-500">Tubarão</span></h1>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Próximos Eventos</p>
+                <h1 className="text-3xl font-black uppercase tracking-tighter italic">Agenda<span className="text-emerald-500">TubarÃ£o</span></h1>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">PrÃ³ximos Eventos</p>
             </div>
         </div>
       </header>
@@ -375,7 +384,7 @@ export default function EventosPage() {
       {/* GRID RESPONSIVO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
           {filteredEvents.map((ev) => (
-              <EventCard key={ev.id} ev={ev} userId={user?.uid} />
+              <EventCard key={ev.id} ev={ev} userId={user?.uid} onLikeError={(message) => addToast(message, "error")} />
           ))}
 
           {/* Estado Vazio */}
@@ -394,3 +403,5 @@ export default function EventosPage() {
     </div>
   );
 }
+
+
