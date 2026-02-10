@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ArrowLeft, LayoutDashboard, Trophy, Medal, Plus, Edit2, Trash2, Target,
   Zap, Award, Crown, History, Power, PowerOff, Flame, 
@@ -9,48 +9,32 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, writeBatch, Timestamp } from "firebase/firestore";
 import { ACHIEVEMENTS_CATALOG } from "../../../lib/achievements";
+import {
+  deleteAchievementConfig,
+  deletePatenteConfig,
+  fetchAchievementsConfig,
+  fetchAchievementsLogs,
+  fetchPatentesConfig,
+  fetchXpRanking,
+  saveAchievementConfig,
+  savePatenteConfig,
+  seedPatentesConfig,
+  toggleAchievementActive,
+  type AchievementConfigRecord,
+  type AchievementLogRecord,
+  type PatenteConfigRecord,
+  type UserRankingRecord,
+} from "../../../lib/achievementsService";
 
 // --- INTERFACES (O Escudo do Código) ---
-interface AchievementConfig {
-  id: string;
-  titulo: string;
-  desc: string;
-  xp: number;
-  target: number;
-  statKey: string;
-  cat: string;
-  iconName: string;
-  active: boolean;
-  repeatable: boolean;
-}
+type AchievementConfig = AchievementConfigRecord;
 
-interface LogData {
-  id: string;
-  userName: string;
-  achievementTitle: string;
-  timestamp: Timestamp;
-}
+type LogData = AchievementLogRecord;
 
-interface UserRank {
-  id: string;
-  nome: string;
-  turma: string;
-  xp: number;
-  foto: string;
-}
+type UserRank = UserRankingRecord;
 
-interface PatenteConfig {
-  id: string;
-  titulo: string;
-  minXp: number;
-  cor: string;
-  iconName: string;
-  bg?: string;
-  text?: string;
-}
+type PatenteConfig = PatenteConfigRecord;
 
 interface ColorStyle {
   bg: string;
@@ -67,6 +51,12 @@ const DEFAULT_PATENTES: PatenteConfig[] = [
     { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
+const DEFAULT_ACHIEVEMENTS: AchievementConfig[] = ACHIEVEMENTS_CATALOG.map((item) => ({
+  ...item,
+  active: true,
+  repeatable: false,
+}));
+
 const ICON_OPTIONS = [
     { label: "Peixe", value: "Fish", icon: <Fish/> },
     { label: "Espadas", value: "Swords", icon: <Swords/> },
@@ -80,6 +70,20 @@ const ICON_OPTIONS = [
     { label: "Coração", value: "Heart", icon: <Heart/> },
     { label: "Diamante", value: "Gem", icon: <Gem/> },
 ];
+
+const PATENTE_COLOR_MAP: Record<string, ColorStyle> = {
+  "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
+  "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
+  "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
+  "text-purple-400": { bg: "bg-purple-500/10", border: "border-purple-500/30" },
+  "text-emerald-400": { bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+  "text-red-600": { bg: "bg-red-500/10", border: "border-red-500/30" },
+};
+
+const withPatenteStyles = (patente: PatenteConfig): PatenteConfig => {
+  const styles = PATENTE_COLOR_MAP[patente.cor] ?? PATENTE_COLOR_MAP["text-zinc-400"];
+  return { ...patente, ...styles };
+};
 
 export default function AdminConquistasPage() {
   const { addToast } = useToast();
@@ -98,38 +102,42 @@ export default function AdminConquistasPage() {
   // Estados de Edição
   const [editingAch, setEditingAch] = useState<AchievementConfig | null>(null);
   const [editingPatente, setEditingPatente] = useState<PatenteConfig | null>(null);
+  const loadData = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    try {
+      const [achievementsData, logsData, rankingData, patentesData] = await Promise.all([
+        fetchAchievementsConfig({ maxResults: 220, forceRefresh }),
+        fetchAchievementsLogs({ maxResults: 50, forceRefresh }),
+        fetchXpRanking({ maxResults: 10, forceRefresh }),
+        fetchPatentesConfig({ maxResults: 40, forceRefresh }),
+      ]);
+
+      setAchievements(
+        achievementsData.length > 0
+          ? achievementsData
+          : DEFAULT_ACHIEVEMENTS
+      );
+      setLogs(logsData);
+      setUsersRanking(rankingData);
+      setPatentes(
+        patentesData.length > 0
+          ? patentesData
+          : DEFAULT_PATENTES.map(withPatenteStyles)
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      setAchievements(DEFAULT_ACHIEVEMENTS);
+      setPatentes(DEFAULT_PATENTES.map(withPatenteStyles));
+      addToast("Erro ao carregar dados de conquistas.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
 
   // CARREGAR DADOS
   useEffect(() => {
-    // 1. Conquistas
-    const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as AchievementConfig));
-      // Se vazio, usa o catálogo padrão (fallback)
-      setAchievements(data.length > 0 ? data : ACHIEVEMENTS_CATALOG as unknown as AchievementConfig[]);
-    });
-
-    // 2. Histórico
-    const qLogs = query(collection(db, "achievements_logs"), orderBy("timestamp", "desc"), limit(50));
-    const unsubLogs = onSnapshot(qLogs, (snap) => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as LogData)));
-    });
-
-    // 3. Ranking
-    const qRank = query(collection(db, "users"), orderBy("xp", "desc"), limit(10));
-    const unsubRank = onSnapshot(qRank, (snap) => {
-      setUsersRanking(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserRank)));
-    });
-
-    // 4. Patentes
-    const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
-    const unsubPatentes = onSnapshot(qPatentes, (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PatenteConfig));
-        setPatentes(data);
-        setLoading(false);
-    });
-
-    return () => { unsubAch(); unsubLogs(); unsubRank(); unsubPatentes(); };
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   // FILTRAGEM
   const filteredAchievements = useMemo(() => {
@@ -160,25 +168,52 @@ export default function AdminConquistasPage() {
   const handleSaveAch = async () => {
     if (!editingAch) return;
     try {
-      await setDoc(doc(db, "achievements_config", editingAch.id), editingAch, { merge: true });
+      await saveAchievementConfig(editingAch);
+      setAchievements((prev) => {
+        const exists = prev.some((item) => item.id === editingAch.id);
+        const next = exists
+          ? prev.map((item) => (item.id === editingAch.id ? editingAch : item))
+          : [...prev, editingAch];
+        return next.sort(
+          (left, right) =>
+            left.cat.localeCompare(right.cat, "pt-BR") ||
+            left.titulo.localeCompare(right.titulo, "pt-BR")
+        );
+      });
       setEditingAch(null);
       addToast("Conquista salva!", "success");
-    } catch { 
-        addToast("Erro ao salvar.", "error"); 
+    } catch (error: unknown) {
+        console.error(error);
+        addToast("Erro ao salvar.", "error");
     }
   };
 
   const handleDeleteAch = async (id: string) => {
       if(!confirm("Deletar conquista?")) return;
-      await deleteDoc(doc(db, "achievements_config", id));
-      addToast("Deletada.", "info");
+      try {
+          await deleteAchievementConfig(id);
+          setAchievements((prev) => prev.filter((item) => item.id !== id));
+          addToast("Deletada.", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao deletar conquista.", "error");
+      }
   };
 
   const toggleMissionStatus = async (ach: AchievementConfig) => {
     try {
-      await setDoc(doc(db, "achievements_config", ach.id), { active: !ach.active }, { merge: true });
+      const nextStatus = !ach.active;
+      await toggleAchievementActive({ id: ach.id, active: nextStatus });
+      setAchievements((prev) =>
+        prev.map((item) =>
+          item.id === ach.id ? { ...item, active: nextStatus } : item
+        )
+      );
       addToast("Status atualizado.", "info");
-    } catch { addToast("Erro.", "error"); }
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro.", "error");
+    }
   };
 
   // --- AÇÕES PATENTES ---
@@ -197,24 +232,11 @@ export default function AdminConquistasPage() {
       if (!confirm("Isso vai restaurar as patentes originais. Continuar?")) return;
       setLoading(true);
       try {
-          const batch = writeBatch(db);
-          DEFAULT_PATENTES.forEach(p => {
-              const colorMap: Record<string, ColorStyle> = {
-                  "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
-                  "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
-                  "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
-                  "text-purple-400": { bg: "bg-purple-500/10", border: "border-purple-500/30" },
-                  "text-emerald-400": { bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
-                  "text-red-600": { bg: "bg-red-500/10", border: "border-red-500/30" },
-              };
-              const styles = colorMap[p.cor] || colorMap["text-zinc-400"];
-              
-              const ref = doc(db, "patentes_config", p.id);
-              batch.set(ref, { ...p, ...styles }, { merge: true });
-          });
-          await batch.commit();
+          const seededPatentes = DEFAULT_PATENTES.map(withPatenteStyles);
+          await seedPatentesConfig(seededPatentes);
+          setPatentes(seededPatentes);
           addToast("Patentes Restauradas!", "success");
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao restaurar.", "error");
       } finally {
@@ -225,30 +247,33 @@ export default function AdminConquistasPage() {
   const handleSavePatente = async () => {
       if(!editingPatente) return;
       try {
-          const colorMap: Record<string, ColorStyle> = {
-              "text-zinc-400": { bg: "bg-zinc-500/10", border: "border-zinc-500/30" },
-              "text-orange-400": { bg: "bg-orange-500/10", border: "border-orange-500/30" },
-              "text-blue-400": { bg: "bg-blue-500/10", border: "border-blue-500/30" },
-              "text-purple-400": { bg: "bg-purple-500/10", border: "border-purple-500/30" },
-              "text-emerald-400": { bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
-              "text-red-600": { bg: "bg-red-500/10", border: "border-red-500/30" },
-          };
-          
-          const styles = colorMap[editingPatente.cor] || colorMap["text-zinc-400"];
-          const payload = { ...editingPatente, ...styles };
-
-          await setDoc(doc(db, "patentes_config", editingPatente.id), payload, { merge: true });
+          const payload = withPatenteStyles(editingPatente);
+          await savePatenteConfig(payload);
+          setPatentes((prev) => {
+            const exists = prev.some((item) => item.id === payload.id);
+            const next = exists
+              ? prev.map((item) => (item.id === payload.id ? payload : item))
+              : [...prev, payload];
+            return next.sort((left, right) => left.minXp - right.minXp);
+          });
           setEditingPatente(null);
           addToast("Patente salva!", "success");
-      } catch {
+      } catch (error: unknown) {
+          console.error(error);
           addToast("Erro ao salvar.", "error");
       }
   };
 
   const handleDeletePatente = async (id: string) => {
       if(!confirm("Deletar patente?")) return;
-      await deleteDoc(doc(db, "patentes_config", id));
-      addToast("Patente removida.", "info");
+      try {
+          await deletePatenteConfig(id);
+          setPatentes((prev) => prev.filter((item) => item.id !== id));
+          addToast("Patente removida.", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao remover patente.", "error");
+      }
   };
 
   const getCatColor = (cat: string) => {

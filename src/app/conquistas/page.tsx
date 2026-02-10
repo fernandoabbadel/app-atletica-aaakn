@@ -13,8 +13,12 @@ import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext"; 
 import { ACHIEVEMENTS_CATALOG, AchievementCategory } from "../../lib/achievements";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import {
+  fetchAchievementsConfig,
+  fetchPatentesConfig,
+  type AchievementConfigRecord,
+  type PatenteConfigRecord,
+} from "../../lib/achievementsService";
 
 // 🦈 Tipagem Segura para o Mapa de Ícones
 const IconMap: Record<string, React.ElementType> = {
@@ -27,7 +31,7 @@ const IconMap: Record<string, React.ElementType> = {
     Timer, MessageCircle, Gamepad2,
     ThumbsUp, LayoutGrid, CheckCircle2,
     UserPlus, Target, Star, Ghost, Medal,
-    Briefcase, GraduationCap, Beiceps: Dumbbell
+    Briefcase, GraduationCap, Diamond: Gem, Beiceps: Dumbbell
 };
 
 // 🦈 Interfaces para eliminar any
@@ -67,6 +71,34 @@ const DEFAULT_BADGES: BadgeConfig[] = [
     { id: "p6", titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", bg: "bg-red-500/10", border: "border-red-500/30", iconName: "Crown" },
 ];
 
+const normalizeAchievementCategory = (category: string): AchievementCategory => {
+    if (category === "Gym" || category === "Games" || category === "Social" || category === "Loja" || category === "Eventos") {
+        return category;
+    }
+    return "Geral";
+};
+
+const mapAchievementConfig = (entry: AchievementConfigRecord): AchievementConfig => ({
+    id: entry.id,
+    titulo: entry.titulo,
+    desc: entry.desc,
+    xp: entry.xp,
+    target: entry.target,
+    statKey: entry.statKey,
+    cat: normalizeAchievementCategory(entry.cat),
+    iconName: entry.iconName,
+});
+
+const mapBadgeConfig = (entry: PatenteConfigRecord): BadgeConfig => ({
+    id: entry.id,
+    titulo: entry.titulo,
+    minXp: entry.minXp,
+    cor: entry.cor,
+    bg: entry.bg || "bg-zinc-500/10",
+    border: entry.border || "border-zinc-500/30",
+    iconName: entry.iconName,
+});
+
 export default function ConquistasPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -80,21 +112,38 @@ export default function ConquistasPage() {
   // 🦈 Verificação segura de role
   const role = typeof user?.role === 'string' ? user.role : '';
   const isAdmin = role === 'master' || role.includes('admin');
-
   useEffect(() => {
-      const unsubAch = onSnapshot(collection(db, "achievements_config"), (snap) => {
-          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AchievementConfig));
-          if (data.length > 0) setCatalog(data);
-      });
+      let mounted = true;
 
-      const qPatentes = query(collection(db, "patentes_config"), orderBy("minXp", "asc"));
-      const unsubPatentes = onSnapshot(qPatentes, (snap) => {
-          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeConfig));
-          if (data.length > 0) setBadgesList(data);
-      });
+      const loadCatalogData = async () => {
+          try {
+              const [catalogData, badgesData] = await Promise.all([
+                  fetchAchievementsConfig({ maxResults: 220 }),
+                  fetchPatentesConfig({ maxResults: 40 }),
+              ]);
 
-      return () => { unsubAch(); unsubPatentes(); };
-  }, []);
+              if (!mounted) return;
+
+              if (catalogData.length > 0) {
+                  setCatalog(catalogData.map(mapAchievementConfig));
+              }
+
+              if (badgesData.length > 0) {
+                  setBadgesList(badgesData.map(mapBadgeConfig));
+              }
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) {
+                  addToast("Nao foi possivel sincronizar conquistas agora.", "error");
+              }
+          }
+      };
+
+      void loadCatalogData();
+      return () => {
+          mounted = false;
+      };
+  }, [addToast]);
 
   const userStats = useMemo(() => user?.stats ?? {}, [user?.stats]); 
   
