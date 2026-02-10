@@ -220,7 +220,7 @@ export default function AdminAlbumPage() {
               
               {/* RANKING 1: PREDADORES DE BIXOS (Geral -> T8) */}
               <RankingSection 
-                title="Quem mais caçou Calouros (T8)" 
+                title="🏆 Quem mais caçou Calouros (T8)" 
                 data={rankingPredadoresT8} 
                 metricKey="scansT8"
                 metricLabel="Bixos Capturados"
@@ -231,7 +231,7 @@ export default function AdminAlbumPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* RANKING 2: CALOUROS CACADORES (T8 -> Geral) */}
                   <RankingSection 
-                    title="Calouros que mais pontuaram" 
+                    title="🦈 Calouros que mais pontuaram" 
                     data={rankingCalouros} 
                     metricKey="totalColetado"
                     metricLabel="Scans Totais"
@@ -241,7 +241,7 @@ export default function AdminAlbumPage() {
 
                   {/* RANKING 3: GERAL (Geral -> Geral) */}
                   <RankingSection 
-                    title="Ranking Global da Faculdade" 
+                    title="🌍 Ranking Global da Faculdade" 
                     data={rankingGeral} 
                     metricKey="totalColetado"
                     metricLabel="Total Scans"
