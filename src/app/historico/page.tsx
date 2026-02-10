@@ -5,25 +5,16 @@ import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Calendar, MapPin, Trophy, ChevronRight, CalendarRange, Loader2 } from "lucide-react";
-import { db } from "../../lib/firebase";
-import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
+import {
+  fetchHistoricEvents,
+  fetchHistoryPageConfig,
+  type HistoricEventRecord,
+  type HistoryPageConfig,
+} from "../../lib/historyService";
 
 // Interface para garantir tipagem forte
-interface HistoricEvent {
-  id: string;
-  titulo: string;
-  data: string; // YYYY-MM-DD
-  ano: string;
-  descricao: string;
-  local: string;
-  foto: string;
-}
-
-interface PageConfig {
-  tituloPagina: string;
-  subtituloPagina: string;
-  fotoCapa: string;
-}
+type HistoricEvent = HistoricEventRecord;
+type PageConfig = HistoryPageConfig;
 
 export default function HistoricoPage() {
   const [events, setEvents] = useState<HistoricEvent[]>([]);
@@ -34,37 +25,34 @@ export default function HistoricoPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  // 1. Buscar Configurações da Página (Capa, Título)
+  // 1. Buscar Configurações e Eventos com leitura controlada
   useEffect(() => {
-    const fetchConfig = async () => {
+    let mounted = true;
+
+    const loadData = async () => {
+      setLoading(true);
       try {
-        const docRef = doc(db, "app_config", "historico");
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          setConfig(snap.data() as PageConfig);
+        const [configData, eventsData] = await Promise.all([
+          fetchHistoryPageConfig(),
+          fetchHistoricEvents({ order: "asc", maxResults: 200 }),
+        ]);
+
+        if (!mounted) return;
+        if (configData) {
+          setConfig(configData);
         }
-      } catch (error) {
-        console.error("Erro ao buscar config:", error);
+        setEvents(eventsData);
+      } catch (error: unknown) {
+        console.error("Erro ao carregar histórico:", error);
+      } finally {
+        if (mounted) setLoading(false);
       }
     };
-    fetchConfig();
-  }, []);
 
-  // 2. Buscar Eventos em Tempo Real
-  useEffect(() => {
-    // Ordena pela data do evento (mais antigo primeiro para timeline cronológica)
-    const q = query(collection(db, "historic_events"), orderBy("data", "asc"));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as HistoricEvent[];
-      setEvents(data);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    void loadData();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, 
   Calendar, MapPin, Image as ImageIcon, History, 
@@ -9,9 +9,18 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db, storage } from "../../../lib/firebase"; 
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  createHistoricEvent,
+  deleteHistoricEvent,
+  fetchHistoricEvents,
+  fetchHistoryPageConfig,
+  saveHistoryPageConfig,
+  seedHistoricEvents,
+  updateHistoricEvent,
+  uploadHistoryImage,
+  type HistoricEventRecord,
+  type HistoryPageConfig,
+} from "../../../lib/historyService";
 
 // --- 🦈 DADOS REAIS DE 2025 (BASEADO NOS FLYERS) ---
 const MOCK_HISTORICO = [
@@ -66,21 +75,8 @@ const MOCK_HISTORICO = [
 ];
 
 // --- TIPAGEM ---
-export interface HistoricEvent {
-  id: string;
-  titulo: string;
-  data: string;
-  ano: string;
-  descricao: string;
-  local: string;
-  foto: string;
-}
-
-interface PageConfig {
-  tituloPagina: string;
-  subtituloPagina: string;
-  fotoCapa: string;
-}
+export type HistoricEvent = HistoricEventRecord;
+type PageConfig = HistoryPageConfig;
 
 export default function AdminHistoricoPage() {
   const { addToast } = useToast();
@@ -107,26 +103,30 @@ export default function AdminHistoricoPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const loadData = useCallback(async (forceRefresh = false) => {
+    setLoadingData(true);
+    try {
+      const [eventsData, configData] = await Promise.all([
+        fetchHistoricEvents({ order: "desc", maxResults: 200, forceRefresh }),
+        fetchHistoryPageConfig({ forceRefresh }),
+      ]);
+
+      setEvents(eventsData);
+      if (configData) {
+        setPageConfig(configData);
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar histórico.", "error");
+    } finally {
+      setLoadingData(false);
+    }
+  }, [addToast]);
+
   // 1. CARREGAR DADOS
   useEffect(() => {
-    // Carregar Eventos
-    const q = query(collection(db, "historic_events"), orderBy("data", "desc"));
-    const unsubEvents = onSnapshot(q, (snap) => {
-      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as HistoricEvent)));
-      setLoadingData(false);
-    });
-
-    // Carregar Configurações
-    const fetchConfig = async () => {
-      const snap = await getDoc(doc(db, "app_config", "historico"));
-      if (snap.exists()) {
-        setPageConfig(snap.data() as PageConfig);
-      }
-    };
-    fetchConfig();
-
-    return () => unsubEvents();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   // --- 🦈 FUNÇÃO DE RESGATE (SEED) ---
   const handleSeedDatabase = async () => {
@@ -134,16 +134,12 @@ export default function AdminHistoricoPage() {
       
       setIsSaving(true);
       try {
-          // Loop para adicionar cada evento do Mock ao Firebase
-          const promises = MOCK_HISTORICO.map(evento => 
-              addDoc(collection(db, "historic_events"), evento)
-          );
-          
-          await Promise.all(promises);
+          await seedHistoricEvents(MOCK_HISTORICO);
+          await loadData(true);
           
           addToast("Histórico de 2025 restaurado com sucesso! 🦈", "success");
           setActiveTab("gerenciar"); // Joga pra lista pra ver o resultado na hora
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao restaurar dados.", "error");
       } finally {
@@ -187,27 +183,40 @@ export default function AdminHistoricoPage() {
 
     try {
       if (imageFile) {
-        const storageRef = ref(storage, `historico/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(storageRef, imageFile);
-        finalFotoUrl = await getDownloadURL(storageRef);
+        finalFotoUrl = await uploadHistoryImage(imageFile, "historico");
       }
 
       const anoDerivado = editingEvent.ano || editingEvent.data.split("-")[0];
-      const eventData = { ...editingEvent, ano: anoDerivado, foto: finalFotoUrl };
-      
-      // Remove id from payload
-      const { id, ...dataToSave } = eventData;
-      void id;
+      const dataToSave = {
+        titulo: editingEvent.titulo,
+        data: editingEvent.data,
+        ano: anoDerivado,
+        descricao: editingEvent.descricao,
+        local: editingEvent.local,
+        foto: finalFotoUrl,
+      };
 
       if (editingEvent.id) {
-        await updateDoc(doc(db, "historic_events", editingEvent.id), dataToSave);
+        await updateHistoricEvent(editingEvent.id, dataToSave);
+        setEvents((prev) =>
+          prev
+            .map((item) =>
+              item.id === editingEvent.id ? { ...item, ...dataToSave } : item
+            )
+            .sort((left, right) => right.data.localeCompare(left.data))
+        );
         addToast("Evento atualizado!", "success");
       } else {
-        await addDoc(collection(db, "historic_events"), dataToSave);
+        const created = await createHistoricEvent(dataToSave);
+        setEvents((prev) =>
+          [{ id: created.id, ...dataToSave }, ...prev].sort((left, right) =>
+            right.data.localeCompare(left.data)
+          )
+        );
         addToast("Novo marco criado!", "success");
       }
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(error);
       addToast("Erro ao salvar.", "error");
     } finally {
@@ -218,9 +227,10 @@ export default function AdminHistoricoPage() {
   const handleDelete = async (id: string) => {
     if(confirm("Tem certeza que deseja apagar?")) {
       try {
-        await deleteDoc(doc(db, "historic_events", id));
+        await deleteHistoricEvent(id);
+        setEvents((prev) => prev.filter((item) => item.id !== id));
         addToast("Evento removido.", "info");
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(error);
         addToast("Erro ao excluir.", "error");
       }
@@ -232,12 +242,10 @@ export default function AdminHistoricoPage() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `config/historico_capa_${Date.now()}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadHistoryImage(file, "config");
       setPageConfig(prev => ({ ...prev, fotoCapa: url }));
       addToast("Capa carregada!", "success");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(error);
       addToast("Erro no upload.", "error");
     } finally {
@@ -248,9 +256,9 @@ export default function AdminHistoricoPage() {
   const handleSaveConfig = async () => {
     setIsSaving(true);
     try {
-      await setDoc(doc(db, "app_config", "historico"), pageConfig);
+      await saveHistoryPageConfig(pageConfig);
       addToast("Configurações salvas!", "success");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(error);
       addToast("Erro ao salvar.", "error");
     } finally {
