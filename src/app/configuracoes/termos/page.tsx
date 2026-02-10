@@ -3,8 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Shield, Scale, Cookie, Lock, FileText, CheckCircle } from "lucide-react";
-import { db } from "../../../lib/firebase";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { fetchLegalDocs } from "../../../lib/settingsService";
 
 // --- TIPAGEM ---
 type DocTipo = "publico" | "interno";
@@ -52,19 +51,14 @@ export default function TermosLegaisPage() {
     const load = async () => {
       setLoading(true);
       try {
-        // Query segura com limite para evitar sobrecarga
-        const q = query(
-            collection(db, "legal_docs"), 
-            orderBy("titulo", "asc"), 
-            limit(50)
-        );
-        
-        const snap = await getDocs(q);
+        const rows = await fetchLegalDocs({
+          includeInternal: false,
+          maxResults: 50,
+        });
 
         const list: TermDoc[] = [];
-        snap.forEach((d) => {
-          // Cast seguro
-          const data = d.data() as TermDocData;
+        rows.forEach((row) => {
+          const data = row as TermDocData & { id: string };
           const tipo = safeStr(data.tipo, "publico") as DocTipo;
           
           // Filtro de segurança (apenas docs públicos neste app)
@@ -78,7 +72,7 @@ export default function TermosLegaisPage() {
           const IconComp = ICONS[iconName] || FileText;
 
           list.push({
-            id: d.id,
+            id: row.id,
             title,
             content,
             icon: IconComp,

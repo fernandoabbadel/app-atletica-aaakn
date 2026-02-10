@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -8,14 +8,14 @@ import {
   Crown, Shield, History
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // 🦈 Importado para otimização
+import Image from "next/image"; // ðŸ¦ˆ Importado para otimizaÃ§Ã£o
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { db, auth } from "../../lib/firebase";
-import { doc, updateDoc, deleteField } from "firebase/firestore";
+import { auth } from "../../lib/firebase";
 import { deleteUser } from "firebase/auth";
 import { logActivity } from "../../lib/logger";
+import { softDeleteAccount, toggleAccountStatus } from "../../lib/settingsService";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -25,42 +25,34 @@ export default function SettingsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [notificacoes, setNotificacoes] = useState(true);
 
-  // --- AÇÃO 1: DESATIVAR / REATIVAR (Pausar) ---
+  // --- AÃ‡ÃƒO 1: DESATIVAR / REATIVAR (Pausar) ---
   const handleToggleAccount = async () => {
     if (!user) return;
     const isActive = user.status === 'ativo';
     
     const confirmMsg = isActive 
-        ? "⏸️ PAUSAR CONTA?\n\nVocê ficará como 'Inativo'. Seus dados e XP serão mantidos, mas você perderá acesso às áreas exclusivas até reativar."
-        : "▶️ REATIVAR CONTA?\n\nSeus privilégios originais serão restaurados imediatamente.";
+        ? "â¸ï¸ PAUSAR CONTA?\n\nVocÃª ficarÃ¡ como 'Inativo'. Seus dados e XP serÃ£o mantidos, mas vocÃª perderÃ¡ acesso Ã s Ã¡reas exclusivas atÃ© reativar."
+        : "â–¶ï¸ REATIVAR CONTA?\n\nSeus privilÃ©gios originais serÃ£o restaurados imediatamente.";
 
     if (!window.confirm(confirmMsg)) return;
 
     try {
         setActionLoading(true);
-        const userRef = doc(db, "users", user.uid);
-        
-        if (isActive) {
-            await updateDoc(userRef, {
-                status: 'paused',
-                role: 'inactive',
-                saved_role: user.role,
-                updatedAt: new Date()
-            });
-            await logActivity(user.uid, user.nome, "UPDATE", "Configurações", "Pausou a conta (Virou Inactive)");
-            addToast("Conta pausada. Acesso restrito. 💤", "info");
+        const statusResult = await toggleAccountStatus({
+            uid: user.uid,
+            currentStatus: user.status,
+            currentRole: typeof user.role === "string" ? user.role : "user",
+            savedRole: typeof user.saved_role === "string" ? user.saved_role : null,
+        });
+
+        if (statusResult.nextStatus === "paused") {
+            await logActivity(user.uid, user.nome, "UPDATE", "Configuracoes", "Pausou a conta (Virou Inactive)");
+            addToast("Conta pausada. Acesso restrito.", "info");
         } else {
-            const roleToRestore = user.saved_role || 'user';
-            await updateDoc(userRef, {
-                status: 'ativo',
-                role: roleToRestore,
-                saved_role: null,
-                updatedAt: new Date()
-            });
-            await logActivity(user.uid, user.nome, "UPDATE", "Configurações", "Reativou a conta");
-            addToast("Conta reativada! Bem-vindo de volta, Tubarão! 🦈", "success");
+            await logActivity(user.uid, user.nome, "UPDATE", "Configuracoes", "Reativou a conta");
+            addToast("Conta reativada! Bem-vindo de volta.", "success");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error(error);
         addToast("Erro ao atualizar status da conta.", "error");
     } finally {
@@ -76,32 +68,23 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    const confirmText = prompt("🚨 ATENÇÃO: EXCLUSÃO DEFINITIVA\n\nEssa ação é irreversível. Seus dados pessoais serão apagados para sempre.\n\nPara confirmar, digite DELETAR:");
-    if (confirmText !== "DELETAR") return addToast("Ação cancelada.", "info");
+    const confirmText = prompt("ðŸš¨ ATENÃ‡ÃƒO: EXCLUSÃƒO DEFINITIVA\n\nEssa aÃ§Ã£o Ã© irreversÃ­vel. Seus dados pessoais serÃ£o apagados para sempre.\n\nPara confirmar, digite DELETAR:");
+    if (confirmText !== "DELETAR") return addToast("AÃ§Ã£o cancelada.", "info");
     if (!user || !auth.currentUser) return;
 
     try {
         setActionLoading(true);
-        await updateDoc(doc(db, "users", user.uid), {
-            nome: "Usuário Excluído",
-            email: `deleted_${user.uid}@aaakn.com`,
-            foto: "https://github.com/shadcn.png",
-            status: "deleted",
-            role: "banned",
-            turma: "N/A",
-            deletedAt: new Date(),
-            cpf: deleteField(), 
-            telefone: deleteField(),
-            instagram: deleteField(),
-            linkedin: deleteField()
+        await softDeleteAccount({
+            uid: user.uid,
+            photoUrl: typeof user.foto === "string" ? user.foto : undefined,
         });
-        await logActivity(user.uid, "Ex-Usuário", "DELETE", "Conta", "Excluiu a própria conta (Soft Delete)");
+        await logActivity(user.uid, "Ex-UsuÃ¡rio", "DELETE", "Conta", "Excluiu a prÃ³pria conta (Soft Delete)");
         try { await deleteUser(auth.currentUser); } catch (authError) { console.warn("Erro ao deletar do Auth:", authError); }
-        addToast("Sua conta foi excluída. Até logo! 👋", "info");
+        addToast("Sua conta foi excluÃ­da. AtÃ© logo! ðŸ‘‹", "info");
         router.push("/login");
-    } catch (error) {
+    } catch (error: unknown) {
         console.error(error);
-        addToast("Erro ao processar exclusão.", "error");
+        addToast("Erro ao processar exclusao.", "error");
     } finally {
         setActionLoading(false);
     }
@@ -117,12 +100,12 @@ export default function SettingsPage() {
         <Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full transition hover:bg-zinc-900">
             <ArrowLeft size={24} />
         </Link>
-        <h1 className="font-black text-xl italic uppercase tracking-tighter text-white">Central do Sócio</h1>
+        <h1 className="font-black text-xl italic uppercase tracking-tighter text-white">Central do SÃ³cio</h1>
       </header>
 
       <main className="p-4 space-y-6 animate-in slide-in-from-bottom-4 duration-500">
         
-        {/* 1. CARTÃO DE PERFIL + PLANO (Vindo do antigo Menu) */}
+        {/* 1. CARTÃƒO DE PERFIL + PLANO (Vindo do antigo Menu) */}
         <section className="relative overflow-hidden bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-[2rem] p-5">
             <div className="flex items-center gap-4 relative z-10">
                 <div className="relative">
@@ -142,7 +125,7 @@ export default function SettingsPage() {
 
                 <div className="flex-1">
                     <h2 className="font-black text-xl text-white leading-none mb-1">{user.nome}</h2>
-                    <p className="text-xs text-zinc-400 font-medium mb-3">{user.role === 'user' ? 'Membro' : user.role} • {user.turma || "T??"}</p>
+                    <p className="text-xs text-zinc-400 font-medium mb-3">{user.role === 'user' ? 'Membro' : user.role} â€¢ {user.turma || "T??"}</p>
                     
                     <div className="flex items-center gap-2 mb-3">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider flex items-center gap-1 ${user.plano_cor ? `text-${user.plano_cor}-400 bg-${user.plano_cor}-500/10 border-${user.plano_cor}-500/20` : 'text-amber-400 bg-amber-500/10 border-amber-500/20'}`}>
@@ -162,25 +145,25 @@ export default function SettingsPage() {
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[50px] rounded-full pointer-events-none"></div>
         </section>
 
-        {/* 3. MENU DE NAVEGAÇÃO */}
+        {/* 3. MENU DE NAVEGAÃ‡ÃƒO */}
         <div className="space-y-6">
             <div className="space-y-2">
                 <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">Minha Conta</h3>
                 <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
                     <MenuItem href="/perfil" icon={<FileText size={18} />} label="Dados Pessoais" desc="Atualizar cadastro" />
-                    {/* 🦈 Link para Nova Página de Pedidos (ID 16) */}
+                    {/* ðŸ¦ˆ Link para Nova PÃ¡gina de Pedidos (ID 16) */}
                     <MenuItem href="/configuracoes/pedidos" icon={<History size={18} />} label="Meus Pedidos" desc="Acompanhar compras" badge="Novo" />
-                    <MenuItem href="/configuracoes/seguranca" icon={<Shield size={18} />} label="Segurança & Senha" desc="Proteger conta" />
+                    <MenuItem href="/configuracoes/seguranca" icon={<Shield size={18} />} label="SeguranÃ§a & Senha" desc="Proteger conta" />
                 </div>
             </div>
 
             <div className="space-y-2">
-                <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">Preferências</h3>
+                <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">PreferÃªncias</h3>
                 <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
                      <div className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50 transition">
                         <div className="flex items-center gap-3 text-zinc-400">
                             <Bell size={18} />
-                            <span className="text-sm font-medium text-zinc-200">Notificações</span>
+                            <span className="text-sm font-medium text-zinc-200">NotificaÃ§Ãµes</span>
                         </div>
                         <button onClick={() => setNotificacoes(!notificacoes)} className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${notificacoes ? "bg-emerald-500" : "bg-zinc-700"}`}>
                             <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform duration-300 ${notificacoes ? "left-6" : "left-1"}`}></div>
@@ -192,7 +175,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
                 <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-2">Suporte</h3>
                 <div className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
-                    <MenuItem href="/configuracoes/suporte" icon={<AlertTriangle size={18} />} label="Denúncias & Ajuda" desc="Reportar problemas" />
+                    <MenuItem href="/configuracoes/suporte" icon={<AlertTriangle size={18} />} label="DenÃºncias & Ajuda" desc="Reportar problemas" />
                     <MenuItem href="/configuracoes/termos" icon={<FileText size={18} />} label="Termos de Uso" />
                 </div>
             </div>
@@ -216,7 +199,7 @@ export default function SettingsPage() {
                 {actionLoading ? <Loader2 className="animate-spin" size={16}/> : <><Trash2 size={16} /> Excluir Permanentemente</>}
             </button>
             
-            <p className="text-center text-[10px] text-zinc-700 font-mono pt-4">AAAKN App v2.0 • ID: {user?.uid?.slice(0,8).toUpperCase()}</p>
+            <p className="text-center text-[10px] text-zinc-700 font-mono pt-4">AAAKN App v2.0 â€¢ ID: {user?.uid?.slice(0,8).toUpperCase()}</p>
         </div>
 
       </main>
@@ -241,3 +224,5 @@ function MenuItem({ href, icon, label, desc, badge }: { href: string, icon: Reac
         </Link>
     );
 }
+
+

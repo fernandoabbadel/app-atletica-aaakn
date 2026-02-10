@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import {
@@ -8,11 +8,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit,
-  orderBy, query, serverTimestamp, setDoc, updateDoc
-} from "firebase/firestore";
+  createLegalDoc,
+  fetchLegalDocs,
+  fetchMenuConfig,
+  removeLegalDoc,
+  saveMenuConfig,
+  updateLegalDoc,
+  type LegalDocRecord,
+  type MenuConfigSection,
+} from "../../../lib/settingsService";
 
 // --- TIPOS ---
 type ItemType = "link" | "toggle" | "action";
@@ -36,12 +41,12 @@ interface LegalDoc {
   id: string;
   titulo: string;
   conteudo: string;
-  icon: React.ElementType; // Tipagem correta para componentes de ícone
+  icon: React.ElementType; // Tipagem correta para componentes de Ã­cone
   iconName?: string;
   tipo: "publico" | "interno";
 }
 
-// Mapas de Ícones com tipagem correta
+// Mapas de Ãcones com tipagem correta
 const ICON_MAP: Record<string, React.ElementType> = { User, Shield, Wallet, Bell, Volume2, MessageSquare, HelpCircle, FileText, Settings, Smartphone };
 const LEGAL_ICON_MAP: Record<string, React.ElementType> = { Lock, Scale, Cookie, ClipboardList, Siren, Key, Scroll, Shield, FileText };
 
@@ -76,22 +81,21 @@ export default function AdminConfiguracoesPage() {
   const [editingSectionId, setEditingSectionId] = useState<string>("");
   const [savingMenu, setSavingMenu] = useState(false);
 
-  // Estados Jurídico
+  // Estados JurÃ­dico
   const [documents, setDocuments] = useState<LegalDoc[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>("");
   const [savingDoc, setSavingDoc] = useState(false);
 
-    // 🦈 CARREGAR MENU COM LEITURA CONTROLADA
+    // ðŸ¦ˆ CARREGAR MENU COM LEITURA CONTROLADA
   useEffect(() => {
     let mounted = true;
     const loadMenu = async () => {
       try {
-        const snap = await getDoc(doc(db, "app_config", "menu"));
-        if (!mounted || !snap.exists()) return;
+        const menuSections = await fetchMenuConfig();
+        if (!mounted || !menuSections) return;
 
-        const data = snap.data() as { sections?: ConfigSection[] };
-        if (Array.isArray(data.sections)) {
-          setSections(data.sections);
+        if (menuSections.length > 0) {
+          setSections(menuSections as ConfigSection[]);
         }
       } catch (error: unknown) {
         console.error(error);
@@ -105,20 +109,22 @@ export default function AdminConfiguracoesPage() {
     };
   }, [addToast]);
 
-  // 🦈 CARREGAR DOCS COM LIMITE
+  // ðŸ¦ˆ CARREGAR DOCS COM LIMITE
   useEffect(() => {
     let mounted = true;
     const loadDocs = async () => {
       try {
-        const q = query(collection(db, "legal_docs"), orderBy("titulo"), limit(80));
-        const snap = await getDocs(q);
+        const rows = await fetchLegalDocs({
+          includeInternal: true,
+          maxResults: 80,
+        });
 
-        const docs = snap.docs.map((row) => {
-          const data = row.data() as Omit<LegalDoc, "id" | "icon">;
+        const docs = rows.map((row) => {
+          const data = row as LegalDocRecord;
           const iconName = typeof data.iconName === "string" ? data.iconName : "FileText";
           return {
-            id: row.id,
             ...data,
+            id: data.id,
             icon: LEGAL_ICON_MAP[iconName] || FileText,
           } as LegalDoc;
         });
@@ -136,7 +142,7 @@ export default function AdminConfiguracoesPage() {
     };
   }, [addToast]);
 
-  // 🦈 SELEÇÃO AUTOMÁTICA DO PRIMEIRO DOC (Correção do ESLint useEffect dependency)
+  // ðŸ¦ˆ SELEÃ‡ÃƒO AUTOMÃTICA DO PRIMEIRO DOC (CorreÃ§Ã£o do ESLint useEffect dependency)
   useEffect(() => {
     if (documents.length > 0 && !selectedDocId) {
         setSelectedDocId(documents[0].id);
@@ -147,11 +153,8 @@ export default function AdminConfiguracoesPage() {
   const handleSaveMenu = async (newSections: ConfigSection[]) => {
       setSavingMenu(true);
       try {
-          await setDoc(doc(db, "app_config", "menu"), { 
-              sections: newSections, 
-              updatedAt: serverTimestamp() 
-          });
-          addToast("Menu do App atualizado para todos! 📲", "success");
+          await saveMenuConfig(newSections as MenuConfigSection[]);
+          addToast("Menu do App atualizado para todos! ðŸ“²", "success");
           setSections(newSections);
           setIsModalOpen(false);
       } catch {
@@ -174,7 +177,7 @@ export default function AdminConfiguracoesPage() {
   };
 
   const handleDeleteItem = (itemId: string) => {
-      if(!confirm("Remover este botão do app?")) return;
+      if(!confirm("Remover este botÃ£o do app?")) return;
       const newSections = sections.map(sec => ({
           ...sec,
           items: sec.items.filter(i => i.id !== itemId)
@@ -184,18 +187,17 @@ export default function AdminConfiguracoesPage() {
 
   // --- ACTIONS JURIDICO ---
   const handleCreateDoc = async () => {
-      const ref = await addDoc(collection(db, "legal_docs"), {
+      const created = await createLegalDoc({
           titulo: "Novo Regulamento",
           conteudo: "Escreva aqui...",
           tipo: "publico",
           iconName: "FileText",
-          createdAt: serverTimestamp()
       });
       setDocuments((prev) => {
           const next = [
               ...prev,
               {
-                  id: ref.id,
+                  id: created.id,
                   titulo: "Novo Regulamento",
                   conteudo: "Escreva aqui...",
                   tipo: "publico",
@@ -206,7 +208,7 @@ export default function AdminConfiguracoesPage() {
           next.sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR"));
           return next;
       });
-      setSelectedDocId(ref.id);
+      setSelectedDocId(created.id);
       addToast("Documento criado.", "success");
   };
 
@@ -215,12 +217,11 @@ export default function AdminConfiguracoesPage() {
       if(!docData) return;
       setSavingDoc(true);
       try {
-          await updateDoc(doc(db, "legal_docs", selectedDocId), {
+          await updateLegalDoc(selectedDocId, {
               titulo: docData.titulo,
               conteudo: docData.conteudo,
-              updatedAt: serverTimestamp()
           });
-          addToast("Documento salvo e publicado! 📜", "success");
+          addToast("Documento salvo e publicado! ðŸ“œ", "success");
       } catch { addToast("Erro ao salvar.", "error"); }
       finally { setSavingDoc(false); }
   };
@@ -228,7 +229,7 @@ export default function AdminConfiguracoesPage() {
   const handleDeleteDoc = async (id: string) => {
       if(!confirm("Apagar documento?")) return;
       try {
-          await deleteDoc(doc(db, "legal_docs", id));
+          await removeLegalDoc(id);
           setDocuments((prev) => prev.filter((docItem) => docItem.id !== id));
           if (selectedDocId === id) setSelectedDocId("");
           addToast("Documento removido.", "info");
@@ -259,7 +260,7 @@ export default function AdminConfiguracoesPage() {
             <Smartphone size={16} /> Menu do App
           </button>
           <button onClick={() => setActiveTab("legal")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "legal" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent"}`}>
-            <Scale size={16} /> Jurídico
+            <Scale size={16} /> JurÃ­dico
           </button>
         </div>
       </div>
@@ -271,8 +272,8 @@ export default function AdminConfiguracoesPage() {
               <div key={section.id} className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
                 <div className="p-4 bg-black/20 border-b border-zinc-800 flex justify-between items-center">
                   <h3 className="text-sm font-black uppercase text-zinc-400 tracking-wider pl-2">{section.title}</h3>
-                  <button onClick={() => { setEditingSectionId(section.id); setEditingItem({ id: Date.now().toString(), label: "Novo Botão", icon: "Settings", type: "link", path: "/", active: true }); setIsModalOpen(true); }} className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-lg font-bold uppercase flex items-center gap-1 transition">
-                    <Plus size={12} /> Novo Botão
+                  <button onClick={() => { setEditingSectionId(section.id); setEditingItem({ id: Date.now().toString(), label: "Novo BotÃ£o", icon: "Settings", type: "link", path: "/", active: true }); setIsModalOpen(true); }} className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-lg font-bold uppercase flex items-center gap-1 transition">
+                    <Plus size={12} /> Novo BotÃ£o
                   </button>
                 </div>
                 <div className="divide-y divide-zinc-800">
@@ -329,14 +330,14 @@ export default function AdminConfiguracoesPage() {
                   <div className="p-4 bg-black/20 border-b border-zinc-800 flex justify-between items-center">
                     <input type="text" className="bg-transparent text-lg font-black text-white uppercase outline-none w-full placeholder-zinc-600" value={currentDoc.titulo} onChange={(e) => {
                         setDocuments(docs => docs.map(d => d.id === selectedDocId ? { ...d, titulo: e.target.value } : d));
-                    }} placeholder="TÍTULO DO DOCUMENTO" />
+                    }} placeholder="TÃTULO DO DOCUMENTO" />
                     <button onClick={handleSaveDoc} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 shadow-lg transition">
                       <CheckCircle size={14} /> {savingDoc ? "Salvando..." : "Salvar"}
                     </button>
                   </div>
                   <textarea className="flex-1 w-full bg-[#09090b] text-zinc-300 p-6 font-mono text-xs outline-none resize-none leading-relaxed custom-scrollbar" value={currentDoc.conteudo} onChange={(e) => {
                       setDocuments(docs => docs.map(d => d.id === selectedDocId ? { ...d, conteudo: e.target.value } : d));
-                  }} placeholder="Conteúdo jurídico aqui..." />
+                  }} placeholder="ConteÃºdo jurÃ­dico aqui..." />
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4"><FilePlus size={48} className="opacity-20" /><p className="text-sm font-bold uppercase">Selecione um documento</p></div>
@@ -346,15 +347,15 @@ export default function AdminConfiguracoesPage() {
         )}
       </main>
 
-      {/* MODAL EDITOR DE BOTÃO */}
+      {/* MODAL EDITOR DE BOTÃƒO */}
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 w-full max-w-lg rounded-3xl border border-zinc-800 p-6 shadow-2xl animate-in zoom-in-95">
-            <h2 className="font-bold text-white text-xl mb-4">Editar Botão do App</h2>
+            <h2 className="font-bold text-white text-xl mb-4">Editar BotÃ£o do App</h2>
             <div className="space-y-4">
-              <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Botão</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm outline-none focus:border-emerald-500" value={editingItem.label} onChange={(e) => setEditingItem({ ...editingItem, label: e.target.value })} /></div>
+              <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do BotÃ£o</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white text-sm outline-none focus:border-emerald-500" value={editingItem.label} onChange={(e) => setEditingItem({ ...editingItem, label: e.target.value })} /></div>
               <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Rota / Link</label><input type="text" className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-emerald-500 font-mono text-sm outline-none focus:border-emerald-500" value={editingItem.path || ""} onChange={(e) => setEditingItem({ ...editingItem, path: e.target.value })} /></div>
-              <div className="flex items-center gap-2"><label className="text-white text-xs font-bold cursor-pointer select-none"><input type="checkbox" checked={editingItem.active} onChange={(e) => setEditingItem({ ...editingItem, active: e.target.checked })} className="mr-2" /> Visível no App</label></div>
+              <div className="flex items-center gap-2"><label className="text-white text-xs font-bold cursor-pointer select-none"><input type="checkbox" checked={editingItem.active} onChange={(e) => setEditingItem({ ...editingItem, active: e.target.checked })} className="mr-2" /> VisÃ­vel no App</label></div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg text-zinc-400 font-bold text-xs bg-zinc-800">Cancelar</button>
@@ -363,7 +364,7 @@ export default function AdminConfiguracoesPage() {
                 disabled={savingMenu}
                 className="px-6 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                {savingMenu ? "Salvando..." : "Salvar Alterações"}
+                {savingMenu ? "Salvando..." : "Salvar AlteraÃ§Ãµes"}
               </button>
             </div>
           </div>
@@ -372,3 +373,7 @@ export default function AdminConfiguracoesPage() {
     </div>
   );
 }
+
+
+
+

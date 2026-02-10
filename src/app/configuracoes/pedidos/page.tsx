@@ -13,10 +13,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { collection, getDocs, limit, query, Timestamp, where } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 
 import { useAuth } from "../../../context/AuthContext";
-import { db } from "../../../lib/firebase";
+import { fetchUserOrdersByTab } from "../../../lib/settingsService";
 
 interface TabButtonProps {
   label: string;
@@ -118,19 +118,13 @@ export default function MeusPedidosPage() {
     setLoading(true);
 
     const loadPedidos = async () => {
-      let collectionName = "solicitacoes_ingressos";
-      if (activeTab === "loja") collectionName = "pedidos_loja";
-      if (activeTab === "planos") collectionName = "solicitacoes_adesao";
-
       try {
-        const q = query(
-          collection(db, collectionName),
-          where("userId", "==", user.uid),
-          limit(120)
+        const records = await fetchUserOrdersByTab(user.uid, activeTab, {
+          maxResults: 90,
+        });
+        const rawList = records.map(
+          (row) => ({ id: row.id, ...(row.data as Record<string, unknown>) }) as PedidoRaw
         );
-
-        const snap = await getDocs(q);
-        const rawList = snap.docs.map((row) => ({ id: row.id, ...row.data() }) as PedidoRaw);
 
         const listaOrdenada = rawList
           .map((item) => normalizePedido(item, activeTab))
