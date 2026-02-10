@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Search, 
   Shield, Key, UploadCloud, Eye, EyeOff, 
@@ -9,22 +9,18 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
 import { uploadImage } from "../../../lib/upload";
-import { 
-  collection, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot, query, orderBy, getDocs 
-} from "firebase/firestore";
+import {
+  deleteLeagueConfig,
+  fetchLeagueUsers,
+  fetchLeagues,
+  saveLeagueConfig,
+  setLeagueVisibility,
+  type LeagueRecord,
+  type LeagueUserRecord,
+} from "../../../lib/leaguesService";
 
 // --- TIPAGEM ---
-interface PerguntaLiga { 
-    id: string; 
-    texto: string; 
-    imagemBase64?: string; 
-    alternativas: string[]; 
-    correta: number; 
-}
-
 interface Member { 
     id: string; 
     nome: string; 
@@ -57,31 +53,8 @@ interface LeagueEvent {
     pollQuestion?: string; 
 }
 
-interface Liga {
-  id: string;
-  nome: string;
-  sigla: string;
-  presidente: string;
-  descricao: string;
-  senha: string;
-  foto: string; // URL da logo
-  logoBase64?: string; // Para compatibilidade
-  visivel?: boolean; // Controle de visibilidade no Dashboard
-  ativa?: boolean; // Controle de ativação no Jogo (SharkRound)
-  membros: Member[];
-  eventos: LeagueEvent[];
-  perguntas: PerguntaLiga[];
-  bizu: string;
-  likes: number;
-}
-
-// Interface para usuário vindo do banco
-interface UserData {
-    id: string;
-    nome?: string;
-    foto?: string;
-    turma?: string;
-}
+type Liga = LeagueRecord;
+type UserData = LeagueUserRecord;
 
 export default function AdminLigasPage() {
   const { addToast } = useToast();
@@ -115,34 +88,48 @@ export default function AdminLigasPage() {
   const [currentEvent, setCurrentEvent] = useState<Partial<LeagueEvent>>({});
   const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
 
-  // 1. BUSCAR LIGAS (CORRIGIDO PARA ligas_config)
-  useEffect(() => {
-    // Agora aponta para a coleção correta
-    const q = query(collection(db, "ligas_config"), orderBy("nome", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        visivel: doc.data().visivel || false,
-        ativa: doc.data().ativa || false,
-        membros: doc.data().membros || [],
-        eventos: doc.data().eventos || [],
-        perguntas: doc.data().perguntas || []
-      })) as Liga[];
+  const loadLigas = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    try {
+      const data = await fetchLeagues({
+        orderByField: "nome",
+        orderDirection: "asc",
+        maxResults: 120,
+        forceRefresh,
+      });
       setLigas(data);
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar ligas.", "error");
+    } finally {
       setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    }
+  }, [addToast]);
+
+  // 1. BUSCAR LIGAS
+  useEffect(() => {
+    void loadLigas();
+  }, [loadLigas]);
 
   // 2. BUSCAR USUÁRIOS
   useEffect(() => {
-      const fetchUsers = async () => {
-          const snap = await getDocs(collection(db, "users"));
-          setAllUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
-      };
-      if (searchUserModal) fetchUsers();
-  }, [searchUserModal]);
+    if (!searchUserModal) return;
+    let mounted = true;
+    const loadUsers = async () => {
+      try {
+        const users = await fetchLeagueUsers({ maxResults: 360 });
+        if (!mounted) return;
+        setAllUsers(users);
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar usuários.", "error");
+      }
+    };
+    void loadUsers();
+    return () => {
+      mounted = false;
+    };
+  }, [searchUserModal, addToast]);
 
   // --- AÇÕES ---
 
@@ -167,9 +154,11 @@ export default function AdminLigasPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta Liga?")) return;
     try {
-      await deleteDoc(doc(db, "ligas_config", id)); // CORRIGIDO
+      await deleteLeagueConfig(id);
+      setLigas((prev) => prev.filter((item) => item.id !== id));
       addToast("Liga removida com sucesso.", "success");
-    } catch {
+    } catch (error: unknown) {
+      console.error(error);
       addToast("Erro ao remover.", "error");
     }
   };
@@ -178,9 +167,15 @@ export default function AdminLigasPage() {
   const toggleVisibility = async (liga: Liga) => {
       const novoStatus = !liga.visivel;
       try {
-          await updateDoc(doc(db, "ligas_config", liga.id), { visivel: novoStatus }); // CORRIGIDO
+          await setLeagueVisibility({ id: liga.id, visivel: novoStatus });
+          setLigas((prev) =>
+            prev.map((item) =>
+              item.id === liga.id ? { ...item, visivel: novoStatus } : item
+            )
+          );
           addToast(novoStatus ? "Liga visível no Dashboard! 📱" : "Liga ocultada do Dashboard.", novoStatus ? "success" : "info");
-      } catch {
+      } catch (error: unknown) {
+          console.error(error);
           addToast("Erro ao atualizar visibilidade.", "error");
       }
   };
@@ -188,20 +183,20 @@ export default function AdminLigasPage() {
   const handleSave = async () => {
     if (!formData.nome || !formData.senha) return addToast("Nome e Senha são obrigatórios!", "error");
 
+    setLoading(true);
     try {
-      // Se não tiver ID definido manualmente (slug), cria um aleatório com addDoc
-      // OU usa o ID existente se for edição
-      if (isEditing && editingId) {
-        await updateDoc(doc(db, "ligas_config", editingId), formData); // CORRIGIDO
-        addToast("Liga atualizada!", "success");
-      } else {
-        await addDoc(collection(db, "ligas_config"), formData); // CORRIGIDO
-        addToast("Liga criada!", "success");
-      }
+      const result = await saveLeagueConfig({
+        id: isEditing ? editingId || undefined : undefined,
+        data: formData,
+      });
+      await loadLigas(true);
       setShowModal(false);
-    } catch (error) {
+      addToast(isEditing ? "Liga atualizada!" : `Liga criada! (${result.id.slice(0, 6)}...)`, "success");
+    } catch (error: unknown) {
       console.error(error);
       addToast("Erro ao salvar.", "error");
+    } finally {
+      setLoading(false);
     }
   };
 

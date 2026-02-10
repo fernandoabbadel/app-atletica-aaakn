@@ -12,10 +12,20 @@ import Image from "next/image";
 import { useToast } from "../../context/ToastContext";
 import { db } from "../../lib/firebase";
 import { 
-  collection, getDocs, updateDoc, doc, 
-  serverTimestamp, setDoc, addDoc, deleteDoc, onSnapshot
+  collection, updateDoc, doc, 
+  serverTimestamp, setDoc, addDoc
 } from "firebase/firestore";
 import { logActivity } from "../../lib/logger"; 
+import {
+  createEventPoll,
+  deleteEventPoll,
+  fetchEventPolls,
+  fetchLeagueById,
+  fetchLeagues,
+  fetchLeagueUsers,
+  updateEventPollOptions,
+  type LeaguePollRecord,
+} from "../../lib/leaguesService";
 
 // --- TIPAGEM ESTRITA (Sem 'any') ---
 
@@ -57,13 +67,7 @@ interface PollOption {
     creatorAvatar?: string;
 }
 
-interface Poll {
-    id: string;
-    question: string;
-    options: PollOption[];
-    allowUserOptions: boolean;
-    voters: string[];
-}
+type Poll = LeaguePollRecord;
 
 interface LeagueEvent { 
     id: string; 
@@ -146,70 +150,102 @@ export default function LigasAdminPage() {
 
   // 1. CARREGAMENTO INICIAL
   useEffect(() => {
+      let mounted = true;
       const fetchData = async () => {
           try {
-              const snapLigas = await getDocs(collection(db, "ligas_config"));
-              if (!snapLigas.empty) {
-                  const lista = snapLigas.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-                  lista.sort((a, b) => a.nome.localeCompare(b.nome));
-                  setLigasDisponiveis(lista);
-              }
-              const snapUsers = await getDocs(collection(db, "users"));
-              const usersList = snapUsers.docs.map(d => ({ 
-                  id: d.id, 
-                  nome: d.data().nome,
-                  foto: d.data().foto,
-                  turma: d.data().turma
-              } as UserSearch));
-              setAllUsers(usersList);
-          } catch (error) { 
+              const leagues = await fetchLeagues({
+                  orderByField: "nome",
+                  orderDirection: "asc",
+                  maxResults: 120,
+              });
+              if (!mounted) return;
+              setLigasDisponiveis(leagues.map((league) => ({ id: league.id, nome: league.nome })));
+          } catch (error: unknown) {
               console.error(error);
-              addToast("Erro ao carregar dados.", "error"); 
-          } finally { 
-              setIsLoadingList(false); 
+              if (mounted) addToast("Erro ao carregar ligas.", "error");
+          } finally {
+              if (mounted) setIsLoadingList(false);
           }
       };
-      fetchData();
+      void fetchData();
+      return () => {
+          mounted = false;
+      };
   }, [addToast]);
 
-  // 2. LISTENER DE ENQUETES (Quando modal abre)
+  // 2. BUSCA DE USUÁRIOS SOB DEMANDA
   useEffect(() => {
-      if (!pollModal) return;
-      const q = collection(db, "eventos", pollModal, "enquetes");
-      const unsub = onSnapshot(q, (snap) => {
-          setPolls(snap.docs.map(d => ({ id: d.id, ...d.data() } as Poll)));
-      });
-      return () => unsub();
-  }, [pollModal]);
+      if (!searchUserModal) return;
+      let mounted = true;
+      const loadUsers = async () => {
+          try {
+              const users = await fetchLeagueUsers({ maxResults: 360 });
+              if (!mounted) return;
+              setAllUsers(users as UserSearch[]);
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) addToast("Erro ao carregar usuários.", "error");
+          }
+      };
+      void loadUsers();
+      return () => {
+          mounted = false;
+      };
+  }, [searchUserModal, addToast]);
 
-  // 3. FUNÇÃO DE LOGIN
+  // 3. ENQUETES (SEM LISTENER)
+  useEffect(() => {
+      if (!pollModal) {
+          setPolls([]);
+          return;
+      }
+      let mounted = true;
+      const loadPolls = async () => {
+          try {
+              const data = await fetchEventPolls(pollModal, { maxResults: 80, forceRefresh: true });
+              if (!mounted) return;
+              setPolls(data as Poll[]);
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) addToast("Erro ao carregar enquetes.", "error");
+          }
+      };
+      void loadPolls();
+      return () => {
+          mounted = false;
+      };
+  }, [pollModal, addToast]);
+
+  // 4. FUNÇÃO DE LOGIN
   const handleLogin = async () => {
       if (!selectedLigaId || !senhaInput) return addToast("Preencha todos os campos!", "error");
       setLoading(true);
       try {
-          const snapLigas = await getDocs(collection(db, "ligas_config"));
-          const target = snapLigas.docs.find(d => d.id === selectedLigaId);
+          const target = await fetchLeagueById(selectedLigaId, { forceRefresh: true });
           
-          if (target && target.data().senha === senhaInput) {
-              const data = target.data();
-              setLigaData({ 
-                  id: target.id, 
-                  ...data, 
-                  perguntas: data.perguntas || [], 
-                  membros: data.membros || [], 
-                  eventos: data.eventos || [], 
-                  likes: data.likes || 0, 
-                  sigla: data.sigla || "", 
-                  descricao: data.descricao || "", 
-                  bizu: data.bizu || "" 
-              } as LigaData);
+          if (target && target.senha === senhaInput) {
+              setLigaData({
+                  id: target.id,
+                  nome: target.nome,
+                  sigla: target.sigla || "",
+                  descricao: target.descricao || "",
+                  bizu: target.bizu || "",
+                  likes: target.likes || 0,
+                  senha: target.senha,
+                  logoBase64: target.logoBase64,
+                  ativa: target.ativa,
+                  perguntas: (target.perguntas || []) as PerguntaLiga[],
+                  membros: (target.membros || []) as Member[],
+                  eventos: (target.eventos || []) as LeagueEvent[],
+                  membrosIds: target.membrosIds,
+              });
               setIsLoggedIn(true);
               addToast("Acesso autorizado!", "success");
               
               // LOG CORRIGIDO: ORDEM (ID, NOME, AÇÃO, RECURSO, DETALHES)
               logActivity(
                   target.id, 
-                  data.nome,
+                  target.nome,
                   "LOGIN",
                   "ligas_config", 
                   "Acessou o painel de gestão"
@@ -218,7 +254,8 @@ export default function LigasAdminPage() {
           } else { 
               addToast("Senha incorreta.", "error"); 
           }
-      } catch { 
+      } catch (error: unknown) {
+          console.error(error);
           addToast("Erro de conexão.", "error"); 
       } finally { 
           setLoading(false); 
@@ -693,15 +730,22 @@ export default function LigasAdminPage() {
                               </div>
                               <button onClick={async () => {
                                   if (!novaEnquete.question) return;
-                                  const ref = await addDoc(collection(db, "eventos", pollModal, "enquetes"), {
+                                  const ref = await createEventPoll({
+                                      eventId: pollModal,
                                       question: novaEnquete.question,
                                       allowUserOptions: novaEnquete.allowUserOptions,
-                                      options: [],
-                                      voters: [],
-                                      createdAt: serverTimestamp(),
                                       creatorId: ligaData?.id,
-                                      isOfficial: true
                                   });
+                                  setPolls((prev) => [
+                                      ...prev,
+                                      {
+                                          id: ref.id,
+                                          question: novaEnquete.question,
+                                          allowUserOptions: novaEnquete.allowUserOptions,
+                                          options: [],
+                                          voters: [],
+                                      },
+                                  ]);
                                   setNovaEnquete({ question: "", allowUserOptions: true });
                                   addToast("Enquete criada!", "success");
                                   // LOG CORRIGIDO (5 Args)
@@ -725,7 +769,8 @@ export default function LigasAdminPage() {
                                           </div>
                                           <button onClick={async () => {
                                               if(confirm("Excluir enquete?")) {
-                                                  await deleteDoc(doc(db, "eventos", pollModal, "enquetes", poll.id));
+                                                  await deleteEventPoll({ eventId: pollModal, pollId: poll.id });
+                                                  setPolls((prev) => prev.filter((item) => item.id !== poll.id));
                                                   // LOG CORRIGIDO
                                                   await logActivity(
                                                       ligaData?.id || 'sys', 
@@ -757,7 +802,18 @@ export default function LigasAdminPage() {
                                                   <button onClick={async () => {
                                                       if(!confirm("Remover opção?")) return;
                                                       const newOptions = poll.options.filter((_, i) => i !== idx);
-                                                      await updateDoc(doc(db, "eventos", pollModal, "enquetes", poll.id), { options: newOptions });
+                                                      await updateEventPollOptions({
+                                                          eventId: pollModal,
+                                                          pollId: poll.id,
+                                                          options: newOptions as PollOption[],
+                                                      });
+                                                      setPolls((prev) =>
+                                                          prev.map((item) =>
+                                                              item.id === poll.id
+                                                                  ? { ...item, options: newOptions }
+                                                                  : item
+                                                          )
+                                                      );
                                                   }} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 size={12}/></button>
                                               </div>
                                           ))}

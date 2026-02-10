@@ -9,38 +9,17 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { collection, onSnapshot, doc, updateDoc, increment, addDoc, serverTimestamp } from "firebase/firestore";
 import { logActivity } from "../../lib/logger"; 
+import {
+  addLeagueQuizHistory,
+  changeLeagueLikeCount,
+  fetchLeagues,
+  type LeagueRecord,
+} from "../../lib/leaguesService";
 
 // --- 1. INTERFACES (Fim dos 'any') ---
 
-interface Member {
-    id: string;
-    nome: string;
-    cargo: string;
-    foto: string;
-    linkPerfil?: string;
-}
-
-interface LeagueEvent {
-    id: string;
-    titulo: string;
-    data: string;
-    local: string;
-    linkEvento?: string;
-}
-
-interface League {
-    id: string; 
-    nome: string; 
-    sigla: string; 
-    descricao?: string; 
-    logoBase64?: string; 
-    bizu?: string;
-    likes?: number; 
-    membros?: Member[]; // Tipagem forte
-    eventos?: LeagueEvent[]; // Tipagem forte
+interface League extends LeagueRecord {
     matchPercent?: number; 
     matchScore?: number;
 }
@@ -69,13 +48,28 @@ export default function LigasUnitauPage() {
   const [topMatches, setTopMatches] = useState<League[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "ligas_config"), (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as League));
-        data.sort((a, b) => (b.likes || 0) - (a.likes || 0));
-        setLeagues(data);
-        setLoading(false);
-    });
-    return () => unsub();
+    let mounted = true;
+    const loadLeagues = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchLeagues({
+          orderByField: "likes",
+          orderDirection: "desc",
+          maxResults: 120,
+        });
+        if (!mounted) return;
+        setLeagues(data as League[]);
+      } catch (error: unknown) {
+        console.error(error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadLeagues();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleLike = async (e: React.MouseEvent, leagueId: string) => {
@@ -84,10 +78,21 @@ export default function LigasUnitauPage() {
       
       const isLiked = likedLeagues.includes(leagueId);
       setLikedLeagues(prev => isLiked ? prev.filter(id => id !== leagueId) : [...prev, leagueId]);
-      
-      await updateDoc(doc(db, "ligas_config", leagueId), { 
-          likes: increment(isLiked ? -1 : 1) 
-      });
+      setLeagues((prev) =>
+        prev
+          .map((league) =>
+            league.id === leagueId
+              ? { ...league, likes: Math.max(0, (league.likes || 0) + (isLiked ? -1 : 1)) }
+              : league
+          )
+          .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+      );
+
+      try {
+        await changeLeagueLikeCount({ id: leagueId, delta: isLiked ? -1 : 1 });
+      } catch (error: unknown) {
+        console.error(error);
+      }
 
       // --- CORREÇÃO DO LOG ---
       if (!isLiked) {
@@ -134,10 +139,10 @@ export default function LigasUnitauPage() {
       setShowQuizResult(true);
       
       if(user) {
-          await addDoc(collection(db, `users/${user.uid}/quiz_history`), { 
-              date: serverTimestamp(), 
-              topMatch: top5[0]?.nome || "Nenhum", 
-              keywords: finalKeywords 
+          await addLeagueQuizHistory({
+              userId: user.uid,
+              topMatch: top5[0]?.nome || "Nenhum",
+              keywords: finalKeywords,
           });
           
           // --- CORREÇÃO DO LOG ---
