@@ -6,15 +6,14 @@ import {
   Instagram, Lock, CheckCircle2, Heart, X, Sparkles, PawPrint
 } from "lucide-react"; 
 import Link from "next/link";
-import Image from "next/image"; // 🦈 Importando Image
+import Image from "next/image"; // Importando Image
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { db } from "../../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, serverTimestamp, increment } from "firebase/firestore"; 
+import { fetchAlbumCollectedIds, fetchUsersByTurma, registerAlbumCapture } from "../../lib/albumService";
 import { QRCodeSVG } from "qrcode.react";
 import { Html5Qrcode } from "html5-qrcode";
 
-// 🦈 Interfaces para tipagem forte (Fim do any)
+// Interfaces para tipagem forte (Fim do any)
 interface UserData {
     id: string;
     nome: string;
@@ -49,15 +48,20 @@ const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
 export default function AlbumPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const userUid = user?.uid;
   
   const [activeTab, setActiveTab] = useState("T8");
-  const [usuarios, setUsuarios] = useState<UserData[]>([]);
+  const [usersByTurma, setUsersByTurma] = useState<Record<string, UserData[]>>({});
   const [meuAlbum, setMeuAlbum] = useState<string[]>([]);
   const [showMyQr, setShowMyQr] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadingAlbum, setLoadingAlbum] = useState(true);
+  const [loadingTurma, setLoadingTurma] = useState(false);
+  const [processingScan, setProcessingScan] = useState(false);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingScanRef = useRef(false);
+  const usuarios = useMemo(() => usersByTurma[activeTab] ?? [], [usersByTurma, activeTab]);
 
   // Helper: Cálculo de Idade
   const calcularIdade = (dataNasc?: string) => {
@@ -70,64 +74,124 @@ export default function AlbumPage() {
     return idade;
   };
 
-  // 1. Carregar Dados
+  // 1. Carregar Dados essenciais (snapshot único)
   useEffect(() => {
-    if (!user) return;
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      setUsuarios(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
-    });
-    const unsubAlbum = onSnapshot(collection(db, "users", user.uid, "albumColado"), (snap) => {
-      setMeuAlbum(snap.docs.map(d => d.id));
-      setLoading(false);
-    });
-    return () => { unsubUsers(); unsubAlbum(); };
-  }, [user]);
+    if (!userUid) {
+      setMeuAlbum([]);
+      setUsersByTurma({});
+      setLoadingAlbum(false);
+      return;
+    }
 
-  // 2. Lógica de Colar (UseCallback para dependência correta)
-  const handleFoundUser = useCallback(async (targetId: string) => {
-    if (!user) return;
-    
-    // Para o scanner se estiver rodando
-    if (scannerRef.current?.isScanning) {
+    let mounted = true;
+    setLoadingAlbum(true);
+    setUsersByTurma({});
+
+    const loadAlbum = async () => {
+      try {
+        const collectedIds = await fetchAlbumCollectedIds(userUid);
+        if (!mounted) return;
+        setMeuAlbum(collectedIds);
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar seu álbum.", "error");
+      } finally {
+        if (mounted) setLoadingAlbum(false);
+      }
+    };
+
+    loadAlbum();
+    return () => {
+      mounted = false;
+    };
+  }, [userUid, addToast]);
+
+  useEffect(() => {
+    if (!userUid) return;
+    if (Object.prototype.hasOwnProperty.call(usersByTurma, activeTab)) return;
+
+    let mounted = true;
+    setLoadingTurma(true);
+
+    const loadTurma = async () => {
+      try {
+        const turmaUsers = await fetchUsersByTurma(activeTab);
+        if (!mounted) return;
+        setUsersByTurma((prev) => ({ ...prev, [activeTab]: turmaUsers }));
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) {
+          addToast("Erro ao carregar turma selecionada.", "error");
+          setUsersByTurma((prev) => ({ ...prev, [activeTab]: [] }));
+        }
+      } finally {
+        if (mounted) setLoadingTurma(false);
+      }
+    };
+
+    loadTurma();
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, userUid, addToast, usersByTurma]);
+
+  // 2. Logica de Colar (Cloud Function com fallback seguro)
+  const handleFoundUser = useCallback(async (rawTargetId: string) => {
+    if (!user || processingScanRef.current) return;
+
+    const targetId = rawTargetId.trim();
+    if (!targetId) return;
+
+    processingScanRef.current = true;
+    setProcessingScan(true);
+
+    try {
+      if (scannerRef.current?.isScanning) {
         await scannerRef.current.stop();
         scannerRef.current.clear();
         setShowScanner(false);
-    }
+      }
 
-    if (targetId === user.uid) return addToast("Tentando se escanear? 😂", "info");
-    if (meuAlbum.includes(targetId)) return addToast("Figurinha repetida! 🦈", "info");
+      if (targetId === user.uid) {
+        addToast("Tentando se escanear?", "info");
+        return;
+      }
 
-    const targetUser = usuarios.find(u => u.id === targetId);
-    
-    if (!targetUser) return addToast("Código inválido ou usuário não carregado!", "error");
+      if (meuAlbum.includes(targetId)) {
+        addToast("Figurinha repetida!", "info");
+        return;
+      }
 
-    const isBixo = targetUser.turma === "T8";
-
-    try {
-      // 1. Cola a figurinha no SEU álbum pessoal
-      await setDoc(doc(db, "users", user.uid, "albumColado", targetId), {
-        dataColada: serverTimestamp(),
-        nome: targetUser.nome,
-        turma: targetUser.turma
+      const result = await registerAlbumCapture({
+        collector: {
+          uid: user.uid,
+          nome: user.nome || "Tubarao",
+          turma: user.turma,
+          foto: user.foto,
+        },
+        targetId,
       });
 
-      // 2. Atualiza o SEU Placar no Ranking Geral
-      await setDoc(doc(db, "album_rankings", user.uid), {
-        userId: user.uid, 
-        nome: user.nome, 
-        turma: user.turma,
-        foto: user.foto || "https://github.com/shadcn.png", 
-        totalColetado: meuAlbum.length + 1, 
-        scansT8: isBixo ? increment(1) : increment(0), 
-        ultimoScan: serverTimestamp()
-      }, { merge: true });
+      if (result.status === "invalid-target") {
+        addToast("Codigo invalido ou usuario nao encontrado!", "error");
+        return;
+      }
 
-      addToast(`CAPTURA! ${targetUser.nome} adicionado! 📸🔥`, "success");
-    } catch (error) {
+      if (result.status === "duplicate") {
+        addToast("Figurinha repetida!", "info");
+        return;
+      }
+
+      setMeuAlbum((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+      addToast(`CAPTURA! ${result.targetName || "Integrante"} adicionado!`, "success");
+    } catch (error: unknown) {
       console.error(error);
       addToast("Erro ao colar no banco de dados.", "error");
+    } finally {
+      processingScanRef.current = false;
+      setProcessingScan(false);
     }
-  }, [user, usuarios, meuAlbum, addToast]); // 🦈 Dependências corretas
+  }, [user, meuAlbum, addToast]);
 
   // 3. Scanner PRO
   useEffect(() => {
@@ -158,18 +222,21 @@ export default function AlbumPage() {
             }).catch(console.error);
         }
     };
-  }, [showScanner, handleFoundUser, addToast]); // 🦈 Adicionado handleFoundUser e addToast
+  }, [showScanner, handleFoundUser, addToast]); // Dependencias do scanner
 
   // 4. Contadores
   const statsTurma = useMemo(() => {
-    const totalCadastrados = usuarios.filter(u => u.turma === activeTab).length;
-    const totalEuPeguei = usuarios.filter(u => u.turma === activeTab && meuAlbum.includes(u.id)).length;
+    const totalCadastrados = usuarios.length;
+    const totalEuPeguei = usuarios.filter((u) => meuAlbum.includes(u.id)).length;
     return { pegos: totalEuPeguei, total: totalCadastrados };
-  }, [usuarios, meuAlbum, activeTab]);
+  }, [usuarios, meuAlbum]);
 
   const usersFiltered = useMemo(() => {
-    return usuarios.filter(u => u.turma === activeTab);
-  }, [usuarios, activeTab]);
+    return usuarios;
+  }, [usuarios]);
+
+  const hasActiveTurmaLoaded = Object.prototype.hasOwnProperty.call(usersByTurma, activeTab);
+  const loading = loadingAlbum || loadingTurma || !hasActiveTurmaLoaded;
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-black animate-pulse">CARREGANDO...</div>;
 
@@ -184,7 +251,7 @@ export default function AlbumPage() {
         </div>
         <div className="flex gap-2">
             <button onClick={() => setShowMyQr(true)} className="bg-white text-black p-3 rounded-2xl shadow-lg active:scale-95 transition"><QrCode size={20} /></button>
-            <button onClick={() => setShowScanner(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-emerald-500/20 shadow-lg active:scale-95 transition"><Camera size={20} /></button>
+            <button disabled={processingScan} onClick={() => setShowScanner(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-emerald-500/20 shadow-lg active:scale-95 transition disabled:opacity-60 disabled:cursor-not-allowed"><Camera size={20} /></button>
         </div>
       </header>
 
@@ -290,12 +357,12 @@ export default function AlbumPage() {
                             {u.esportes && u.esportes.length > 0 && (
                                 <div className="flex gap-1 bg-blue-500/10 px-2 py-0.5 rounded">
                                     {u.esportes.slice(0, 3).map((esp: string) => {
-                                        const icons: Record<string, string> = { 
-                                            "futebol": "⚽", "futsal": "👟", "volei": "🏐", "basquete": "🏀", 
-                                            "handball": "🤾", "rugby": "🏉", "baseball": "⚾", "futevolei": "🦶", 
-                                            "beach_tennis": "🏖️", "tenis": "🎾", "frescobol": "🏓", "taco": "🏏", 
-                                            "peteca": "🏸", "surf": "🏄", "natacao": "🏊", "canoagem": "🛶", 
-                                            "skate": "🛹", "dog_walking": "🐕", "truco": "🃏", "sinuca": "🎱" 
+                                        const icons: Record<string, string> = {
+                                            "futebol": "⚽", "futsal": "👟", "volei": "🏐", "basquete": "🏀",
+                                            "handball": "🤾", "rugby": "🏉", "baseball": "⚾", "futevolei": "🦶",
+                                            "beach_tennis": "🏖️", "tenis": "🎾", "frescobol": "🏓", "taco": "🏏",
+                                            "peteca": "🏸", "surf": "🏄", "natacao": "🏊", "canoagem": "🛶",
+                                            "skate": "🛹", "dog_walking": "🐕", "truco": "🃏", "sinuca": "🎱"
                                         };
                                         return <span key={esp} title={esp}>{icons[esp] || "🏆"}</span>
                                     })}
@@ -328,7 +395,7 @@ export default function AlbumPage() {
                   
                   {isColada ? (
                     <div className="mt-3">
-                        {/* 🦈 Correção de aspas aqui */}
+                        {/* Correcao de aspas aqui */}
                         <p className="text-zinc-400 text-[11px] line-clamp-2 font-medium italic">&quot;{u.bio || '...'}&quot;</p>
                         {u.instagram && (
                             <a href={`https://instagram.com/${u.instagram.replace('@','')}`} target="_blank" className="inline-flex items-center gap-1.5 mt-2 text-pink-500 text-[10px] font-black uppercase hover:underline">
@@ -384,3 +451,4 @@ export default function AlbumPage() {
     </div>
   );
 }
+

@@ -10,14 +10,15 @@ import {
   Edit3, Layout, BarChart3, Loader2, UploadCloud, Link as LinkIcon 
 } from "lucide-react";
 import Link from "next/link";
-import { db, storage } from "../../../lib/firebase"; 
-import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore";
+import { storage } from "../../../lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; 
 import Image from "next/image";
 
-// 🦈 IMPORTS DO SISTEMA (Contextos & Utils)
+// IMPORTS DO SISTEMA (Contextos & Utils)
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
+import { fetchAlbumConfig, fetchAlbumRankings, saveAlbumConfig } from "../../../lib/albumService";
+import { compressImageFile } from "../../../lib/imageCompression";
 import { logActivity } from "../../../lib/logger";
 
 // --- TIPAGENS ---
@@ -61,7 +62,7 @@ export default function AdminAlbumPage() {
   const [hunters, setHunters] = useState<Hunter[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🦈 HOOKS DO SISTEMA
+  // HOOKS DO SISTEMA
   const { addToast } = useToast();
   const { user } = useAuth();
 
@@ -72,31 +73,44 @@ export default function AdminAlbumPage() {
   const [uploadingImg, setUploadingImg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Carregar Rankings em Tempo Real
+  // 1. Carregar Rankings (snapshot único com limite)
   useEffect(() => {
-    const q = query(collection(db, "album_rankings"), orderBy("totalColetado", "desc"));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setHunters(snap.docs.map(d => ({ id: d.id, ...d.data() } as Hunter)));
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    let mounted = true;
+    const loadRankings = async () => {
+      setLoading(true);
+      try {
+        const rankings = await fetchAlbumRankings();
+        if (!mounted) return;
+        setHunters(rankings);
+      } catch (error: unknown) {
+        console.error("Erro ao carregar ranking do álbum:", error);
+        if (mounted) addToast("Erro ao carregar ranking do álbum.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    loadRankings();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
 
   // 2. Carregar Config da Turma (CMS)
   useEffect(() => {
     const fetchConfig = async () => {
-        try {
-            const docRef = doc(db, "album_config", cmsTurma);
-            const snap = await getDoc(docRef);
-            if (snap.exists()) {
-                setCmsData(snap.data() as CMSData);
-            } else {
-                setCmsData({ capa: "", titulo: `TURMA ${cmsTurma} - Calouros`, subtitulo: "Álbum Oficial" });
-            }
-        } catch (error) {
-            console.error("Erro ao carregar config:", error);
-            addToast("Erro ao carregar dados da turma.", "error");
-        }
+      try {
+        const config = await fetchAlbumConfig(cmsTurma);
+        setCmsData(
+          config ?? {
+            capa: "",
+            titulo: `TURMA ${cmsTurma} - Calouros`,
+            subtitulo: "Album Oficial",
+          }
+        );
+      } catch (error: unknown) {
+        console.error("Erro ao carregar config:", error);
+        addToast("Erro ao carregar dados da turma.", "error");
+      }
     };
     fetchConfig();
   }, [cmsTurma, addToast]);
@@ -115,8 +129,9 @@ export default function AdminAlbumPage() {
     setUploadingImg(true);
 
     try {
+        const optimizedFile = await compressImageFile(file, { maxWidth: 1600, maxHeight: 1600, quality: 0.82 });
         const storageRef = ref(storage, `capas_turmas/${cmsTurma}_${Date.now()}`);
-        await uploadBytes(storageRef, file);
+        await uploadBytes(storageRef, optimizedFile);
         const url = await getDownloadURL(storageRef);
         
         setCmsData(prev => ({ ...prev, capa: url }));
@@ -127,7 +142,7 @@ export default function AdminAlbumPage() {
             await logActivity(user.uid, user.nome, "UPDATE", "Album Admin", `Upload de capa para ${cmsTurma}`);
         }
 
-    } catch (error) {
+    } catch (error: unknown) {
         console.error(error);
         addToast("Erro no upload da imagem.", "error");
     } finally {
@@ -135,11 +150,11 @@ export default function AdminAlbumPage() {
     }
   };
 
-  // 4. Salvar CMS (CORREÇÃO BUILD & CLEAN CODE)
+  // 4. Salvar CMS (CORRECAO BUILD & CLEAN CODE)
   const handleSaveCms = async () => {
     setSavingCms(true);
     try {
-        await setDoc(doc(db, "album_config", cmsTurma), { ...cmsData, updatedAt: new Date() });
+        await saveAlbumConfig(cmsTurma, cmsData);
         
         addToast(`Página da ${cmsTurma} atualizada!`, "success");
         
@@ -148,7 +163,7 @@ export default function AdminAlbumPage() {
             await logActivity(user.uid, user.nome, "UPDATE", "Album Admin", `Atualizou config da ${cmsTurma}`);
         }
 
-    } catch (error) { // 🦈 Clean Code: 'error' em vez de 'e'
+    } catch (error: unknown) { // Clean Code: 'error' em vez de 'e'
         console.error(error);
         addToast("Erro ao salvar configurações.", "error");
     } finally {
@@ -156,7 +171,7 @@ export default function AdminAlbumPage() {
     }
   };
 
-  // --- LÓGICA DOS 3 RANKINGS ---
+  // --- LOGICA DOS 3 RANKINGS ---
 
   // 1. Predadores de Bixos: Alunos (QUALQUER TURMA) que mais escanearam T8
   const rankingPredadoresT8 = useMemo(() => {
@@ -205,7 +220,7 @@ export default function AdminAlbumPage() {
               
               {/* RANKING 1: PREDADORES DE BIXOS (Geral -> T8) */}
               <RankingSection 
-                title="🏆 Quem mais caçou Calouros (T8)" 
+                title="Quem mais caçou Calouros (T8)" 
                 data={rankingPredadoresT8} 
                 metricKey="scansT8"
                 metricLabel="Bixos Capturados"
@@ -214,9 +229,9 @@ export default function AdminAlbumPage() {
               />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* RANKING 2: CALOUROS CAÇADORES (T8 -> Geral) */}
+                  {/* RANKING 2: CALOUROS CACADORES (T8 -> Geral) */}
                   <RankingSection 
-                    title="🦈 Calouros que mais pontuaram" 
+                    title="Calouros que mais pontuaram" 
                     data={rankingCalouros} 
                     metricKey="totalColetado"
                     metricLabel="Scans Totais"
@@ -226,7 +241,7 @@ export default function AdminAlbumPage() {
 
                   {/* RANKING 3: GERAL (Geral -> Geral) */}
                   <RankingSection 
-                    title="🌍 Ranking Global da Faculdade" 
+                    title="Ranking Global da Faculdade" 
                     data={rankingGeral} 
                     metricKey="totalColetado"
                     metricLabel="Total Scans"
@@ -314,7 +329,7 @@ export default function AdminAlbumPage() {
   );
 }
 
-// 🦈 COMPONENTE DE RANKING REUTILIZÁVEL E TIPADO
+// COMPONENTE DE RANKING REUTILIZAVEL E TIPADO
 function RankingSection({ title, data, metricKey, metricLabel, color, icon }: RankingSectionProps) {
     return (
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden">
@@ -372,3 +387,4 @@ function RankingSection({ title, data, metricKey, metricLabel, color, icon }: Ra
         </div>
     );
 }
+
