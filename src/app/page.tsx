@@ -11,46 +11,9 @@ import {
 // ðŸ¦ˆ IMPORTS DO SISTEMA
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { db } from "../lib/firebase";
-import { doc, getDoc, collection, getCountFromServer } from "firebase/firestore";
-import { isFirebasePermissionError } from "../lib/firebaseErrors";
+import { fetchPublicLandingData } from "../lib/publicLandingService";
+import { type LandingConfig } from "../lib/adminLandingService";
 
-// --- TIPAGEM ---
-interface SocialLink {
-  id: string;
-  platform: string;
-  url: string;
-}
-
-interface ReviewConfig {
-  id: string;
-  name: string;
-  role: string;
-  text: string;
-  profileUrl: string;
-}
-
-interface LandingConfig {
-  heroTitle: string;
-  heroSubtitle: string;
-  heroHighlight: string;
-  tagline: string;
-  taglineColor: string;
-  titleColor: string;
-  gradientStart: string;
-  gradientEnd: string;
-  statUsers: number;
-  statPosts: number;
-  statPartners: number;
-  address: string;
-  phone: string;
-  whatsapp: string;
-  email: string;
-  socialLinks: SocialLink[];
-  reviews: ReviewConfig[];
-}
-
-// --- CONFIG PADRÃƒO ---
 const DEFAULT_CONFIG: LandingConfig = {
   heroTitle: "SEJA UM",
   heroSubtitle: "Centralize sua vida universitÃ¡ria. Carteirinha, Loja e Eventos.",
@@ -133,42 +96,19 @@ export default function LandingPage() {
   // ðŸ“¡ Busca ConfiguraÃ§Ãµes Visuais
   useEffect(() => {
     const fetchData = async () => {
-      let configData = DEFAULT_CONFIG;
-      let usersCount = DEFAULT_CONFIG.statUsers;
-
       try {
-        const configRef = doc(db, "site_config", "landing_page");
-        const configSnap = await getDoc(configRef);
-        if (configSnap.exists()) {
-          const data = configSnap.data();
-          configData = {
-            ...DEFAULT_CONFIG,
-            ...data,
-            socialLinks: data.socialLinks || [],
-            reviews: data.reviews || []
-          } as LandingConfig;
-        }
+        const data = await fetchPublicLandingData({
+          fallbackConfig: DEFAULT_CONFIG,
+        });
+        setConfig(data.config);
+        setRealStats({ users: data.usersCount || DEFAULT_CONFIG.statUsers });
       } catch (error: unknown) {
-        if (!isFirebasePermissionError(error)) {
-          console.error("Erro ao carregar configurações da landing:", error);
-        }
+        console.error("Erro ao carregar landing:", error);
+      } finally {
+        setLoading(false);
       }
-
-      try {
-        const usersColl = collection(db, "users");
-        const usersSnap = await getCountFromServer(usersColl);
-        usersCount = usersSnap.data().count;
-      } catch (error: unknown) {
-        if (!isFirebasePermissionError(error)) {
-          console.error("Erro ao carregar estatísticas da landing:", error);
-        }
-      }
-
-      setConfig(configData);
-      setRealStats({ users: usersCount });
-      setLoading(false);
     };
-    fetchData();
+    void fetchData();
   }, []);
 
   const handleGoogleLogin = async () => { try { await loginGoogle(); } catch { addToast("Erro no login Google", "error"); } };

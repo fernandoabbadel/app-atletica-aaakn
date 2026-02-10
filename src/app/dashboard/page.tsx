@@ -10,62 +10,26 @@ import {
 import { useAuth } from '../../context/AuthContext'; 
 import Link from 'next/link';
 import Image from 'next/image'; 
-import { db } from '../../lib/firebase'; 
 import { 
-    collection, query, orderBy, limit, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, getDocs, where, Timestamp
-} from 'firebase/firestore';
+    fetchDashboardBundle,
+    toggleDashboardEventLike,
+    toggleDashboardProductLike,
+    toggleDashboardPostLike,
+    type DashboardEvent,
+    type DashboardLiga,
+    type DashboardPartner,
+    type DashboardPost,
+    type DashboardProduct,
+    type DashboardTurmaStat,
+} from '../../lib/dashboardService';
 
 // --- INTERFACES ESTRITAS ---
 
-interface Evento {
-  id: string;
-  titulo: string;
-  data: string;
-  local: string;
-  imagem: string;
-  tipo: string;
-  likesList: string[];
-  participantes: string[];
-  imagePositionY?: number;
-}
-
-interface Produto {
-    id: string;
-    nome: string;
-    preco: string | number;
-    img: string; 
-    likes: string[];
-}
-
-interface Liga {
-    id: string;
-    nome: string;
-    sigla: string;
-    foto?: string;       
-    logoBase64?: string; 
-    logo?: string;       
-    bizu?: string;       
-}
-
-interface Parceiro {
-    id: string;
-    nome: string;
-    imgLogo: string;
-    imgCapa?: string;
-    categoria?: string;
-    plano?: string;
-    status?: string;
-}
-
-interface PostComunidade { 
-    id: string;
-    userId: string;
-    userName: string; 
-    avatar: string;
-    createdAt: Timestamp;   
-    texto: string;
-    likes: string[];
-}
+type Evento = DashboardEvent;
+type Produto = DashboardProduct;
+type Liga = DashboardLiga;
+type Parceiro = DashboardPartner;
+type PostComunidade = DashboardPost;
 
 interface UserData {
     uid: string;
@@ -166,54 +130,9 @@ const EventCardItem = ({ evt, userId, onToggleLike }: { evt: Evento, userId: str
 };
 
 // --- COMPONENTE: CARD PRODUTO COM CONTADOR DE TURMAS ---
-const ProductCard = ({ prod, userId, onToggleLike }: { prod: Produto, userId: string, onToggleLike: (id: string, state: boolean) => void }) => {
+const ProductCard = ({ prod, userId, onToggleLike, turmaStats }: { prod: Produto, userId: string, onToggleLike: (id: string, state: boolean) => void, turmaStats: DashboardTurmaStat[] }) => {
     const isLiked = prod.likes?.includes(userId);
     const likeCount = prod.likes?.length || 0;
-    
-    // Estado para guardar as estatísticas das turmas
-    const [turmaStats, setTurmaStats] = useState<{turma: string, count: number}[]>([]);
-
-    useEffect(() => {
-        const calculateTurmas = async () => {
-            if (!prod.likes || prod.likes.length === 0) {
-                setTurmaStats([]);
-                return;
-            }
-
-            try {
-                // Pegamos uma amostra dos últimos 10 likes para não sobrecarregar o banco
-                const likesSample = prod.likes.slice(0, 10);
-                
-                // Busca os usuários que deram like para saber a turma
-                const q = query(collection(db, "users"), where("uid", "in", likesSample));
-                const querySnapshot = await getDocs(q);
-                
-                const stats: Record<string, number> = {};
-
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    const turmaRaw = data.turma || "Geral";
-                    const turmaKey = turmaRaw.replace(/\D/g, '') || "Geral"; 
-                    
-                    if (turmaKey !== "Geral") {
-                        stats[turmaKey] = (stats[turmaKey] || 0) + 1;
-                    }
-                });
-
-                const sorted = Object.entries(stats)
-                    .map(([turma, count]) => ({ turma, count }))
-                    .sort((a, b) => b.count - a.count)
-                    .slice(0, 3); // Pega Top 3
-
-                setTurmaStats(sorted);
-
-            } catch (error) {
-                console.error("Erro ao calcular turmas:", error);
-            }
-        };
-
-        calculateTurmas();
-    }, [prod.likes]); 
 
     return (
         <div className="bg-zinc-900 min-w-full rounded-3xl overflow-hidden border border-zinc-800 flex flex-col h-[450px] snap-center group relative">
@@ -288,6 +207,7 @@ export default function DashboardPage() {
   const [ligas, setLigas] = useState<Liga[]>([]);
   const [mensagens, setMensagens] = useState<PostComunidade[]>([]);
   const [treinos, setTreinos] = useState<string[]>([]);
+  const [productTurmaStats, setProductTurmaStats] = useState<Record<string, DashboardTurmaStat[]>>({});
   
   // 🦈 State para o contador de Caça
   const [totalCaca, setTotalCaca] = useState(0);
@@ -303,52 +223,34 @@ export default function DashboardPage() {
   const ligasScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const unsubEvents = onSnapshot(query(collection(db, "eventos"), orderBy("data", "asc"), limit(5)), (snap) => {
-        setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as Evento)));
-    });
+    let active = true;
 
-    const unsubProds = onSnapshot(query(collection(db, "produtos"), limit(8)), (snap) => {
-        setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Produto)));
-    });
+    const loadDashboard = async () => {
+      try {
+        const data = await fetchDashboardBundle();
+        if (!active) return;
 
-    const unsubParceiros = onSnapshot(query(collection(db, "parceiros")), (snap) => {
-        setParceiros(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Parceiro).filter(p => p.status === 'active'));
-    });
-
-    const unsubLigas = onSnapshot(query(collection(db, "ligas_config")), (snap) => {
-        setLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as Liga)));
-    });
-
-    // 🦈 Busca dados da CAÇA (Album Rankings) para o contador X
-    const unsubCaca = onSnapshot(query(collection(db, "album_rankings")), (snap) => {
-        const total = snap.docs.reduce((acc, doc) => acc + (doc.data().totalColetado || 0), 0);
-        setTotalCaca(total);
-    });
-
-    // 🦈 Busca dados de USUÁRIOS para o contador Y (Total Cardume)
-    const unsubTotalUsers = onSnapshot(collection(db, "users"), (snap) => {
-        setTotalAlunos(snap.size);
-    });
-
-    // ID 720: Correção para buscar da coleção "posts"
-    const unsubMsgs = onSnapshot(
-        query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(5)), 
-        (snap) => {
-            setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostComunidade)));
-        },
-        (error) => {
-            console.error("Erro na Comunidade:", error);
+        setEvents(data.events);
+        setProdutos(data.produtos);
+        setParceiros(data.parceiros);
+        setLigas(data.ligas);
+        setMensagens(data.mensagens);
+        setTreinos(data.treinos);
+        setTotalCaca(data.totalCaca);
+        setTotalAlunos(data.totalAlunos);
+        setProductTurmaStats(data.productTurmaStats);
+      } catch (error: unknown) {
+        console.error("Erro ao carregar dashboard:", error);
+      } finally {
+        if (active) {
+          setLoadingData(false);
         }
-    );
+      }
+    };
 
-    const unsubTreinos = onSnapshot(query(collection(db, "treinos"), limit(4)), (snap) => {
-        setTreinos(snap.docs.map(d => d.data().imagem).filter(Boolean));
-        setLoadingData(false);
-    });
-
-    return () => { 
-        unsubEvents(); unsubProds(); unsubParceiros(); 
-        unsubMsgs(); unsubTreinos(); unsubLigas(); unsubCaca(); unsubTotalUsers();
+    void loadDashboard();
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -358,37 +260,107 @@ export default function DashboardPage() {
       }
   };
   
-  // Handlers com Proteção
-  const handleEventLike = async (id: string, state: boolean) => { 
-      if(!user || loadingLike) return; 
-      setLoadingLike(true);
-      try { await updateDoc(doc(db,"eventos",id), { likesList: state ? arrayRemove(user.uid) : arrayUnion(user.uid) }); } 
-      finally { setLoadingLike(false); }
+  // Handlers com protecao
+  const toggleLocalLikeList = (list: string[], uid: string, currentlyLiked: boolean): string[] => {
+    if (currentlyLiked) {
+      return list.filter((entry) => entry !== uid);
+    }
+    if (list.includes(uid)) return list;
+    return [...list, uid];
+  };
+
+  const handleEventLike = async (id: string, state: boolean) => {
+    if (!user || loadingLike) return;
+    setLoadingLike(true);
+    try {
+      await toggleDashboardEventLike({
+        eventId: id,
+        userId: user.uid,
+        currentlyLiked: state,
+      });
+      setEvents((prev) =>
+        prev.map((evt) =>
+          evt.id === id
+            ? { ...evt, likesList: toggleLocalLikeList(evt.likesList || [], user.uid, state) }
+            : evt
+        )
+      );
+    } finally {
+      setLoadingLike(false);
+    }
   };
 
   const handleProductLike = async (id: string, state: boolean) => {
-      if(!user || loadingLike) return;
-      setLoadingLike(true);
-      try { await updateDoc(doc(db, "produtos", id), { likes: state ? arrayRemove(user.uid) : arrayUnion(user.uid) }); }
-      finally { setLoadingLike(false); }
+    if (!user || loadingLike) return;
+    setLoadingLike(true);
+    try {
+      await toggleDashboardProductLike({
+        productId: id,
+        userId: user.uid,
+        currentlyLiked: state,
+      });
+      setProdutos((prev) =>
+        prev.map((prod) =>
+          prod.id === id
+            ? { ...prod, likes: toggleLocalLikeList(prod.likes || [], user.uid, state) }
+            : prod
+        )
+      );
+      setProductTurmaStats((prev) => ({
+        ...prev,
+        [id]: [],
+      }));
+    } finally {
+      setLoadingLike(false);
+    }
   };
 
   const handleMessageLike = async (id: string, currentLikes: string[]) => {
-      if(!user || loadingLike) return;
-      setLoadingLike(true);
-      try {
-        const isLiked = currentLikes?.includes(user.uid);
-        await updateDoc(doc(db, "posts", id), { likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
-      } finally { setLoadingLike(false); }
+    if (!user || loadingLike) return;
+    setLoadingLike(true);
+    try {
+      const isLiked = currentLikes?.includes(user.uid);
+      await toggleDashboardPostLike({
+        postId: id,
+        userId: user.uid,
+        currentlyLiked: isLiked,
+      });
+      setMensagens((prev) =>
+        prev.map((msg) =>
+          msg.id === id
+            ? { ...msg, likes: toggleLocalLikeList(msg.likes || [], user.uid, isLiked) }
+            : msg
+        )
+      );
+    } finally {
+      setLoadingLike(false);
+    }
   };
 
-  const formatTime = (ts: Timestamp) => { 
-      if (!ts) return ""; 
-      const d = ts.toDate(); 
-      const diff = Math.floor((new Date().getTime() - d.getTime()) / 60000); 
-      return diff < 60 ? `${diff}min` : `${Math.floor(diff/60)}h`; 
+  const toDateValue = (value: unknown): Date | null => {
+    if (value instanceof Date) return value;
+    if (typeof value === "number" && Number.isFinite(value)) return new Date(value);
+    if (typeof value === "string") {
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) return new Date(parsed);
+      return null;
+    }
+    if (typeof value === "object" && value !== null) {
+      const toDate = (value as { toDate?: unknown }).toDate;
+      if (typeof toDate === "function") {
+        const parsed = toDate.call(value) as Date;
+        if (parsed instanceof Date) return parsed;
+      }
+    }
+    return null;
   };
 
+  const formatTime = (value: unknown) => {
+    const date = toDateValue(value);
+    if (!date) return "";
+    const diff = Math.floor((Date.now() - date.getTime()) / 60000);
+    return diff < 60 ? `${diff}min` : `${Math.floor(diff / 60)}h`;
+  };
   const parceirosOuro = parceiros.filter(p => p.categoria === 'ouro' || p.plano === 'ouro');
   const parceirosComuns = parceiros.filter(p => p.categoria !== 'ouro' && p.plano !== 'ouro');
   const ligasComBizu = ligas.filter(l => l.bizu && l.bizu.trim() !== "");
@@ -619,7 +591,7 @@ export default function DashboardPage() {
                   onNext={() => scroll(productsScrollRef, 'right')} 
               />
               <div ref={productsScrollRef} className="flex overflow-x-auto scrollbar-hide snap-x snap-mandatory gap-4 pb-4">
-                  {produtos.map(p => <ProductCard key={p.id} prod={p} userId={userData?.uid} onToggleLike={handleProductLike} />)}
+                  {produtos.map(p => <ProductCard key={p.id} prod={p} userId={userData?.uid} onToggleLike={handleProductLike} turmaStats={productTurmaStats[p.id] || []} />)}
               </div>
           </div>
       )}
