@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image"; // 🦈 Importação do Image
+import Image from "next/image"; // ðŸ¦ˆ ImportaÃ§Ã£o do Image
 import {
   ArrowLeft,
   Bus,
@@ -13,14 +13,12 @@ import {
   Loader2
 } from "lucide-react";
 import Link from "next/link";
-import { db } from "../../lib/firebase";
-import { collection, onSnapshot, query } from "firebase/firestore";
-
+import { fetchGuideData, type GuideCategory } from "../../lib/guiaService";
 // --- INTERFACES ---
 interface GuiaItem {
   id: string;
-  categoria: 'academico' | 'transporte' | 'turismo' | 'emergencia';
-  // Campos variáveis dependendo da categoria
+  categoria: GuideCategory;
+  // Campos variÃ¡veis dependendo da categoria
   titulo?: string;
   url?: string;
   nome?: string;
@@ -45,12 +43,12 @@ interface CategoriaConfig {
   color: string;
 }
 
-// Definição das Categorias para Mapeamento
+// DefiniÃ§Ã£o das Categorias para Mapeamento
 const CATEGORIAS_CONFIG: Record<string, CategoriaConfig> = {
-  academico: { label: "Acadêmico", icon: <GraduationCap size={18} />, color: "text-emerald-500" },
+  academico: { label: "AcadÃªmico", icon: <GraduationCap size={18} />, color: "text-emerald-500" },
   transporte: { label: "Transporte", icon: <Bus size={18} />, color: "text-orange-500" },
   turismo: { label: "Turismo", icon: <Landmark size={18} />, color: "text-blue-500" },
-  emergencia: { label: "Emergência", icon: <Phone size={18} />, color: "text-red-500" },
+  emergencia: { label: "EmergÃªncia", icon: <Phone size={18} />, color: "text-red-500" },
 };
 
 export default function GuiaPage() {
@@ -62,25 +60,49 @@ export default function GuiaPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  // 1. Buscar Dados em Tempo Real
+    // 1. Buscar Dados
   useEffect(() => {
-    const q = query(collection(db, "guia_data"));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newData: GuiaState = { academico: [], transporte: [], turismo: [], emergencia: [] };
-      
-      snapshot.forEach((doc) => {
-        const item = { id: doc.id, ...doc.data() } as GuiaItem;
-        if (item.categoria && newData[item.categoria]) {
-          newData[item.categoria].push(item);
-        }
-      });
+    let mounted = true;
 
-      setGuiaData(newData);
-      setLoading(false);
-    });
+    const loadGuide = async () => {
+      try {
+        const categories: GuideCategory[] = [
+          "academico",
+          "transporte",
+          "turismo",
+          "emergencia",
+        ];
+        const rowsByCategory = await Promise.all(
+          categories.map((category) =>
+            fetchGuideData({
+              category,
+              maxResults: 60,
+              forceRefresh: true,
+            })
+          )
+        );
+        if (!mounted) return;
+        const [academicoRows, transporteRows, turismoRows, emergenciaRows] =
+          rowsByCategory;
 
-    return () => unsubscribe();
+        setGuiaData({
+          academico: academicoRows.map((raw) => raw as unknown as GuiaItem),
+          transporte: transporteRows.map((raw) => raw as unknown as GuiaItem),
+          turismo: turismoRows.map((raw) => raw as unknown as GuiaItem),
+          emergencia: emergenciaRows.map((raw) => raw as unknown as GuiaItem),
+        });
+      } catch (error: unknown) {
+        console.error(error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadGuide();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) {
@@ -108,7 +130,7 @@ export default function GuiaPage() {
 
       <main className="p-4 space-y-8">
         
-        {/* ACADÊMICO */}
+        {/* ACADÃŠMICO */}
         {guiaData.academico.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.academico.color}`}>
@@ -134,7 +156,7 @@ export default function GuiaPage() {
                   <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
                     <span className="font-bold text-white">{item.nome}</span>
                     <span className="text-[10px] font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-500">
-                      Horários
+                      HorÃ¡rios
                     </span>
                   </div>
                   <p className="text-xs text-zinc-300 font-mono bg-black/30 p-2 rounded border border-zinc-800">{item.horario}</p>
@@ -164,7 +186,7 @@ export default function GuiaPage() {
           </section>
         )}
 
-        {/* EMERGÊNCIA */}
+        {/* EMERGÃŠNCIA */}
         {guiaData.emergencia.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.emergencia.color}`}>

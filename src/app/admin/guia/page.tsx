@@ -1,22 +1,26 @@
-"use client";
+﻿"use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { 
   ArrowLeft, Plus, Edit, Trash2, Save, X, 
   BookOpen, Bus, Map, Phone, Image as ImageIcon,
   ExternalLink, AlertTriangle, Loader2, Database, RefreshCw
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // 🦈 Importando Image
+import Image from "next/image"; // ðŸ¦ˆ Importando Image
 import { useToast } from "../../../context/ToastContext";
-import { db, storage } from "../../../lib/firebase"; 
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-// --- 🦈 INTERFACE PARA OS ITENS DO GUIA ---
+import {
+  deleteGuideItem,
+  fetchGuideData,
+  type GuideCategory,
+  seedGuideDefaults,
+  upsertGuideItem,
+  uploadGuidePhoto,
+} from "../../../lib/guiaService";
+// --- ðŸ¦ˆ INTERFACE PARA OS ITENS DO GUIA ---
 interface GuiaItem {
   id: string;
-  categoria: "academico" | "transporte" | "turismo" | "emergencia";
+  categoria: GuideCategory;
   // Campos Opcionais (dependem da categoria)
   titulo?: string;
   url?: string;
@@ -31,31 +35,42 @@ interface GuiaItem {
 
 // --- MOCK ORIGINAL ---
 const INITIAL_GUIA_DATA = [
-    // Acadêmico
+    // AcadÃªmico
     { categoria: 'academico', titulo: 'Portal do Aluno (EVA)', url: 'https://eva.unitau.br' },
-    { categoria: 'academico', titulo: 'Calendário Acadêmico 2026', url: 'https://unitau.br/calendario' },
-    { categoria: 'academico', titulo: 'Cardápio do RU', url: 'https://unitau.br/ru' },
+    { categoria: 'academico', titulo: 'CalendÃ¡rio AcadÃªmico 2026', url: 'https://unitau.br/calendario' },
+    { categoria: 'academico', titulo: 'CardÃ¡pio do RU', url: 'https://unitau.br/ru' },
     
     // Transporte
-    { categoria: 'transporte', nome: 'Circular (Intercampi)', horario: '07:10, 12:30 | 11:50, 17:50', detalhe: 'Saída Terminal <-> Campus' },
+    { categoria: 'transporte', nome: 'Circular (Intercampi)', horario: '07:10, 12:30 | 11:50, 17:50', detalhe: 'SaÃ­da Terminal <-> Campus' },
     
     // Turismo
-    { categoria: 'turismo', nome: 'Praia Martim de Sá', descricao: 'O point da galera', foto: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80' },
-    { categoria: 'turismo', nome: 'Pedra da Freira', descricao: 'Pôr do sol top', foto: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=80' },
+    { categoria: 'turismo', nome: 'Praia Martim de SÃ¡', descricao: 'O point da galera', foto: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80' },
+    { categoria: 'turismo', nome: 'Pedra da Freira', descricao: 'PÃ´r do sol top', foto: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=80' },
     
-    // Emergência
+    // EmergÃªncia
     { categoria: 'emergencia', nome: 'SAMU', numero: '192', cor: 'red' },
-    { categoria: 'emergencia', nome: 'Polícia', numero: '190', cor: 'red' }
+    { categoria: 'emergencia', nome: 'PolÃ­cia', numero: '190', cor: 'red' }
 ];
 
 export default function AdminGuiaPage() {
   const { addToast } = useToast();
   
   // Estados
-  const [activeTab, setActiveTab] = useState<"academico" | "transporte" | "turismo" | "emergencia">("academico");
+  const [activeTab, setActiveTab] = useState<GuideCategory>("academico");
   
-  // 🦈 Tipagem correta do estado de dados
-  const [data, setData] = useState<Record<string, GuiaItem[]>>({ academico: [], transporte: [], turismo: [], emergencia: [] });
+  // ðŸ¦ˆ Tipagem correta do estado de dados
+  const [data, setData] = useState<Record<GuideCategory, GuiaItem[]>>({
+    academico: [],
+    transporte: [],
+    turismo: [],
+    emergencia: [],
+  });
+  const [loadedTabs, setLoadedTabs] = useState<Record<GuideCategory, boolean>>({
+    academico: false,
+    transporte: false,
+    turismo: false,
+    emergencia: false,
+  });
   const [loading, setLoading] = useState(true);
   
   // Modal
@@ -66,40 +81,59 @@ export default function AdminGuiaPage() {
   // Upload
   const [previewImage, setPreviewImage] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
-  // 🦈 Removido isUploading não utilizado
+  // ðŸ¦ˆ Removido isUploading nÃ£o utilizado
 
-  // 1. CARREGAR DADOS DO FIREBASE
+  const loadGuideData = useCallback(
+    async (tab: GuideCategory, forceRefresh = true) => {
+      setLoading(true);
+      try {
+        const rows = await fetchGuideData({
+          category: tab,
+          maxResults: 200,
+          forceRefresh,
+        });
+        const tabRows = rows
+          .map((raw) => raw as unknown as GuiaItem)
+          .filter((item) => item.categoria === tab);
+
+        setData((current) => ({ ...current, [tab]: tabRows }));
+        setLoadedTabs((current) => ({ ...current, [tab]: true }));
+      } catch (error: unknown) {
+        console.error(error);
+        addToast("Erro ao carregar guia.", "error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addToast]
+  );
+
   useEffect(() => {
-    const q = query(collection(db, "guia_data"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newData: Record<string, GuiaItem[]> = { academico: [], transporte: [], turismo: [], emergencia: [] };
-      
-      snapshot.forEach((doc) => {
-        const item = { id: doc.id, ...doc.data() } as GuiaItem;
-        if (newData[item.categoria]) {
-          newData[item.categoria].push(item);
-        }
-      });
+    if (loadedTabs[activeTab]) return;
+    void loadGuideData(activeTab, true);
+  }, [activeTab, loadedTabs, loadGuideData]);
 
-      setData(newData);
-      setLoading(false);
-    });
+  // --- ðŸ¦ˆ FUNÃ‡ÃƒO DE RESGATE (SEED) ---
+    const handleSeedGuia = async () => {
+      if (process.env.NODE_ENV === "production") {
+          addToast("Restauracao bloqueada em producao.", "error");
+          return;
+      }
 
-    return () => unsubscribe();
-  }, []);
-
-  // --- 🦈 FUNÇÃO DE RESGATE (SEED) ---
-  const handleSeedGuia = async () => {
-      if(!confirm("⚠️ Confirmar restauração?\nIsso vai adicionar todos os itens padrão (Links, Horários, Praias, Telefones) ao banco de dados.")) return;
+      if(!confirm("Confirmar restauracao do guia padrao?")) return;
       
       setIsSaving(true);
       try {
-          const promises = INITIAL_GUIA_DATA.map(item => 
-              addDoc(collection(db, "guia_data"), item)
-          );
-          await Promise.all(promises);
-          addToast("Guia restaurado com sucesso! 📚", "success");
-      } catch (error) {
+          await seedGuideDefaults(INITIAL_GUIA_DATA as unknown as Record<string, unknown>[]);
+          addToast("Guia restaurado com sucesso!", "success");
+          setLoadedTabs({
+            academico: false,
+            transporte: false,
+            turismo: false,
+            emergencia: false,
+          });
+          await loadGuideData(activeTab, true);
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao restaurar dados.", "error");
       } finally {
@@ -107,7 +141,7 @@ export default function AdminGuiaPage() {
       }
   };
 
-  // --- HANDLERS GENÉRICOS ---
+  // --- HANDLERS GENÃ‰RICOS ---
   const handleCreate = () => {
       const baseItem: Partial<GuiaItem> = { categoria: activeTab }; 
       if (activeTab === "academico") setEditingItem({ ...baseItem, titulo: "", url: "" });
@@ -127,13 +161,14 @@ export default function AdminGuiaPage() {
       setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+    const handleDelete = async (id: string) => {
       if(confirm("Remover este item do Guia permanentemente?")) {
           try {
-              await deleteDoc(doc(db, "guia_data", id));
+              await deleteGuideItem(id);
               addToast("Item removido.", "info");
-          } catch (error) {
-              console.error(error); // 🦈 Logando erro
+              await loadGuideData(activeTab, true);
+          } catch (error: unknown) {
+              console.error(error);
               addToast("Erro ao excluir.", "error");
           }
       }
@@ -154,27 +189,26 @@ export default function AdminGuiaPage() {
       try {
           let finalFotoUrl = editingItem.foto;
 
-          if (activeTab === "turismo" && imageFile) {
-              const storageRef = ref(storage, `guia/${Date.now()}_${imageFile.name}`);
-              await uploadBytes(storageRef, imageFile);
-              finalFotoUrl = await getDownloadURL(storageRef);
+                    if (activeTab === "turismo" && imageFile) {
+              finalFotoUrl = await uploadGuidePhoto(imageFile);
           }
 
           const dataToSave = { ...editingItem, foto: finalFotoUrl };
           
-          // 🦈 Forma correta de remover o ID do payload
+          // ðŸ¦ˆ Forma correta de remover o ID do payload
           const payload = { ...dataToSave };
           delete payload.id;
 
           if (editingItem.id) {
-              await updateDoc(doc(db, "guia_data", editingItem.id), payload);
+              await upsertGuideItem({ itemId: editingItem.id, data: payload as unknown as Record<string, unknown> });
               addToast("Item atualizado!", "success");
           } else {
-              await addDoc(collection(db, "guia_data"), payload);
+              await upsertGuideItem({ data: payload as unknown as Record<string, unknown> });
               addToast("Item criado!", "success");
           }
           setIsModalOpen(false);
-      } catch (error) {
+          await loadGuideData(activeTab, true);
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao salvar.", "error");
       } finally {
@@ -251,10 +285,10 @@ export default function AdminGuiaPage() {
       {/* ABAS */}
       <div className="px-6 pt-6 overflow-x-auto">
           <div className="flex border-b border-zinc-800 gap-4 min-w-max">
-              <button onClick={() => setActiveTab("academico")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "academico" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><BookOpen size={16}/> Acadêmico</button>
+              <button onClick={() => setActiveTab("academico")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "academico" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><BookOpen size={16}/> AcadÃªmico</button>
               <button onClick={() => setActiveTab("transporte")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "transporte" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><Bus size={16}/> Transporte</button>
               <button onClick={() => setActiveTab("turismo")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "turismo" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><Map size={16}/> Turismo</button>
-              <button onClick={() => setActiveTab("emergencia")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "emergencia" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><Phone size={16}/> Emergência</button>
+              <button onClick={() => setActiveTab("emergencia")} className={`pb-4 text-xs font-bold uppercase border-b-2 flex items-center gap-2 transition ${activeTab === "emergencia" ? "text-emerald-500 border-emerald-500" : "text-zinc-500 border-transparent hover:text-zinc-300"}`}><Phone size={16}/> EmergÃªncia</button>
           </div>
       </div>
 
@@ -275,12 +309,12 @@ export default function AdminGuiaPage() {
                     ))}
                 </div>
 
-                {/* 🦈 ZONA DE DADOS: SE ESTIVER VAZIO, MOSTRA O BOTÃO DE RESGATE */}
+                {/* ðŸ¦ˆ ZONA DE DADOS: SE ESTIVER VAZIO, MOSTRA O BOTÃƒO DE RESGATE */}
                 {data[activeTab].length === 0 && (
                     <div className="text-center py-10 flex flex-col items-center gap-6">
-                        <p className="text-zinc-600 text-sm font-bold uppercase">Nenhum item nesta seção.</p>
+                        <p className="text-zinc-600 text-sm font-bold uppercase">Nenhum item nesta seÃ§Ã£o.</p>
                         
-                        {/* Botão de Resgate */}
+                        {/* BotÃ£o de Resgate */}
                         <div className="w-full max-w-md bg-zinc-900 border border-dashed border-zinc-800 rounded-2xl p-6 flex flex-col items-center gap-3">
                             <Database className="text-emerald-500" size={24}/>
                             <p className="text-xs text-zinc-400">Banco de dados vazio? Resgate os dados originais.</p>
@@ -290,7 +324,7 @@ export default function AdminGuiaPage() {
                                 className="bg-zinc-800 hover:bg-emerald-500/10 hover:text-emerald-500 border border-zinc-700 hover:border-emerald-500 text-white px-6 py-3 rounded-xl text-xs font-bold uppercase flex items-center gap-2 transition"
                             >
                                 {isSaving ? <Loader2 className="animate-spin" size={14}/> : <RefreshCw size={14}/>}
-                                Restaurar Guia Padrão
+                                Restaurar Guia PadrÃ£o
                             </button>
                         </div>
                     </div>
@@ -299,7 +333,7 @@ export default function AdminGuiaPage() {
           )}
       </main>
 
-      {/* MODAL DINÂMICO */}
+      {/* MODAL DINÃ‚MICO */}
       {isModalOpen && editingItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
               <div className="bg-zinc-900 w-full max-w-lg rounded-3xl border border-zinc-800 p-6 shadow-2xl relative my-auto animate-in zoom-in-95">
@@ -310,24 +344,24 @@ export default function AdminGuiaPage() {
 
                   <div className="space-y-4">
                       
-                      {/* FORMULÁRIO ACADÊMICO */}
+                      {/* FORMULÃRIO ACADÃŠMICO */}
                       {activeTab === "academico" && (
                           <>
-                              <div><label className="label-admin">Título do Link</label><input type="text" className="input-admin" value={editingItem.titulo || ""} onChange={e => setEditingItem({...editingItem, titulo: e.target.value})}/></div>
+                              <div><label className="label-admin">TÃ­tulo do Link</label><input type="text" className="input-admin" value={editingItem.titulo || ""} onChange={e => setEditingItem({...editingItem, titulo: e.target.value})}/></div>
                               <div><label className="label-admin">URL de Destino</label><input type="text" className="input-admin" value={editingItem.url || ""} onChange={e => setEditingItem({...editingItem, url: e.target.value})}/></div>
                           </>
                       )}
 
-                      {/* FORMULÁRIO TRANSPORTE */}
+                      {/* FORMULÃRIO TRANSPORTE */}
                       {activeTab === "transporte" && (
                           <>
                               <div><label className="label-admin">Nome da Linha</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Horários (Separe por vírgula)</label><input type="text" className="input-admin" value={editingItem.horario || ""} onChange={e => setEditingItem({...editingItem, horario: e.target.value})}/></div>
+                              <div><label className="label-admin">HorÃ¡rios (Separe por vÃ­rgula)</label><input type="text" className="input-admin" value={editingItem.horario || ""} onChange={e => setEditingItem({...editingItem, horario: e.target.value})}/></div>
                               <div><label className="label-admin">Detalhes / Trajeto</label><input type="text" className="input-admin" value={editingItem.detalhe || ""} onChange={e => setEditingItem({...editingItem, detalhe: e.target.value})}/></div>
                           </>
                       )}
 
-                      {/* FORMULÁRIO TURISMO (COM UPLOAD) */}
+                      {/* FORMULÃRIO TURISMO (COM UPLOAD) */}
                       {activeTab === "turismo" && (
                           <>
                               <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 border-dashed hover:border-emerald-500/50 transition text-center relative group h-40 flex items-center justify-center overflow-hidden">
@@ -348,21 +382,21 @@ export default function AdminGuiaPage() {
                                   <input type="file" className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" onChange={handleFileChange}/>
                               </div>
                               <div><label className="label-admin">Nome do Local</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Descrição Curta</label><textarea rows={2} className="input-admin" value={editingItem.descricao || ""} onChange={e => setEditingItem({...editingItem, descricao: e.target.value})}/></div>
+                              <div><label className="label-admin">DescriÃ§Ã£o Curta</label><textarea rows={2} className="input-admin" value={editingItem.descricao || ""} onChange={e => setEditingItem({...editingItem, descricao: e.target.value})}/></div>
                           </>
                       )}
 
-                      {/* FORMULÁRIO EMERGÊNCIA */}
+                      {/* FORMULÃRIO EMERGÃŠNCIA */}
                       {activeTab === "emergencia" && (
                           <>
-                              <div><label className="label-admin">Nome do Serviço</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
-                              <div><label className="label-admin">Número de Telefone</label><input type="text" className="input-admin text-2xl font-black text-white" value={editingItem.numero || ""} onChange={e => setEditingItem({...editingItem, numero: e.target.value})}/></div>
+                              <div><label className="label-admin">Nome do ServiÃ§o</label><input type="text" className="input-admin" value={editingItem.nome || ""} onChange={e => setEditingItem({...editingItem, nome: e.target.value})}/></div>
+                              <div><label className="label-admin">NÃºmero de Telefone</label><input type="text" className="input-admin text-2xl font-black text-white" value={editingItem.numero || ""} onChange={e => setEditingItem({...editingItem, numero: e.target.value})}/></div>
                               <div>
-                                  <label className="label-admin">Cor do Ícone</label>
+                                  <label className="label-admin">Cor do Ãcone</label>
                                   <select className="input-admin" value={editingItem.cor || "red"} onChange={e => setEditingItem({...editingItem, cor: e.target.value})}>
-                                      <option value="red">Vermelho (Emergência)</option>
-                                      <option value="zinc">Cinza (Polícia/Geral)</option>
-                                      <option value="blue">Azul (Serviços)</option>
+                                      <option value="red">Vermelho (EmergÃªncia)</option>
+                                      <option value="zinc">Cinza (PolÃ­cia/Geral)</option>
+                                      <option value="blue">Azul (ServiÃ§os)</option>
                                   </select>
                               </div>
                           </>
