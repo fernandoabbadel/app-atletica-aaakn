@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -12,9 +12,13 @@ import {
   Skull, Rocket, Heart, ThumbsUp, LayoutGrid, UserPlus, Sparkles // 🦈 Adicionado Sparkles
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { isFirebasePermissionError } from "../../lib/firebaseErrors";
+import {
+  fetchBottomNavBannedAppealsCount,
+  fetchBottomNavNotifications,
+  markBottomNavNotificationRead,
+  type BottomNavNotification,
+} from "../../lib/bottomNavService";
 
 // --- 🦈 UTILITÁRIO LOCAL ---
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -22,7 +26,6 @@ function cn(...classes: (string | undefined | null | false)[]) {
 }
 
 // --- TIPAGEM ---
-interface FirestoreTimestamp { toDate: () => Date; }
 interface UserData {
     uid: string; nome: string; foto?: string; turma?: string;
     tier?: 'bicho' | 'atleta' | 'lenda' | 'standard'; 
@@ -30,10 +33,7 @@ interface UserData {
     plano?: string; plano_cor?: string; plano_icon?: string;
     patente?: string; patente_icon?: string; patente_cor?: string;
 }
-interface Notification {
-    id: string; title: string; message: string; link?: string; read: boolean;
-    createdAt: FirestoreTimestamp | Date | null;
-}
+type Notification = BottomNavNotification;
 interface NavItemProps {
     id: string; label: string; path?: string; icon: React.ReactNode; 
     action?: () => void; isMain?: boolean; badge?: string;
@@ -121,6 +121,9 @@ export default function BottomNavbar() {
   const lastScrollY = useRef(0);
 
   const isAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin_geral' || currentUser?.role === 'admin_gestor';
+  const userUid = user?.uid || "";
+  const isGuestVirtual = userUid.startsWith("guest_virtual_");
+  const canLoadNotifications = Boolean(userUid) && !user?.isAnonymous && !isGuestVirtual;
 
   // --- LÓGICA DE EFEITOS E DADOS (Mantida 100%) ---
   useEffect(() => {
@@ -133,60 +136,88 @@ export default function BottomNavbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  useEffect(() => {
-      if (!user || user.isAnonymous || user.uid.startsWith("guest_virtual_")) {
+  const loadNotifications = useCallback(async (forceRefresh = false) => {
+      if (!canLoadNotifications) {
         setNotifications([]);
         setUnreadCount(0);
         return;
       }
 
-      const q = query(collection(db, "notifications"), where("userId", "==", user.uid));
-      const unsub = onSnapshot(
-        q,
-        (snap) => {
-          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification));
-          list.sort(
-            (a, b) =>
-              (b.createdAt && "toDate" in b.createdAt ? b.createdAt.toDate().getTime() : 0) -
-              (a.createdAt && "toDate" in a.createdAt ? a.createdAt.toDate().getTime() : 0)
-          );
-          setNotifications(list.slice(0, 20));
-          setUnreadCount(list.filter((n) => !n.read).length);
-        },
-        (error: unknown) => {
-          if (!isFirebasePermissionError(error)) {
-            console.error("Erro ao ouvir notificações:", error);
-          }
-          setNotifications([]);
-          setUnreadCount(0);
+      try {
+        const feed = await fetchBottomNavNotifications({
+          userId: userUid,
+          maxResults: 20,
+          forceRefresh,
+        });
+        setNotifications(feed.notifications);
+        setUnreadCount(feed.unreadCount);
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar notificações:", error);
         }
-      );
-      return () => unsub();
-  }, [user]);
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+  }, [canLoadNotifications, userUid]);
 
-  useEffect(() => {
+  const loadBannedAppealsCount = useCallback(async (forceRefresh = false) => {
       if (!isAdmin) {
         setBannedMessagesCount(0);
         return;
       }
-      const q = query(collection(db, "banned_appeals"), where("readByAdmin", "==", false));
-      const unsub = onSnapshot(
-        q,
-        (snap) => setBannedMessagesCount(snap.size),
-        (error: unknown) => {
-          if (!isFirebasePermissionError(error)) {
-            console.error("Erro ao ouvir recursos de banimento:", error);
-          }
-          setBannedMessagesCount(0);
+
+      try {
+        const count = await fetchBottomNavBannedAppealsCount({ forceRefresh });
+        setBannedMessagesCount(count);
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error)) {
+          console.error("Erro ao carregar recursos de banimento:", error);
         }
-      );
-      return () => unsub();
+        setBannedMessagesCount(0);
+      }
   }, [isAdmin]);
+
+  useEffect(() => {
+      if (!canLoadNotifications) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
+
+      void loadNotifications(false);
+      const timer = window.setInterval(() => {
+        void loadNotifications(true);
+      }, 45_000);
+
+      return () => window.clearInterval(timer);
+  }, [canLoadNotifications, loadNotifications]);
+
+  useEffect(() => {
+      if (!showNotifications || !canLoadNotifications) return;
+      void loadNotifications(true);
+  }, [canLoadNotifications, loadNotifications, showNotifications]);
+
+  useEffect(() => {
+      void loadBannedAppealsCount(false);
+      if (!isAdmin) return;
+
+      const timer = window.setInterval(() => {
+        void loadBannedAppealsCount(true);
+      }, 60_000);
+
+      return () => window.clearInterval(timer);
+  }, [isAdmin, loadBannedAppealsCount]);
 
   const handleNotificationClick = async (notif: Notification) => {
       if (!notif.read) {
         try {
-          await updateDoc(doc(db, "notifications", notif.id), { read: true });
+          await markBottomNavNotificationRead(notif.id);
+          setNotifications((prev) =>
+            prev.map((entry) =>
+              entry.id === notif.id ? { ...entry, read: true } : entry
+            )
+          );
+          setUnreadCount((prev) => Math.max(0, prev - 1));
         } catch (error: unknown) {
           if (!isFirebasePermissionError(error)) {
             console.error("Erro ao marcar notificação como lida:", error);
@@ -196,15 +227,16 @@ export default function BottomNavbar() {
       if (notif.link) { router.push(notif.link); setShowNotifications(false); setIsSidebarOpen(false); }
   };
 
-  const formatTimeAgo = (ts: FirestoreTimestamp | Date | null | undefined) => {
+  const formatTimeAgo = (ts: unknown) => {
       if (!ts) return "";
-      const date = (ts && 'toDate' in ts) ? ts.toDate() : new Date(ts as Date);
+      const tsObj = ts as { toDate?: () => Date };
+      const date = typeof tsObj.toDate === "function" ? tsObj.toDate() : new Date(ts as Date);
+      if (Number.isNaN(date.getTime())) return "";
       const diff = Math.floor((new Date().getTime() - date.getTime()) / 60000);
       if (diff < 1) return "agora"; if (diff < 60) return `${diff}min`;
       const hours = Math.floor(diff / 60); if (hours < 24) return `${hours}h`;
       return `${Math.floor(hours / 24)}d`;
   };
-
   const handleNavigation = (path: string, isComingSoon?: boolean) => { 
       if (isComingSoon) return; 
       setIsSidebarOpen(false); router.push(path); 

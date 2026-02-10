@@ -32,13 +32,30 @@ export default function SharkAvatar({
   };
 
   useEffect(() => {
-    const blinkLoop = () => {
-      setBlink(true);
-      setTimeout(() => setBlink(false), 180);
-      setTimeout(blinkLoop, Math.random() * 3000 + 2000);
+    let isMounted = true;
+    let openEyeTimer: ReturnType<typeof setTimeout> | null = null;
+    let nextBlinkTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleBlink = () => {
+      nextBlinkTimer = setTimeout(() => {
+        if (!isMounted) return;
+        setBlink(true);
+
+        openEyeTimer = setTimeout(() => {
+          if (!isMounted) return;
+          setBlink(false);
+          scheduleBlink();
+        }, 180);
+      }, Math.random() * 3000 + 2000);
     };
-    const timeoutId = setTimeout(blinkLoop, 2000);
-    return () => clearTimeout(timeoutId);
+
+    scheduleBlink();
+
+    return () => {
+      isMounted = false;
+      if (openEyeTimer) clearTimeout(openEyeTimer);
+      if (nextBlinkTimer) clearTimeout(nextBlinkTimer);
+    };
   }, []);
 
   return (
