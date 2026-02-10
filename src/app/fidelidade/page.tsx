@@ -8,35 +8,20 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { db } from "../../lib/firebase";
-import { 
-  collection, query, where, limit, onSnapshot, doc, addDoc, 
-  serverTimestamp, updateDoc, increment, Timestamp 
-} from "firebase/firestore";
+import {
+  fetchFidelityConfig,
+  fetchFidelityHistory,
+  fetchFidelityRewards,
+  requestFidelityRedemption,
+  type FidelityConfig,
+  type FidelityHistoryItem,
+  type FidelityReward,
+} from "../../lib/fidelityService";
 
 // --- INTERFACES ---
-interface Premio {
-  id: string;
-  title: string;
-  cost: number;
-  stock: number;
-  image?: string;
-  active: boolean;
-}
-
-interface HistoricoItem {
-  id: string;
-  acao: string;
-  rawDate: Date;
-  dataDisplay: string;
-  xp: number;
-  tipo: string;
-}
-
-interface ConfigFidelidade {
-  xpPerStamp: number;
-  rules: string[];
-}
+type Premio = FidelityReward;
+type HistoricoItem = FidelityHistoryItem;
+type ConfigFidelidade = FidelityConfig;
 
 export default function FidelidadePage() {
   const { user } = useAuth();
@@ -51,57 +36,39 @@ export default function FidelidadePage() {
 
   // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    // A. Carregar Configurações
-    const unsubConfig = onSnapshot(doc(db, "app_config", "fidelity"), (snap) => {
-        if (snap.exists()) {
-            const data = snap.data();
-            setConfig({ 
-                xpPerStamp: data.xpPerStamp || 100,
-                rules: data.rules || []
-            });
-        }
-    });
+    let mounted = true;
 
-    // B. Carregar Prêmios Ativos (SEM ORDERBY NO FIREBASE)
-    const qPremios = query(collection(db, "store_rewards"), where("active", "==", true));
-    const unsubPremios = onSnapshot(qPremios, (snap) => {
-        const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Premio));
-        
-        // 🦈 SORT NO FRONTEND (Preço Crescente)
-        lista.sort((a, b) => (a.cost || 0) - (b.cost || 0));
-        
-        setPremios(lista);
-    });
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [configData, premiosData, historyData] = await Promise.all([
+          fetchFidelityConfig(),
+          fetchFidelityRewards({ activeOnly: true, maxResults: 80 }),
+          fetchFidelityHistory(user.uid, { maxResults: 20 }),
+        ]);
 
-    // C. Carregar Histórico (SEM ORDERBY NO FIREBASE)
-    const qHist = query(collection(db, "achievements_logs"), where("userId", "==", user.uid), limit(20));
-    const unsubHist = onSnapshot(qHist, (snap) => {
-        const logs: HistoricoItem[] = snap.docs.map(d => {
-            const data = d.data();
-            // Tratamento seguro de Timestamp do Firestore
-            const dateObj = data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date();
+        if (!mounted) return;
+        setConfig(configData);
+        setPremios(premiosData);
+        setHistorico(historyData);
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar fidelidade.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
 
-            return {
-                id: d.id,
-                acao: data.achievementTitle || "Atividade",
-                rawDate: dateObj,
-                dataDisplay: dateObj.toLocaleDateString("pt-BR", {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
-                xp: data.xp || 0,
-                tipo: "conquista"
-            };
-        });
-
-        // 🦈 SORT NO FRONTEND (Mais recente primeiro)
-        logs.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
-
-        setHistorico(logs);
-        setLoading(false);
-    });
-
-    return () => { unsubConfig(); unsubPremios(); unsubHist(); };
-  }, [user]);
+    void loadData();
+    return () => {
+      mounted = false;
+    };
+  }, [user, addToast]);
 
   if (!user || loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
 
@@ -123,22 +90,21 @@ export default function FidelidadePage() {
     if (!confirm) return;
 
     try {
-        await addDoc(collection(db, "store_redemptions"), {
+        await requestFidelityRedemption({
             userId: user.uid,
-            userName: user.nome,
-            rewardId: premio.id,
-            rewardTitle: premio.title,
-            cost: premio.cost,
-            status: "pendente",
-            createdAt: serverTimestamp()
+            userName: user.nome || "Atleta",
+            reward: premio,
         });
-
-        await updateDoc(doc(db, "store_rewards", premio.id), {
-            stock: increment(-1)
-        });
-
+        setPremios((prev) =>
+          prev.map((item) =>
+            item.id === premio.id
+              ? { ...item, stock: Math.max(0, item.stock - 1) }
+              : item
+          )
+        );
         addToast("Resgate solicitado! Apresente seu ID na lojinha.", "success");
-    } catch {
+    } catch (error: unknown) {
+        console.error(error);
         addToast("Erro ao processar resgate.", "error");
     }
   };

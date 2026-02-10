@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, Plus, Trash2, Star, Gift, LayoutDashboard,
   ScrollText, Save, Users, TrendingUp, X, Loader2
@@ -8,26 +8,21 @@ import {
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, orderBy, limit } from "firebase/firestore";
+import {
+  createFidelityReward,
+  deleteFidelityReward,
+  fetchFidelityConfig,
+  fetchFidelityRewards,
+  fetchFidelityTopUsers,
+  saveFidelityConfig,
+  type FidelityConfig,
+  type FidelityReward,
+  type FidelityTopUser,
+} from "../../../lib/fidelityService";
 
 // 🦈 Interfaces para tipagem forte
-interface Reward {
-    id: string;
-    title: string;
-    cost: number;
-    stock: number;
-    image: string;
-    active: boolean;
-}
-
-interface TopUser {
-    id: string;
-    nome: string;
-    xp: number;
-    foto: string;
-    turma: string;
-}
+type Reward = FidelityReward;
+type TopUser = FidelityTopUser;
 
 type TabType = "dashboard" | "premios" | "regras";
 
@@ -39,38 +34,36 @@ export default function AdminFidelidadePage() {
   const [loading, setLoading] = useState(true);
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
-  const [config, setConfig] = useState({ xpPerStamp: 100, rules: [] as string[] });
+  const [config, setConfig] = useState<FidelityConfig>({ xpPerStamp: 100, rules: [] });
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newReward, setNewReward] = useState({ title: "", cost: "", stock: "", image: "" });
 
+  const loadData = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    try {
+      const [rewardsData, configData, topUsersData] = await Promise.all([
+        fetchFidelityRewards({ maxResults: 120, forceRefresh }),
+        fetchFidelityConfig({ forceRefresh }),
+        fetchFidelityTopUsers({ maxResults: 5, forceRefresh }),
+      ]);
+
+      setRewards(rewardsData);
+      setConfig(configData);
+      setTopUsers(topUsersData);
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar fidelidade.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
   // 1. CARREGAR DADOS
   useEffect(() => {
-    // A. Prêmios
-    const unsubRewards = onSnapshot(collection(db, "store_rewards"), (snap) => {
-        setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() } as Reward)));
-    });
-
-    // B. Configuração
-    const unsubConfig = onSnapshot(doc(db, "app_config", "fidelity"), (snap) => {
-        if(snap.exists()) {
-            setConfig({ 
-                xpPerStamp: snap.data().xpPerStamp || 100, 
-                rules: snap.data().rules || [] 
-            });
-        }
-    });
-
-    // C. Top Users (Ranking por XP)
-    const qUsers = query(collection(db, "users"), orderBy("xp", "desc"), limit(5));
-    const unsubUsers = onSnapshot(qUsers, (snap) => {
-        setTopUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as TopUser)));
-        setLoading(false);
-    });
-
-    return () => { unsubRewards(); unsubConfig(); unsubUsers(); };
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   // --- AÇÕES ---
 
@@ -78,27 +71,40 @@ export default function AdminFidelidadePage() {
     if (!newReward.title || !newReward.cost) return addToast("Preencha título e custo!", "error");
     
     try {
-        await addDoc(collection(db, "store_rewards"), {
+        const created = await createFidelityReward({
             title: newReward.title,
+            cost: Number(newReward.cost),
+            stock: Number(newReward.stock || 0),
+            image: newReward.image,
+        });
+        const freshReward: Reward = {
+            id: created.id,
+            title: newReward.title.trim(),
             cost: Number(newReward.cost),
             stock: Number(newReward.stock || 0),
             image: newReward.image || "https://placehold.co/400x400/000/FFF?text=Premio",
             active: true,
-            createdAt: new Date()
-        });
+        };
+        setRewards((prev) => [...prev, freshReward].sort((left, right) => left.cost - right.cost));
         setIsModalOpen(false);
         setNewReward({ title: "", cost: "", stock: "", image: "" });
         addToast("Prêmio adicionado!", "success");
-    } catch (error) {
-        console.error(error); // 🦈 Logando o erro
+    } catch (error: unknown) {
+        console.error(error);
         addToast("Erro ao adicionar.", "error");
     }
   };
 
   const handleDeleteReward = async (id: string) => {
     if (confirm("Remover este prêmio permanentemente?")) {
-        await deleteDoc(doc(db, "store_rewards", id));
-        addToast("Item removido.", "info");
+        try {
+            await deleteFidelityReward(id);
+            setRewards((prev) => prev.filter((item) => item.id !== id));
+            addToast("Item removido.", "info");
+        } catch (error: unknown) {
+            console.error(error);
+            addToast("Erro ao remover item.", "error");
+        }
     }
   };
 
@@ -120,10 +126,10 @@ export default function AdminFidelidadePage() {
 
   const handleSaveConfig = async () => {
     try {
-        await setDoc(doc(db, "app_config", "fidelity"), config, { merge: true });
+        await saveFidelityConfig(config);
         addToast("Configurações salvas!", "success");
-    } catch (error) {
-        console.error(error); // 🦈 Logando o erro
+    } catch (error: unknown) {
+        console.error(error);
         addToast("Erro ao salvar config.", "error");
     }
   };
