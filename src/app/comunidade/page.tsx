@@ -10,14 +10,28 @@ import {
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image
 import { db, storage } from "../../lib/firebase";
-import { 
-  collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, 
-  updateDoc, doc, arrayUnion, arrayRemove, limit, deleteDoc, Timestamp, increment 
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  updateDoc,
+  doc,
+  arrayUnion,
+  arrayRemove,
+  deleteDoc,
+  Timestamp,
+  increment,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { Security } from "../../lib/security";
+import { compressImageFile } from "../../lib/imageCompression";
+import {
+  fetchCommunityComments,
+  fetchCommunityConfig,
+  fetchCommunityFeed,
+} from "../../lib/communityService";
 
 // --- TIPAGEM ---
 
@@ -25,6 +39,7 @@ interface AppConfig {
     titulo?: string;
     subtitulo?: string;
     capaUrl?: string;
+    limitMessages?: boolean;
 }
 
 interface PostData {
@@ -75,13 +90,6 @@ interface CommentData {
     
     role?: string;
     createdAt: Timestamp | null;
-}
-
-// 🦈 Interface global para window (evitar any)
-declare global {
-    interface Window {
-        allPostsRaw: PostData[];
-    }
 }
 
 // --- CONSTANTES ---
@@ -182,6 +190,7 @@ export default function ComunidadePage() {
   const [modalidades] = useState<string[]>(CATEGORIAS_OFICIAIS);
   
   const [posts, setPosts] = useState<PostData[]>([]);
+  const [allPostsRaw, setAllPostsRaw] = useState<PostData[]>([]);
   const [config, setConfig] = useState<AppConfig>({});
   const [loading, setLoading] = useState(true);
   
@@ -203,65 +212,164 @@ export default function ComunidadePage() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [commentMenuOpen, setCommentMenuOpen] = useState<string | null>(null);
 
-  useEffect(() => {
-    onSnapshot(doc(db, "app_config", "comunidade"), (snap) => { 
-        if (snap.exists()) setConfig(snap.data() as AppConfig); 
-    });
-  }, []);
+    useEffect(() => {
+    let mounted = true;
 
-  useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(100));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PostData[];
-      
-      if (!user?.role?.includes('admin')) {
-          data = data.filter(p => !p.blocked); 
+    const loadConfig = async () => {
+      try {
+        const configData = await fetchCommunityConfig();
+        if (!mounted || !configData) return;
+        setConfig((prev) => ({ ...prev, ...(configData as Partial<AppConfig>) }));
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar configuracoes da comunidade.", "error");
       }
-      
-      const filteredByTab = data.filter(p => p.categoria === activeTab);
-      // 🦈 Correção de let -> const (prefer-const)
-      const finalData = filteredByTab.slice(0, 20);
+    };
 
-      if (activeFilter === 'likes') finalData.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
-      if (activeFilter === 'comments') finalData.sort((a, b) => (b.comentarios || 0) - (a.comentarios || 0));
-      if (activeFilter === 'hype') finalData.sort((a, b) => (b.hype?.length || 0) - (a.hype?.length || 0));
-      
-      data.forEach(p => {
-          if (p.createdAt) {
-             const postTime = p.createdAt.toDate().getTime();
-             p.isRecent = (new Date().getTime() - postTime) < (24 * 60 * 60 * 1000);
-          } else {
-             p.isRecent = false;
-          }
-      });
-      
-      setPosts(finalData);
-      // 🦈 Tipagem segura via declare global
-      window.allPostsRaw = data; 
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [activeTab, activeFilter, user]);
+    void loadConfig();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
 
   useEffect(() => {
-      if (!commentModal) return;
-      const q = query(collection(db, `posts/${commentModal}/comments`), orderBy("createdAt", "asc"));
-      const unsub = onSnapshot(q, (snap) => {
-          // 🦈 Correção de let -> const (prefer-const)
-          const comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as CommentData));
-          comments.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
-          setCommentsList(comments);
-      });
-      return () => unsub();
-  }, [commentModal]);
+    let mounted = true;
+
+    const loadPosts = async () => {
+      setLoading(true);
+      try {
+        const rows = await fetchCommunityFeed(120);
+        if (!mounted) return;
+
+        let data = rows.map(
+          (row) =>
+            ({
+              id: row.id,
+              ...(row.data as Omit<PostData, "id">),
+            }) as PostData
+        );
+
+        if (!user?.role?.includes("admin")) {
+          data = data.filter((post) => !post.blocked);
+        }
+
+        const now = Date.now();
+        data = data.map((post) => {
+          const createdAt = post.createdAt instanceof Timestamp ? post.createdAt : null;
+          const likes = Array.isArray(post.likes)
+            ? post.likes.filter((item): item is string => typeof item === "string")
+            : [];
+          const hype = Array.isArray(post.hype)
+            ? post.hype.filter((item): item is string => typeof item === "string")
+            : [];
+
+          return {
+            ...post,
+            createdAt,
+            likes,
+            hype,
+            comentarios: typeof post.comentarios === "number" ? post.comentarios : 0,
+            denunciasCount: typeof post.denunciasCount === "number" ? post.denunciasCount : 0,
+            isRecent: createdAt
+              ? now - createdAt.toDate().getTime() < 24 * 60 * 60 * 1000
+              : false,
+          };
+        });
+
+        setAllPostsRaw(data);
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar feed da comunidade.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadPosts();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.role, addToast]);
+
+  useEffect(() => {
+      const filteredByTab = allPostsRaw.filter((post) => post.categoria === activeTab);
+      const ordered = [...filteredByTab];
+
+      if (activeFilter === "recent") {
+          ordered.sort(
+              (a, b) =>
+                  (b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0) -
+                  (a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0)
+          );
+      }
+      if (activeFilter === "likes") {
+          ordered.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+      }
+      if (activeFilter === "comments") {
+          ordered.sort((a, b) => (b.comentarios || 0) - (a.comentarios || 0));
+      }
+      if (activeFilter === "hype") {
+          ordered.sort((a, b) => (b.hype?.length || 0) - (a.hype?.length || 0));
+      }
+
+      const maxVisiblePosts = config.limitMessages === false ? 100 : 20;
+      setPosts(ordered.slice(0, maxVisiblePosts));
+  }, [allPostsRaw, activeTab, activeFilter, config.limitMessages]);
+
+  useEffect(() => {
+      if (!commentModal) {
+          setCommentsList([]);
+          return;
+      }
+
+      let mounted = true;
+      const loadComments = async () => {
+          try {
+              const rows = await fetchCommunityComments(commentModal, {
+                  order: "asc",
+                  maxResults: 120,
+              });
+
+              if (!mounted) return;
+
+              const comments = rows.map((row) => {
+                  const raw = row.data as Record<string, unknown>;
+                  const rawLikes = raw.likes;
+                  const likes = Array.isArray(rawLikes)
+                      ? rawLikes.filter((item): item is string => typeof item === "string")
+                      : [];
+
+                  const rawCreatedAt = raw.createdAt;
+                  const createdAt = rawCreatedAt instanceof Timestamp ? rawCreatedAt : null;
+
+                  return {
+                      id: row.id,
+                      ...(raw as Omit<CommentData, "id" | "likes" | "createdAt">),
+                      likes,
+                      createdAt,
+                  } as CommentData;
+              });
+
+              comments.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+              setCommentsList(comments);
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) addToast("Erro ao carregar comentarios.", "error");
+          }
+      };
+
+      void loadComments();
+      return () => {
+          mounted = false;
+      };
+  }, [commentModal, addToast]);
 
   const getRecentCount = (cat: string) => {
-      const all = window.allPostsRaw || [];
-      return all.filter(p => p.categoria === cat && p.isRecent).length;
+      return allPostsRaw.filter((post) => post.categoria === cat && post.isRecent).length;
   };
 
   const handlePublish = async () => {
-    if (!user) return addToast("Faça login!", "error");
+    if (!user) return addToast("Fa�a login!", "error");
     if (isPublishing) return;
 
     const securityCheck = await Security.canUserPost(user.uid);
@@ -269,46 +377,56 @@ export default function ComunidadePage() {
 
     if (!newPostText.trim() && !imageFile) return;
 
-    if (newPostText.length > 150) return addToast("Máximo de 150 caracteres! Seja direto, Tubarão. 🦈", "error");
-
-    const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
-    const userPostsToday = posts.filter(p => 
-        p.userId === user.uid && 
-        p.categoria === activeTab &&
-        p.createdAt && p.createdAt.toDate().getTime() > oneDayAgo
-    );
-
-    if (userPostsToday.length > 0 && !user.role?.includes('admin')) {
-        return addToast(`Você já postou em "${activeTab}" hoje. Volte amanhã! ⏳`, "error");
+    if (newPostText.length > 150) {
+      return addToast("Maximo de 150 caracteres! Seja direto, Tubarao.", "error");
     }
 
-    setIsPublishing(true); 
+    const oneDayAgo = new Date().getTime() - 24 * 60 * 60 * 1000;
+    const userPostsToday = allPostsRaw.filter(
+      (post) =>
+        post.userId === user.uid &&
+        post.categoria === activeTab &&
+        post.createdAt &&
+        post.createdAt.toDate().getTime() > oneDayAgo
+    );
+
+    if (userPostsToday.length > 0 && !user.role?.includes("admin")) {
+      return addToast(`Voce ja postou em "${activeTab}" hoje. Volte amanha!`, "error");
+    }
+
+    setIsPublishing(true);
     try {
-      let imageUrl = null;
+      let imageUrl: string | null = null;
       if (imageFile) {
+        const optimizedImage = await compressImageFile(imageFile, {
+          maxWidth: 1600,
+          maxHeight: 1600,
+          quality: 0.82,
+        });
+
         const storageRef = ref(storage, `posts/${Date.now()}_${user.uid}`);
-        await uploadBytes(storageRef, imageFile);
+        await uploadBytes(storageRef, optimizedImage);
         imageUrl = await getDownloadURL(storageRef);
       }
 
       const safeUser = {
-          userId: user.uid ? String(user.uid) : "",
-          userName: user.nome || "Anônimo",
-          handle: user.apelido ? `@${user.apelido}` : "@atleta",
-          avatar: user.foto || "https://github.com/shadcn.png",
-          
-          plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-          plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
-          plano: user.plano ? String(user.plano) : 'Visitante',
-          
-          patente: user.patente ? String(user.patente) : 'Novato', 
-          patente_icon: user.patente_icon || 'Fish', 
-          patente_cor: user.patente_cor || 'text-zinc-400',
-          
-          role: user.role ? String(user.role) : 'user',
+        userId: user.uid ? String(user.uid) : "",
+        userName: user.nome || "An�nimo",
+        handle: user.apelido ? `@${user.apelido}` : "@atleta",
+        avatar: user.foto || "https://github.com/shadcn.png",
+
+        plano_cor: user.plano_cor ? String(user.plano_cor) : "zinc",
+        plano_icon: user.plano_icon ? String(user.plano_icon) : "user",
+        plano: user.plano ? String(user.plano) : "Visitante",
+
+        patente: user.patente ? String(user.patente) : "Novato",
+        patente_icon: user.patente_icon || "Fish",
+        patente_cor: user.patente_cor || "text-zinc-400",
+
+        role: user.role ? String(user.role) : "user",
       };
 
-      await addDoc(collection(db, "posts"), {
+      const createdDoc = await addDoc(collection(db, "posts"), {
         ...safeUser,
         texto: newPostText,
         imagem: imageUrl,
@@ -323,73 +441,118 @@ export default function ComunidadePage() {
       });
 
       if (user.uid) {
-          await updateDoc(doc(db, "users", user.uid), {
-              "stats.postsCount": increment(1)
-          });
+        await updateDoc(doc(db, "users", user.uid), {
+          "stats.postsCount": increment(1),
+        });
       }
 
+      const optimisticPost: PostData = {
+        id: createdDoc.id,
+        ...safeUser,
+        texto: newPostText,
+        imagem: imageUrl,
+        likes: [],
+        hype: [],
+        comentarios: 0,
+        denunciasCount: 0,
+        categoria: activeTab,
+        blocked: false,
+        commentsDisabled: false,
+        createdAt: Timestamp.now(),
+        isRecent: true,
+      };
+
+      setAllPostsRaw((prev) => [optimisticPost, ...prev]);
       setNewPostText("");
       setImageFile(null);
-      addToast("Postado! 🦈", "success");
-    } catch { 
-        addToast("Erro ao postar.", "error"); 
-    } finally { 
-        setIsPublishing(false); 
+      addToast("Postado!", "success");
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao postar.", "error");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
   const handleComment = async () => {
-      if (!user) return addToast("Faça login!", "error");
+      if (!user) return addToast("Fa�a login!", "error");
       if (!newComment.trim()) return;
-      if (!commentModal) return; 
+      if (!commentModal) return;
       if (isPostingComment) return;
 
-      const oneDayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
-      const myCommentsToday = commentsList.filter(c => 
-          c.userId === user.uid && 
-          c.createdAt && c.createdAt.toDate().getTime() > oneDayAgo
+      const oneDayAgo = new Date().getTime() - 24 * 60 * 60 * 1000;
+      const myCommentsToday = commentsList.filter(
+          (comment) =>
+              comment.userId === user.uid &&
+              comment.createdAt &&
+              comment.createdAt.toDate().getTime() > oneDayAgo
       );
 
-      if (myCommentsToday.length > 0 && !user.role?.includes('admin')) {
-          return addToast("Você já comentou neste post hoje.", "error");
+      if (myCommentsToday.length > 0 && !user.role?.includes("admin")) {
+          return addToast("Voce ja comentou neste post hoje.", "error");
       }
 
-      setIsPostingComment(true); 
+      setIsPostingComment(true);
       try {
           const safeUser = {
               userId: user.uid ? String(user.uid) : "",
-              userName: user.nome || "Anônimo",
+              userName: user.nome || "Anonimo",
               avatar: user.foto || "/logo.png",
-              
-              plano_cor: user.plano_cor ? String(user.plano_cor) : 'zinc',
-              plano_icon: user.plano_icon ? String(user.plano_icon) : 'user',
-              plano: user.plano ? String(user.plano) : 'Membro',
-              
-              patente: user.patente ? String(user.patente) : 'Novato',
-              patente_icon: user.patente_icon || 'Fish',
-              patente_cor: user.patente_cor || 'text-zinc-400',
-              
-              role: user.role ? String(user.role) : 'user',
+
+              plano_cor: user.plano_cor ? String(user.plano_cor) : "zinc",
+              plano_icon: user.plano_icon ? String(user.plano_icon) : "user",
+              plano: user.plano ? String(user.plano) : "Membro",
+
+              patente: user.patente ? String(user.patente) : "Novato",
+              patente_icon: user.patente_icon || "Fish",
+              patente_cor: user.patente_cor || "text-zinc-400",
+
+              role: user.role ? String(user.role) : "user",
           };
 
-          await addDoc(collection(db, `posts/${commentModal}/comments`), {
+          const createdCommentRef = await addDoc(collection(db, `posts/${commentModal}/comments`), {
               ...safeUser,
               texto: newComment,
               likes: [],
-              createdAt: serverTimestamp()
+              createdAt: serverTimestamp(),
           });
-          
-          await updateDoc(doc(db, "posts", commentModal), { comentarios: commentsList.length + 1 });
+
+          await updateDoc(doc(db, "posts", commentModal), {
+              comentarios: increment(1),
+          });
 
           if (user.uid) {
               await updateDoc(doc(db, "users", user.uid), {
-                  "stats.commentsCount": increment(1)
+                  "stats.commentsCount": increment(1),
               });
           }
-          
+
+          const optimisticComment: CommentData = {
+              id: createdCommentRef.id,
+              ...safeUser,
+              texto: newComment,
+              likes: [],
+              createdAt: Timestamp.now(),
+          };
+
+          setCommentsList((prev) => {
+              const updated = [optimisticComment, ...prev];
+              updated.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+              return updated;
+          });
+
+          setAllPostsRaw((prev) =>
+              prev.map((post) =>
+                  post.id === commentModal
+                      ? { ...post, comentarios: (post.comentarios || 0) + 1 }
+                      : post
+              )
+          );
+
           setNewComment("");
-      } catch (error) { 
-          console.error(error); 
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao comentar.", "error");
       } finally {
           setIsPostingComment(false);
       }
@@ -397,57 +560,105 @@ export default function ComunidadePage() {
 
   const handleDeletePost = async (post: PostData) => {
       if (!user) return;
-      if (post.userId !== user.uid && !user.role?.includes('admin')) return;
-      if(!confirm("Tem certeza que quer apagar essa mensagem?")) return;
+      if (post.userId !== user.uid && !user.role?.includes("admin")) return;
+      if (!confirm("Tem certeza que quer apagar essa mensagem?")) return;
 
       try {
           await deleteDoc(doc(db, "posts", post.id));
+          setAllPostsRaw((prev) => prev.filter((item) => item.id !== post.id));
           addToast("Mensagem apagada.", "info");
           setMenuOpen(null);
-      } catch { addToast("Erro ao apagar.", "error"); }
+      } catch {
+          addToast("Erro ao apagar.", "error");
+      }
   };
 
   const handleDeleteComment = async (commentId: string) => {
       if (!user || !commentModal) return;
-      if (!confirm("Excluir comentário?")) return;
+      if (!confirm("Excluir comentario?")) return;
       try {
           await deleteDoc(doc(db, `posts/${commentModal}/comments`, commentId));
-          await updateDoc(doc(db, "posts", commentModal), { comentarios: Math.max(0, commentsList.length - 1) });
-          addToast("Comentário removido.", "info");
+          await updateDoc(doc(db, "posts", commentModal), { comentarios: increment(-1) });
+
+          setCommentsList((prev) => prev.filter((comment) => comment.id !== commentId));
+          setAllPostsRaw((prev) =>
+              prev.map((post) =>
+                  post.id === commentModal
+                      ? { ...post, comentarios: Math.max(0, (post.comentarios || 0) - 1) }
+                      : post
+              )
+          );
+
+          addToast("Comentario removido.", "info");
           setCommentMenuOpen(null);
-      } catch { addToast("Erro ao excluir.", "error"); }
+      } catch {
+          addToast("Erro ao excluir.", "error");
+      }
   };
 
   const handleReport = async () => {
-      if (!user) return addToast("Faça login!", "error");
+      if (!user) return addToast("Fa�a login!", "error");
       if (!reportReason) return addToast("Selecione um motivo!", "error");
       if (!reportModal) return;
 
       const finalReason = reportReason === "Outros" ? `Outros: ${otherReasonText}` : reportReason;
-      
-      const postAlvo = posts.find(p => p.id === reportModal);
-      const textoSalvo = postAlvo ? postAlvo.texto : "Conteúdo reportado";
 
-      await addDoc(collection(db, "denuncias"), {
-          targetId: reportModal,
-          targetType: reportTargetType,
-          postText: textoSalvo,
-          reporterId: user.uid,
-          reason: finalReason,
-          timestamp: serverTimestamp(),
-          status: "pendente"
-      });
+      const postAlvo = posts.find((post) => post.id === reportModal);
+      const textoSalvo = postAlvo ? postAlvo.texto : "Conteudo reportado";
 
-      if (reportTargetType === 'post' && postAlvo) {
-        await updateDoc(doc(db, "posts", reportModal), {
-            denunciasCount: (postAlvo.denunciasCount || 0) + 1
-        });
+      try {
+          await addDoc(collection(db, "denuncias"), {
+              targetId: reportModal,
+              targetType: reportTargetType,
+              postText: textoSalvo,
+              reporterId: user.uid,
+              reason: finalReason,
+              timestamp: serverTimestamp(),
+              status: "pendente",
+          });
+
+          if (reportTargetType === "post" && postAlvo) {
+              await updateDoc(doc(db, "posts", reportModal), {
+                  denunciasCount: increment(1),
+              });
+
+              setAllPostsRaw((prev) =>
+                  prev.map((post) =>
+                      post.id === reportModal
+                          ? { ...post, denunciasCount: (post.denunciasCount || 0) + 1 }
+                          : post
+                  )
+              );
+          }
+
+          addToast("Denuncia enviada.", "success");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao enviar denuncia.", "error");
+      } finally {
+          setReportModal(null);
+          setReportReason("");
+          setOtherReasonText("");
       }
+  };
 
-      addToast("Denúncia enviada. 👮‍♂️", "success");
-      setReportModal(null);
-      setReportReason("");
-      setOtherReasonText("");
+  const handleTogglePin = async (post: PostData) => {
+      if (!user?.role?.includes("admin")) return;
+
+      try {
+          const nextStatus = !post.fixado;
+          await updateDoc(doc(db, "posts", post.id), { fixado: nextStatus });
+          setAllPostsRaw((prev) =>
+              prev.map((item) =>
+                  item.id === post.id ? { ...item, fixado: nextStatus } : item
+              )
+          );
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar destaque do post.", "error");
+      } finally {
+          setMenuOpen(null);
+      }
   };
 
   const toggleAction = async (postId: string, field: "likes" | "hype", list: string[]) => {
@@ -456,8 +667,8 @@ export default function ComunidadePage() {
 
     const postRef = doc(db, "posts", postId);
     const hasInteracted = list.includes(user.uid);
-    
-    const postData = posts.find(p => p.id === postId);
+
+    const postData = posts.find((post) => post.id === postId);
     const authorId = postData?.userId;
 
     try {
@@ -466,16 +677,34 @@ export default function ComunidadePage() {
       if (authorId && authorId !== user.uid) {
           const statField = field === "likes" ? "stats.likesReceived" : "stats.hypesReceived";
           await updateDoc(doc(db, "users", authorId), {
-              [statField]: increment(hasInteracted ? -1 : 1)
+              [statField]: increment(hasInteracted ? -1 : 1),
           });
       }
 
       const myStatField = field === "likes" ? "stats.likesGiven" : "stats.hypesGiven";
       await updateDoc(doc(db, "users", user.uid), {
-          [myStatField]: increment(hasInteracted ? -1 : 1)
+          [myStatField]: increment(hasInteracted ? -1 : 1),
       });
 
-    } catch (error) { console.error(error); }
+      setAllPostsRaw((prev) =>
+          prev.map((post) => {
+              if (post.id !== postId) return post;
+              if (field === "likes") {
+                  const nextLikes = hasInteracted
+                      ? (post.likes || []).filter((id) => id !== user.uid)
+                      : [...(post.likes || []), user.uid];
+                  return { ...post, likes: nextLikes };
+              }
+
+              const nextHype = hasInteracted
+                  ? (post.hype || []).filter((id) => id !== user.uid)
+                  : [...(post.hype || []), user.uid];
+              return { ...post, hype: nextHype };
+          })
+      );
+    } catch (error: unknown) {
+      console.error(error);
+    }
   };
 
   const toggleCommentLike = async (comment: CommentData) => {
@@ -491,18 +720,34 @@ export default function ComunidadePage() {
 
           if (authorId && authorId !== user.uid) {
               await updateDoc(doc(db, "users", authorId), {
-                  "stats.likesReceived": increment(hasLiked ? -1 : 1)
+                  "stats.likesReceived": increment(hasLiked ? -1 : 1),
               });
           }
 
           await updateDoc(doc(db, "users", user.uid), {
-              "stats.likesGiven": increment(hasLiked ? -1 : 1)
+              "stats.likesGiven": increment(hasLiked ? -1 : 1),
           });
 
-      } catch (error) { console.error(error); }
+          setCommentsList((prev) => {
+              const updated = prev.map((item) => {
+                  if (item.id !== comment.id) return item;
+
+                  const nextLikes = hasLiked
+                      ? (item.likes || []).filter((id) => id !== user.uid)
+                      : [...(item.likes || []), user.uid];
+
+                  return { ...item, likes: nextLikes };
+              });
+
+              updated.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+              return updated;
+          });
+      } catch (error: unknown) {
+          console.error(error);
+      }
   };
 
-  const currentPostCommentsDisabled = posts.find(p => p.id === commentModal)?.commentsDisabled;
+  const currentPostCommentsDisabled = posts.find((post) => post.id === commentModal)?.commentsDisabled;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
@@ -619,7 +864,7 @@ export default function ComunidadePage() {
                                 <button onClick={() => setMenuOpen(menuOpen === post.id ? null : post.id)} className="text-zinc-600 hover:text-white p-1"><MoreHorizontal size={16}/></button>
                                 {menuOpen === post.id && (
                                     <div className="absolute right-4 top-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-10 overflow-hidden min-w-[140px]">
-                                            {user?.role?.includes('admin') && <button onClick={() => updateDoc(doc(db, "posts", post.id), {fixado: !post.fixado})} className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-zinc-800 flex items-center gap-2"><Pin size={14}/> {post.fixado ? 'Desafixar' : 'Fixar'}</button>}
+                                            {user?.role?.includes('admin') && <button onClick={() => handleTogglePin(post)} className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-zinc-800 flex items-center gap-2"><Pin size={14}/> {post.fixado ? 'Desafixar' : 'Fixar'}</button>}
                                             {(user?.uid === post.userId || user?.role?.includes('admin')) && (
                                                 <button onClick={() => handleDeletePost(post)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-zinc-800 flex items-center gap-2"><Trash2 size={14}/> Excluir</button>
                                             )}
@@ -744,3 +989,8 @@ export default function ComunidadePage() {
     </div>
   );
 }
+
+
+
+
+

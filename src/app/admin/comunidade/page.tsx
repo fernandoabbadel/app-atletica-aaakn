@@ -9,11 +9,14 @@ import {
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image
 import { db } from "../../../lib/firebase";
-import { 
-  doc, onSnapshot, updateDoc, collection, 
-  deleteDoc, query, orderBy, getDocs, Timestamp 
-} from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "../../../context/ToastContext";
+import {
+  fetchCommunityAdminPosts,
+  fetchCommunityComments,
+  fetchCommunityConfig,
+  fetchCommunityReports,
+} from "../../../lib/communityService";
 
 // --- TIPAGENS (O Escudo do Código) ---
 interface AppConfig {
@@ -71,40 +74,93 @@ export default function AdminComunidadePage() {
   const [viewCommentsId, setViewCommentsId] = useState<string | null>(null);
   const [adminComments, setAdminComments] = useState<CommentData[]>([]);
 
-  // 1. CARREGAR DADOS EM TEMPO REAL
+    // 1. CARREGAR DADOS COM LEITURA CONTROLADA
   useEffect(() => {
-    // Configurações
-    const unsubConfig = onSnapshot(doc(db, "app_config", "comunidade"), (snap) => { 
-      if (snap.exists()) setConfig(snap.data() as AppConfig); 
-    });
+    let mounted = true;
 
-    // Posts (Todos, ordenados por data)
-    const qPosts = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const unsubPosts = onSnapshot(qPosts, (snap) => {
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostData)));
-    });
+    const loadInitialData = async () => {
+      setLoading(true);
+      try {
+        const [configData, postsData, reportsData] = await Promise.all([
+          fetchCommunityConfig(),
+          fetchCommunityAdminPosts(120),
+          fetchCommunityReports(180),
+        ]);
 
-    // Denúncias
-    const qDenuncias = query(collection(db, "denuncias"), orderBy("timestamp", "desc"));
-    const unsubDenuncias = onSnapshot(qDenuncias, (snap) => {
-        setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() } as DenunciaData)));
-        setLoading(false);
-    });
+        if (!mounted) return;
 
-    return () => { unsubConfig(); unsubPosts(); unsubDenuncias(); };
-  }, []);
+        if (configData) {
+          setConfig((prev) => ({ ...prev, ...(configData as Partial<AppConfig>) }));
+        }
 
-  // 2. CARREGAR COMENTÁRIOS AO ABRIR MODAL
+        setPosts(
+          postsData.map(
+            (row) =>
+              ({
+                id: row.id,
+                ...(row.data as Omit<PostData, "id">),
+              }) as PostData
+          )
+        );
+
+        setDenuncias(
+          reportsData.map(
+            (row) =>
+              ({
+                id: row.id,
+                ...(row.data as Omit<DenunciaData, "id">),
+              }) as DenunciaData
+          )
+        );
+      } catch (error: unknown) {
+        console.error(error);
+        if (mounted) addToast("Erro ao carregar dados da comunidade.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void loadInitialData();
+    return () => {
+      mounted = false;
+    };
+  }, [addToast]);
+
+  // 2. CARREGAR COMENTARIOS AO ABRIR MODAL (SEM SNAPSHOT)
   useEffect(() => {
-      if (!viewCommentsId) return;
-      
-      const fetchComments = async () => {
-          const q = query(collection(db, `posts/${viewCommentsId}/comments`), orderBy("createdAt", "desc"));
-          const snap = await getDocs(q);
-          setAdminComments(snap.docs.map(d => ({id: d.id, ...d.data()} as CommentData)));
+      if (!viewCommentsId) {
+          setAdminComments([]);
+          return;
+      }
+
+      let mounted = true;
+      const loadComments = async () => {
+          try {
+              const rows = await fetchCommunityComments(viewCommentsId, {
+                  order: "desc",
+                  maxResults: 120,
+              });
+              if (!mounted) return;
+              setAdminComments(
+                  rows.map(
+                      (row) =>
+                          ({
+                              id: row.id,
+                              ...(row.data as Omit<CommentData, "id">),
+                          }) as CommentData
+                  )
+              );
+          } catch (error: unknown) {
+              console.error(error);
+              if (mounted) addToast("Erro ao carregar comentarios.", "error");
+          }
       };
-      fetchComments();
-  }, [viewCommentsId]);
+
+      void loadComments();
+      return () => {
+          mounted = false;
+      };
+  }, [viewCommentsId, addToast]);
 
 // --- AÇÕES DE CONFIGURAÇÃO ---
   const handleSaveConfig = async () => {
@@ -114,7 +170,7 @@ export default function AdminComunidadePage() {
         
         addToast("Configurações da Resenha salvas!", "success"); 
         
-    } catch (error) { 
+    } catch (error: unknown) { 
         console.error(error); // 🦈 Variável de erro padronizada para 'error'
         addToast("Erro ao salvar config.", "error"); 
     }
@@ -123,66 +179,88 @@ export default function AdminComunidadePage() {
   // --- AÇÕES DE POSTAGEM ---
   const toggleBlockPost = async (id: string, currentStatus: boolean) => {
       try {
-          await updateDoc(doc(db, "posts", id), { blocked: !currentStatus });
-          addToast(currentStatus ? "Post desbloqueado e visível." : "Post bloqueado (oculto).", "info");
-      } catch (error) { 
-          console.error(error); // 🦈 Log do erro
-          addToast("Erro ao atualizar status.", "error"); 
+          const nextStatus = !currentStatus;
+          await updateDoc(doc(db, "posts", id), { blocked: nextStatus });
+          setPosts((prev) =>
+              prev.map((post) => (post.id === id ? { ...post, blocked: nextStatus } : post))
+          );
+          addToast(currentStatus ? "Post desbloqueado e visivel." : "Post bloqueado (oculto).", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar status.", "error");
       }
   };
 
   const toggleCommentsLock = async (id: string, currentStatus: boolean) => {
       try {
-          await updateDoc(doc(db, "posts", id), { commentsDisabled: !currentStatus });
-          addToast(currentStatus ? "Comentários reabertos." : "Comentários trancados.", "info");
-      } catch (error) { 
-          console.error(error); // 🦈 Log do erro
-          addToast("Erro ao atualizar status.", "error"); 
+          const nextStatus = !currentStatus;
+          await updateDoc(doc(db, "posts", id), { commentsDisabled: nextStatus });
+          setPosts((prev) =>
+              prev.map((post) =>
+                  post.id === id ? { ...post, commentsDisabled: nextStatus } : post
+              )
+          );
+          addToast(currentStatus ? "Comentarios reabertos." : "Comentarios trancados.", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao atualizar status.", "error");
       }
   };
 
-  const togglePin = async (id: string, current: boolean) => { 
+  const togglePin = async (id: string, current: boolean) => {
       try {
-          await updateDoc(doc(db, "posts", id), { fixado: !current }); 
-          addToast(current ? "Post desafixado." : "Post fixado no topo!", "success"); 
-      } catch (error) { 
-          console.error(error); // 🦈 Log do erro
-          addToast("Erro ao fixar.", "error"); 
+          const nextStatus = !current;
+          await updateDoc(doc(db, "posts", id), { fixado: nextStatus });
+          setPosts((prev) =>
+              prev.map((post) => (post.id === id ? { ...post, fixado: nextStatus } : post))
+          );
+          addToast(current ? "Post desafixado." : "Post fixado no topo!", "success");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao fixar.", "error");
       }
   };
 
   const deletePost = async (id: string) => {
-      if(!confirm("Tem certeza que deseja EXCLUIR permanentemente este post?")) return;
+      if (!confirm("Tem certeza que deseja EXCLUIR permanentemente este post?")) return;
       try {
           await deleteDoc(doc(db, "posts", id));
+          setPosts((prev) => prev.filter((post) => post.id !== id));
           addToast("Post removido do banco de dados.", "info");
-      } catch (error) { 
-          console.error(error); // 🦈 Log do erro
-          addToast("Erro ao excluir.", "error"); 
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao excluir.", "error");
       }
   };
 
   // --- AÇÕES DE DENÚNCIA ---
-  const resolveDenuncia = async (denunciaId: string, postId: string, action: 'ban' | 'ignore' | 'lock') => {
+  const resolveDenuncia = async (denunciaId: string, postId: string, action: "ban" | "ignore" | "lock") => {
       try {
-          if (action === 'ban') {
-              // Bloqueia o post (NÃO DELETA)
+          if (action === "ban") {
               await updateDoc(doc(db, "posts", postId), { blocked: true });
-              addToast("Post bloqueado por violação!", "info");
+              setPosts((prev) =>
+                  prev.map((post) => (post.id === postId ? { ...post, blocked: true } : post))
+              );
+              addToast("Post bloqueado por violacao!", "info");
           }
-          if (action === 'lock') {
-              // Tranca comentários (NÃO DELETA)
+
+          if (action === "lock") {
               await updateDoc(doc(db, "posts", postId), { commentsDisabled: true });
-              addToast("Comentários trancados por precaução!", "info");
+              setPosts((prev) =>
+                  prev.map((post) =>
+                      post.id === postId ? { ...post, commentsDisabled: true } : post
+                  )
+              );
+              addToast("Comentarios trancados por precaucao!", "info");
           }
-          
-          // Remove a denúncia da lista (pois foi tratada)
+
           await deleteDoc(doc(db, "denuncias", denunciaId));
-          
-          if (action === 'ignore') addToast("Denúncia ignorada/removida.", "info");
-      } catch (error) {
-          console.error(error); // 🦈 Log do erro
-          addToast("Erro ao resolver denúncia.", "error");
+          setDenuncias((prev) => prev.filter((denuncia) => denuncia.id !== denunciaId));
+
+          if (action === "ignore") addToast("Denuncia ignorada/removida.", "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao resolver denuncia.", "error");
       }
   };
 
@@ -395,7 +473,7 @@ export default function AdminComunidadePage() {
 
                                         <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center gap-2">
                                             <span className="text-[10px] text-zinc-500">Reportado por:</span>
-                                            <Link href={`/admin/user/${den.reporterId}`} className="text-[10px] font-bold text-emerald-500 hover:underline">
+                                            <Link href={`/admin/usuarios/${den.reporterId}`} className="text-[10px] font-bold text-emerald-500 hover:underline">
                                                 Ver Usuário (ID: {den.reporterId.slice(0,6)}...)
                                             </Link>
                                         </div>
@@ -464,3 +542,9 @@ export default function AdminComunidadePage() {
     </div>
   );
 }
+
+
+
+
+
+
