@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useCallback, useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft, Search, CheckCircle, AlertCircle, Edit, Trash2, Crown, 
   Download, ExternalLink, Loader2, Save, X, Ban, ShieldCheck
@@ -8,8 +8,12 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import {
+    deleteAdminUser,
+    fetchAdminUsersList,
+    setAdminUserStatus,
+    updateAdminUser
+} from "../../../lib/adminUsersService";
 
 // --- TIPAGEM ---
 interface Usuario {
@@ -41,32 +45,26 @@ export default function AdminUsuariosPage() {
     const [editingUser, setEditingUser] = useState<Usuario | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    const loadUsuarios = useCallback(async (forceRefresh = false) => {
+        setLoading(true);
+        try {
+            const usersData = await fetchAdminUsersList({
+                maxResults: 420,
+                forceRefresh,
+            });
+            setUsuarios(usersData as Usuario[]);
+        } catch (error: unknown) {
+            console.error(error);
+            addToast("Erro ao carregar usuarios.", "error");
+        } finally {
+            setLoading(false);
+        }
+    }, [addToast]);
+
     // 1. CARREGAR DADOS DO FIREBASE
     useEffect(() => {
-        const q = query(collection(db, "users"), orderBy("nome"));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    nome: data.nome || "Sem Nome",
-                    email: data.email || "---",
-                    telefone: data.telefone || "",
-                    turma: data.turma || "---",
-                    matricula: data.matricula || "---",
-                    status: data.status || "pendente", 
-                    plano: data.tier || "bicho", // Mapeia 'tier' do banco para 'plano' local
-                    foto: data.foto || "https://github.com/shadcn.png",
-                    xp: data.xp || 0,
-                    role: data.role || "user"
-                } as Usuario;
-            });
-            setUsuarios(usersData);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, []);
+        void loadUsuarios();
+    }, [loadUsuarios]);
 
     // --- KPI's ---
     const stats = useMemo(() => {
@@ -100,17 +98,19 @@ export default function AdminUsuariosPage() {
         if (!editingUser) return;
         setIsSaving(true);
         try {
-            await updateDoc(doc(db, "users", editingUser.id), {
+            await updateAdminUser({
+                userId: editingUser.id,
                 nome: editingUser.nome,
                 telefone: editingUser.telefone,
                 matricula: editingUser.matricula,
                 turma: editingUser.turma,
-                status: editingUser.status, 
-                tier: editingUser.plano, // Salva como 'tier' no banco para compatibilidade com AuthContext
+                status: editingUser.status,
+                plano: editingUser.plano,
             });
+            await loadUsuarios(true);
             addToast("Dados atualizados!", "success");
             setEditingUser(null);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             addToast("Erro ao atualizar.", "error");
         } finally {
@@ -124,9 +124,11 @@ export default function AdminUsuariosPage() {
         
         if(confirm(`Tem certeza que deseja ${action} o acesso de ${user.nome}?`)) {
             try {
-                await updateDoc(doc(db, "users", user.id), { status: newStatus });
+                await setAdminUserStatus({ userId: user.id, status: newStatus });
+                await loadUsuarios(true);
                 addToast(`Usuário ${newStatus === 'bloqueado' ? 'bloqueado' : 'liberado'}!`, "info");
-            } catch {
+            } catch (error: unknown) {
+                console.error(error);
                 addToast("Erro ao alterar status.", "error");
             }
         }
@@ -135,9 +137,11 @@ export default function AdminUsuariosPage() {
     const handleDelete = async (id: string) => {
         if(confirm("🚨 ATENÇÃO: Isso apagará o usuário permanentemente. Essa ação não pode ser desfeita. Confirmar?")) {
             try {
-                await deleteDoc(doc(db, "users", id));
+                await deleteAdminUser(id);
+                await loadUsuarios(true);
                 addToast("Usuário deletado.", "info");
-            } catch {
+            } catch (error: unknown) {
+                console.error(error);
                 addToast("Erro ao deletar.", "error");
             }
         }

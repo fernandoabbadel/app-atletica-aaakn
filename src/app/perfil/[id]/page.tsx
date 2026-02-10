@@ -13,11 +13,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext"; 
 import { useToast } from "../../../context/ToastContext";
-import { db } from "../../../lib/firebase";
-import { 
-  doc, getDoc, collection, query, getDocs, setDoc, deleteDoc, 
-  addDoc, serverTimestamp, onSnapshot, where, limit, Timestamp 
-} from "firebase/firestore";
+import { fetchPatentesConfig } from "../../../lib/achievementsService";
+import {
+  fetchFollowList,
+  fetchPublicProfileBundle,
+  toggleFollowProfile
+} from "../../../lib/profileService";
 import Link from "next/link";
 
 // --- TIPAGEM ---
@@ -28,7 +29,7 @@ interface PostItem {
   texto?: string;
   likes?: string[];
   comentarios?: number;
-  createdAt?: Timestamp | null; // Timestamp do Firestore
+  createdAt?: unknown;
   userId: string;
 }
 
@@ -137,14 +138,24 @@ const getSportInfo = (sport: string) => {
 const LevelBadge = ({ xp }: { xp: number }) => {
     const [patentes, setPatentes] = useState<PatenteData[]>([]);
     useEffect(() => {
-        const q = query(collection(db, "patentes_config")); 
-        const unsub = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(d => d.data() as PatenteData);
-            data.sort((a, b) => a.minXp - b.minXp);
-            if (data.length > 0) setPatentes(data);
+        const loadPatentes = async () => {
+            try {
+                const rows = await fetchPatentesConfig({ maxResults: 80 });
+                const data = rows.map((entry) => ({
+                    titulo: entry.titulo,
+                    minXp: entry.minXp,
+                    cor: entry.cor,
+                    iconName: entry.iconName,
+                } as PatenteData));
+                data.sort((a, b) => a.minXp - b.minXp);
+                if (data.length > 0) setPatentes(data);
             else setPatentes([{ titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
-        });
-        return () => unsub();
+            } catch (error: unknown) {
+                console.error(error);
+                setPatentes([{ titulo: "Plancton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" }]);
+            }
+        };
+        void loadPatentes();
     }, []);
     const currentBadge = patentes.slice().reverse().find(p => xp >= p.minXp) || patentes[0];
     if (!currentBadge) return null;
@@ -227,11 +238,9 @@ export default function PerfilPublicoPage() {
 
     const fetchProfile = async () => {
         try {
-            const docRef = doc(db, "users", uid);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-                const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+            const bundle = await fetchPublicProfileBundle(uid, user?.uid, { forceRefresh: true });
+            if (bundle?.profile) {
+                const data = bundle.profile as UserProfile;
 
                 // 🦈 VERIFICAÇÃO DE CONTA DESATIVADA 
                 if ((data.role === 'inactive' || data.status === 'paused') && !isOwnProfile) {
@@ -243,90 +252,93 @@ export default function PerfilPublicoPage() {
                 setProfile(data);
                 
                 // Seguidores
-                if (data.stats?.followersCount !== undefined) setFollowersCount(data.stats.followersCount);
-                else { const snap = await getDocs(collection(db, "users", uid, "followers")); setFollowersCount(snap.size); }
-                if (data.stats?.followingCount !== undefined) setFollowingCount(data.stats.followingCount);
-                else { const snap = await getDocs(collection(db, "users", uid, "following")); setFollowingCount(snap.size); }
+                setFollowersCount(bundle.followersCount);
+                setFollowingCount(bundle.followingCount);
 
-                // Check Follow
-                if (user) {
-                    const amIFollowingRef = doc(db, "users", uid, "followers", user.uid);
-                    const docFollow = await getDoc(amIFollowingRef);
-                    setIsFollowing(docFollow.exists());
-                }
+                setIsFollowing(bundle.isFollowing);
 
-                // 1. POSTS
-                const qPosts = query(collection(db, "posts"), where("userId", "==", uid), limit(20));
-                getDocs(qPosts).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostItem));
-                    list.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
-                    setRecentPosts(list.slice(0, 5));
-                });
+                setRecentPosts((bundle.posts as PostItem[]).slice(0, 5));
+                setMyEvents((bundle.events as EventItem[]).slice(0, 5));
 
-                // 2. EVENTOS
-                const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", uid), limit(20));
-                getDocs(qEvents).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EventItem));
-                    // Ordenação simples por data string (MVP)
-                    list.sort((a, b) => { const da = a.data ? new Date(a.data).getTime() : 0; const db = b.data ? new Date(b.data).getTime() : 0; return da - db; });
-                    setMyEvents(list.slice(0, 5));
-                });
+                setMyLigas((bundle.ligas as LigaItem[]).slice(0, 5));
 
-                // 3. LIGAS
-                const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", uid));
-                getDocs(qLigas).then(snap => setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as LigaItem))));
-
-                // 4. TREINOS
-                const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", uid), limit(20));
-                getDocs(qTreinos).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TreinoItem));
-                    setMyTreinos(list.slice(0, 5));
-                });
+                setMyTreinos((bundle.treinos as TreinoItem[]).slice(0, 5));
 
             } else {
                 addToast("Usuário não encontrado.", "error");
                 router.push("/dashboard");
             }
-        } catch (error) { console.error(error); } 
+        } catch (error: unknown) { console.error(error); } 
         finally { setLoading(false); }
     };
-    fetchProfile();
+    void fetchProfile();
   }, [params.id, user, isOwnProfile, addToast, router]); // 🦈 Dependências adicionadas
 
   const handleFollow = async () => {
       if (!user || !profile) return;
-      const targetFollowerRef = doc(db, "users", profile.uid, "followers", user.uid);
-      const myFollowingRef = doc(db, "users", user.uid, "following", profile.uid);
       try {
-          if (isFollowing) {
-              await deleteDoc(targetFollowerRef);
-              await deleteDoc(myFollowingRef);
-              setIsFollowing(false);
-              setFollowersCount(p => p - 1);
-              addToast("Deixou de seguir.", "info");
-          } else {
-              const myData = { uid: user.uid, nome: user.nome, foto: user.foto || "", turma: user.turma || "" };
-              const targetData = { uid: profile.uid, nome: profile.nome, foto: profile.foto || "", turma: profile.turma || "" };
-              await setDoc(targetFollowerRef, { ...myData, followedAt: serverTimestamp() });
-              await setDoc(myFollowingRef, { ...targetData, followedAt: serverTimestamp() });
-              await addDoc(collection(db, "notifications"), { userId: profile.uid, title: "Novo Seguidor! 🦈", message: `${user.nome} começou a te seguir.`, link: `/perfil/${user.uid}`, read: false, type: "social", createdAt: serverTimestamp() });
-              setIsFollowing(true);
-              setFollowersCount(p => p + 1);
-              addToast("Seguindo!", "success");
+          const result = await toggleFollowProfile({
+              viewerUid: user.uid,
+              targetUid: profile.uid,
+              currentlyFollowing: isFollowing,
+              viewerData: {
+                  uid: user.uid,
+                  nome: user.nome || "Atleta",
+                  foto: user.foto || "",
+                  turma: user.turma || "Geral",
+              },
+              targetData: {
+                  uid: profile.uid,
+                  nome: profile.nome,
+                  foto: profile.foto || "",
+                  turma: profile.turma || "Geral",
+              },
+          });
+          setIsFollowing(result.isFollowing);
+          setFollowersCount(result.followersCount);
+          if (user.uid === profile.uid) {
+              setFollowingCount(result.followingCount);
           }
-      } catch { addToast("Erro ao seguir.", "error"); }
+          addToast(result.isFollowing ? "Seguindo!" : "Deixou de seguir.", result.isFollowing ? "success" : "info");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao seguir.", "error");
+      }
   };
 
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile) return;
       setActiveModal(type);
-      
-      const colName = type === 'followers' ? 'followers' : 'following';
-      const q = query(collection(db, "users", profile.uid, colName));
-      const snap = await getDocs(q);
-      
-      if (type === 'followers') setFollowersList(snap.docs.map(d => d.data() as FollowData));
-      else setFollowingList(snap.docs.map(d => d.data() as FollowData));
+      try {
+          const list = await fetchFollowList(profile.uid, type, {
+              maxResults: 220,
+              forceRefresh: true,
+          });
+          if (type === 'followers') setFollowersList(list);
+          else setFollowingList(list);
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar lista.", "error");
+      }
+  };
+
+  const formatPostDate = (value: unknown): string => {
+      if (!value) return "Hoje";
+      if (value instanceof Date) return value.toLocaleDateString("pt-BR");
+      if (typeof value === "string" || typeof value === "number") {
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? "Hoje" : parsed.toLocaleDateString("pt-BR");
+      }
+      if (typeof value === "object" && value !== null) {
+          const toDate = (value as { toDate?: unknown }).toDate;
+          if (typeof toDate === "function") {
+              const parsed = toDate.call(value) as Date;
+              if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+                  return parsed.toLocaleDateString("pt-BR");
+              }
+          }
+      }
+      return "Hoje";
   };
 
   if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
@@ -465,7 +477,7 @@ export default function PerfilPublicoPage() {
                     {/* POSTS */}
                     {activeTab === 'posts' && (
                         recentPosts.length > 0 ? (
-                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
+                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{formatPostDate(p.createdAt)}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
                     )}
 

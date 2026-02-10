@@ -8,16 +8,18 @@ import {
   X, PawPrint, Users, Lock, Heart, UserCheck,
   Zap, Gem, Trophy, Medal, Calendar, Dumbbell, LayoutList,
   ChevronRight, ThumbsUp, LayoutGrid, UserPlus, Target, User,
-  Skull, Rocket, Clock, CheckCircle, Camera, Upload
+  Skull, Rocket, Clock, CheckCircle, Camera
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext"; 
 import { useToast } from "../../context/ToastContext";
-import { db, storage } from "../../lib/firebase"; 
-import { 
-  doc, getDoc, collection, query, getDocs, onSnapshot, where, limit, Timestamp, updateDoc 
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  fetchFollowList,
+  fetchOwnProfileBundle,
+  saveProfileImageUrl,
+  updateProfileFields,
+  uploadProfileImage
+} from "../../lib/profileService";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -29,7 +31,7 @@ interface PostPerfil {
   id: string;
   texto: string;
   imagem?: string;
-  createdAt: Timestamp;
+  createdAt?: unknown;
   likes: string[];
   comentarios?: number;
 }
@@ -244,10 +246,9 @@ export default function MeuPerfilPage() {
 
     const fetchProfile = async () => {
         try {
-            const docRef = doc(db, "users", user.uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+            const bundle = await fetchOwnProfileBundle(user.uid, { forceRefresh: true });
+            if (bundle?.profile) {
+                const data = bundle.profile as UserProfile;
                 setProfile(data);
                 
                 setEditName(data.nome || "");
@@ -261,51 +262,31 @@ export default function MeuPerfilPage() {
                 setEditIdadePublica(data.idadePublica ?? true);
                 setEditRelacionamentoPublico(data.relacionamentoPublico ?? true);
                 
-                if (data.stats?.followersCount !== undefined) setFollowersCount(data.stats.followersCount);
-                else { const snap = await getDocs(collection(db, "users", user.uid, "followers")); setFollowersCount(snap.size); }
-                
-                if (data.stats?.followingCount !== undefined) setFollowingCount(data.stats.followingCount);
-                else { const snap = await getDocs(collection(db, "users", user.uid, "following")); setFollowingCount(snap.size); }
+                setFollowersCount(bundle.followersCount);
+                setFollowingCount(bundle.followingCount);
 
-                const qPosts = query(collection(db, "posts"), where("userId", "==", user.uid), limit(20));
-                getDocs(qPosts).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPerfil));
-                    list.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
-                    setRecentPosts(list.slice(0, 5));
-                });
+                setRecentPosts((bundle.posts as PostPerfil[]).slice(0, 5));
 
-                const qEvents = query(collection(db, "eventos"), where("interessados", "array-contains", user.uid), limit(20));
-                getDocs(qEvents).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EventoPerfil));
-                    list.sort((a, b) => { const da = a.data ? new Date(a.data).getTime() : 0; const db = b.data ? new Date(b.data).getTime() : 0; return da - db; });
-                    setMyEvents(list.slice(0, 5));
-                });
+                setMyEvents((bundle.events as EventoPerfil[]).slice(0, 5));
 
-                const qLigas = query(collection(db, "ligas_config"), where("membrosIds", "array-contains", user.uid));
-                getDocs(qLigas).then(snap => 
-                    setMyLigas(snap.docs.map(d => ({ id: d.id, ...d.data() } as LigaPerfil)))
-                );
+                setMyLigas((bundle.ligas as LigaPerfil[]).slice(0, 5));
 
-                const qTreinos = query(collection(db, "treinos"), where("confirmados", "array-contains", user.uid), limit(20));
-                getDocs(qTreinos).then(snap => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TreinoPerfil));
-                    setMyTreinos(list.slice(0, 5));
-                });
+                setMyTreinos((bundle.treinos as TreinoPerfil[]).slice(0, 5));
 
             } else { addToast("Perfil não encontrado.", "error"); }
-        } catch (error) { console.error(error); } 
+        } catch (error: unknown) { console.error(error); } 
         finally { setLoading(false); }
     };
-    fetchProfile();
+    void fetchProfile();
   }, [user, authLoading, router, addToast]);
 
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile || !user) return;
       setActiveModal(type);
-      const colName = type === 'followers' ? 'followers' : 'following';
-      const q = query(collection(db, "users", user.uid, colName));
-      const snap = await getDocs(q);
-      const list = snap.docs.map(d => d.data() as FollowData);
+      const list = await fetchFollowList(user.uid, type, {
+          maxResults: 220,
+          forceRefresh: true,
+      });
       if(type === 'followers') setFollowersList(list);
       else setFollowingList(list);
   };
@@ -327,11 +308,14 @@ export default function MeuPerfilPage() {
               relacionamentoPublico: editRelacionamentoPublico
           };
           
-          await updateDoc(doc(db, "users", user.uid), updateData);
+          await updateProfileFields({
+              uid: user.uid,
+              ...updateData,
+          });
           setProfile({ ...profile, ...updateData });
           setShowEditModal(false);
           addToast("Perfil atualizado com sucesso! 🦈", "success");
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao salvar perfil.", "error");
       } finally {
@@ -350,17 +334,18 @@ export default function MeuPerfilPage() {
 
       setSavingProfile(true);
       try {
-          const path = `users/${user.uid}/${type}_${Date.now()}`;
-          const storageRef = ref(storage, path);
-          await uploadBytes(storageRef, file);
-          const url = await getDownloadURL(storageRef);
+          const url = await uploadProfileImage({
+              uid: user.uid,
+              file,
+              kind: type,
+          });
           
           const field = type === 'avatar' ? 'foto' : 'capa';
-          await updateDoc(doc(db, "users", user.uid), { [field]: url });
+          await saveProfileImageUrl({ uid: user.uid, field, url });
           
           setProfile(prev => prev ? { ...prev, [field]: url } : null);
           addToast(`${type === 'avatar' ? 'Foto' : 'Capa'} atualizada!`, "success");
-      } catch (error) {
+      } catch (error: unknown) {
           console.error(error);
           addToast("Erro no upload da imagem.", "error");
       } finally {
@@ -378,6 +363,25 @@ export default function MeuPerfilPage() {
           }
           setEditSports([...editSports, sport]);
       }
+  };
+
+  const formatPostDate = (value: unknown): string => {
+      if (!value) return "Hoje";
+      if (value instanceof Date) return value.toLocaleDateString("pt-BR");
+      if (typeof value === "string" || typeof value === "number") {
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? "Hoje" : parsed.toLocaleDateString("pt-BR");
+      }
+      if (typeof value === "object" && value !== null) {
+          const toDate = (value as { toDate?: unknown }).toDate;
+          if (typeof toDate === "function") {
+              const parsed = toDate.call(value) as Date;
+              if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+                  return parsed.toLocaleDateString("pt-BR");
+              }
+          }
+      }
+      return "Hoje";
   };
 
   if (loading || authLoading) return (
@@ -522,7 +526,7 @@ export default function MeuPerfilPage() {
                 <div className="min-h-[200px]">
                     {activeTab === 'posts' && (
                         recentPosts.length > 0 ? (
-                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{p.createdAt ? new Date(p.createdAt.toDate()).toLocaleDateString('pt-BR') : 'Hoje'}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
+                            <div className="space-y-2 animate-in fade-in">{recentPosts.map(p => (<div key={p.id} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl"><p className="text-xs text-zinc-300 truncate mb-1">&quot;{p.texto}&quot;</p><div className="flex justify-between items-center text-[10px] text-zinc-500"><div className="flex items-center gap-2"><span className="flex items-center gap-1"><Heart size={10}/> {p.likes?.length || 0}</span><span className="flex items-center gap-1"><MessageCircle size={10}/> {p.comentarios || 0}</span></div><span>{formatPostDate(p.createdAt)}</span></div></div>))}<div className="text-center pt-2"><Link href="/comunidade" className="text-[10px] text-emerald-500 font-bold hover:underline">Ver Mais na Comunidade</Link></div></div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum post recente.</div>
                     )}
 

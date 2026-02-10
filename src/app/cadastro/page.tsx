@@ -11,9 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { db, storage } from "../../lib/firebase"; 
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore"; 
+import { markProfileComplete, uploadProfileImage } from "../../lib/profileService";
 import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
@@ -197,14 +195,20 @@ export default function CadastroPage() {
 
       setImageLoading(true);
       try {
-          const storageRef = ref(storage, `users/${user?.uid}/profile_${Date.now()}.jpg`);
-          await uploadBytes(storageRef, file);
-          const downloadURL = await getDownloadURL(storageRef);
+          if (!user?.uid) {
+              addToast("Usuario invalido para upload.", "error");
+              return;
+          }
+          const downloadURL = await uploadProfileImage({
+              uid: user.uid,
+              file,
+              kind: "profile",
+          });
 
           setFormData(prev => ({ ...prev, foto: downloadURL }));
           addToast("Foto carregada com sucesso! 🦈", "success");
 
-      } catch (error) {
+      } catch (error: unknown) {
           console.error("Erro upload:", error);
           addToast("Erro ao enviar foto. Tente novamente.", "error");
       } finally {
@@ -265,10 +269,7 @@ export default function CadastroPage() {
         formData.foto;
 
       if (isProfileComplete && user?.uid) {
-        // Define profileComplete = 1 no Firestore (usado para conquistas)
-        await updateDoc(doc(db, "users", user.uid), {
-            "stats.profileComplete": 1 
-        });
+        await markProfileComplete(user.uid);
       }
 
       addToast("Perfil atualizado! Bem-vindo ao cardume. 🦈", "success");

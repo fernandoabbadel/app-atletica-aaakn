@@ -12,64 +12,27 @@ import {
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../../../context/ToastContext"; 
-import { db } from "../../../../lib/firebase"; 
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, deleteDoc, Timestamp } from "firebase/firestore";
+import {
+  deleteAdminUser,
+  fetchAdminUserDossier,
+  setAdminUserStatus,
+  type AdminUserAchievementRecord,
+  type AdminUserGymRecord,
+  type AdminUserMatchRecord,
+  type AdminUserOrderRecord,
+  type AdminUserPostRecord,
+  type AdminUserProfileRecord
+} from "../../../../lib/adminUsersService";
 
 // --- TIPOS AUXILIARES ---
 type TabType = "visao" | "financeiro" | "social" | "games" | "seguranca";
 
-interface UserData {
-    id: string;
-    nome: string;
-    email: string;
-    foto?: string;
-    matricula?: string;
-    turma?: string;
-    telefone?: string;
-    status: 'ativo' | 'bloqueado';
-    level?: number;
-    xp?: number;
-    sharkCoins?: number;
-    plano_badge?: string;
-    tier?: string;
-    patente?: string;
-    createdAt?: Timestamp;
-    [key: string]: unknown; // Flexibilidade para outros campos
-}
-
-interface Post {
-    id: string;
-    texto: string;
-    likes?: string[];
-    comentarios?: number;
-    createdAt?: Timestamp;
-}
-
-interface Order {
-    id: string;
-    itens: number;
-    total: number;
-    status: string;
-    createdAt?: Timestamp;
-}
-
-interface Achievement {
-    id: string;
-    achievementTitle: string;
-    timestamp?: Timestamp;
-}
-
-interface Match {
-    id: string;
-    game: string;
-    result: 'win' | 'lose';
-}
-
-interface GymLog {
-    id: string;
-    local: string;
-    date: string;
-}
+type UserData = AdminUserProfileRecord;
+type Post = AdminUserPostRecord;
+type Order = AdminUserOrderRecord;
+type Achievement = AdminUserAchievementRecord;
+type Match = AdminUserMatchRecord;
+type GymLog = AdminUserGymRecord;
 
 export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -103,43 +66,55 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
       const fetchDossier = async () => {
           try {
               // A. Usuário
-              const userRef = doc(db, "users", id);
-              const userSnap = await getDoc(userRef);
+              const dossier = await fetchAdminUserDossier(id, { forceRefresh: true });
 
-              if (!userSnap.exists()) {
+              if (!dossier?.user) {
                   addToast("Usuário não encontrado.", "error");
                   router.push('/admin/usuarios');
                   return;
               }
-              setUser({ id: userSnap.id, ...userSnap.data() } as UserData);
+              setUser(dossier.user as UserData);
 
-              // B. Buscas Paralelas
-              const [postsSnap, ordersSnap, achSnap, matchesSnap, gymSnap] = await Promise.all([
-                  getDocs(query(collection(db, "posts"), where("userId", "==", id), orderBy("createdAt", "desc"), limit(20))),
-                  getDocs(query(collection(db, "store_orders"), where("userId", "==", id), orderBy("createdAt", "desc"))),
-                  getDocs(query(collection(db, "achievements_logs"), where("userId", "==", id), orderBy("timestamp", "desc"))),
-                  getDocs(query(collection(db, "arena_matches"), where("userId", "==", id), orderBy("date", "desc"), limit(20))),
-                  getDocs(query(collection(db, "gym_logs"), where("userId", "==", id), orderBy("date", "desc"), limit(30)))
-              ]);
+              setPosts(dossier.posts as Post[]);
+              setOrders(dossier.orders as Order[]);
+              setAchievements(dossier.achievements as Achievement[]);
+              setMatches(dossier.matches as Match[]);
+              setGymLogs(dossier.gymLogs as GymLog[]);
 
-              setPosts(postsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post)));
-              setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
-              setAchievements(achSnap.docs.map(d => ({ id: d.id, ...d.data() } as Achievement)));
-              setMatches(matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match)));
-              setGymLogs(gymSnap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog)));
-
-          } catch (error) {
+          } catch (error: unknown) {
               console.error(error);
               addToast("Erro ao carregar dados.", "error");
           } finally {
               setLoading(false);
           }
       };
-      fetchDossier();
+      void fetchDossier();
   }, [id, addToast, router]);
 
   // --- CÁLCULO LTV ---
   const ltv = useMemo(() => orders.reduce((acc, curr) => acc + (curr.total || 0), 0), [orders]);
+
+  const parseDateValue = (value: unknown): Date | null => {
+      if (value instanceof Date) return value;
+      if (typeof value === "string" || typeof value === "number") {
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      if (typeof value === "object" && value !== null) {
+          const candidate = (value as { toDate?: unknown }).toDate;
+          if (typeof candidate === "function") {
+              const result = candidate.call(value) as Date;
+              if (result instanceof Date && !Number.isNaN(result.getTime())) return result;
+          }
+      }
+      return null;
+  };
+
+  const formatDateValue = (value: unknown, withTime = false): string => {
+      const parsed = parseDateValue(value);
+      if (!parsed) return withTime ? "-" : "Antigo";
+      return withTime ? parsed.toLocaleString() : parsed.toLocaleDateString();
+  };
 
   // --- AÇÃO: ATIVAR / DESATIVAR (Toggle Status) ---
   const handleToggleStatus = async () => {
@@ -153,10 +128,11 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
       if (confirm(msg)) {
           setActionLoading(true);
           try {
-              await updateDoc(doc(db, "users", id), { status: newStatus });
+              await setAdminUserStatus({ userId: id, status: newStatus });
               setUser({ ...user, status: newStatus });
               addToast(newStatus === 'bloqueado' ? "Conta desativada." : "Conta reativada!", newStatus === 'bloqueado' ? "info" : "success");
-          } catch {
+          } catch (error: unknown) {
+              console.error(error);
               addToast("Erro ao atualizar status.", "error");
           } finally {
               setActionLoading(false);
@@ -172,7 +148,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
           setActionLoading(true);
           try {
               // 1. Deleta o documento do usuário
-              await deleteDoc(doc(db, "users", id));
+              await deleteAdminUser(id);
               
               // (Opcional) Aqui você poderia deletar subcoleções ou logs, mas o Firestore não faz cascata automático.
               
@@ -298,7 +274,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                         </div>
                         <div className="stat-box">
                             <p className="label">Data Cadastro</p>
-                            <p className="value"><Calendar size={14} className="inline mr-1 text-zinc-500"/> {user.createdAt?.toDate().toLocaleDateString() || "Antigo"}</p>
+                            <p className="value"><Calendar size={14} className="inline mr-1 text-zinc-500"/> {formatDateValue(user.createdAt, false)}</p>
                         </div>
                     </div>
                 </div>
@@ -350,13 +326,13 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                         {posts.slice(0,3).map(p => (
                             <div key={p.id} className="py-3 border-b border-zinc-800 flex justify-between items-center">
                                 <span className="text-xs text-zinc-400"><MessageCircle size={12} className="inline mr-2 text-blue-500"/>Postou na comunidade</span>
-                                <span className="text-[10px] text-zinc-600">{p.createdAt?.toDate().toLocaleString()}</span>
+                                <span className="text-[10px] text-zinc-600">{formatDateValue(p.createdAt, true)}</span>
                             </div>
                         ))}
                         {orders.slice(0,3).map(o => (
                             <div key={o.id} className="py-3 border-b border-zinc-800 flex justify-between items-center">
                                 <span className="text-xs text-zinc-400"><ShoppingBag size={12} className="inline mr-2 text-emerald-500"/>Comprou {o.itens}</span>
-                                <span className="text-[10px] text-zinc-600">{o.createdAt?.toDate().toLocaleString()}</span>
+                                <span className="text-[10px] text-zinc-600">{formatDateValue(o.createdAt, true)}</span>
                             </div>
                         ))}
                         {achievements.length === 0 && posts.length === 0 && orders.length === 0 && (
@@ -380,7 +356,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                                 <tr key={order.id} className="hover:bg-zinc-800/30">
                                     <td className="p-4 font-mono text-zinc-500">#{order.id.slice(0,6)}</td>
                                     <td className="p-4">{order.itens}</td>
-                                    <td className="p-4">{order.createdAt?.toDate().toLocaleDateString()}</td>
+                                    <td className="p-4">{formatDateValue(order.createdAt, false)}</td>
                                     <td className="p-4 text-right font-bold text-emerald-400">R$ {order.total}</td>
                                 </tr>
                             ))}
@@ -431,7 +407,7 @@ export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: 
                         {achievements.map((ach, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl border border-zinc-800">
                                 <div className="p-2 bg-yellow-500/10 rounded-full text-yellow-500"><Award size={16}/></div>
-                                <div><p className="text-xs font-bold text-white">{ach.achievementTitle}</p><p className="text-[10px] text-zinc-500">{ach.timestamp?.toDate().toLocaleString()}</p></div>
+                                <div><p className="text-xs font-bold text-white">{ach.achievementTitle}</p><p className="text-[10px] text-zinc-500">{formatDateValue(ach.timestamp, true)}</p></div>
                             </div>
                         ))}
                     </div>
