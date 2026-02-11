@@ -7,15 +7,15 @@ import { ArrowLeft, CheckCircle2, Tag, Type } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../../context/AuthContext";
-import { db, storage } from "../../../../lib/firebase";
-import { collection, addDoc, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { useToast } from "../../../../context/ToastContext";
+import { submitGymCheckin } from "../../../../lib/gymService";
 
 const WORKOUT_TYPES = ["Musculação", "Crossfit", "Cardio / Corrida", "Natação", "Futevôlei", "Luta / Artes Marciais", "Dança", "Outros"];
 
 export default function CheckinDetailsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("");
   const [customTitle, setCustomTitle] = useState("");
@@ -33,51 +33,26 @@ export default function CheckinDetailsPage() {
     setIsSubmitting(true);
 
     try {
-        // 1. Upload da Imagem (Base64) para o Storage
-        const timestamp = Date.now();
-        const imageRef = ref(storage, `posts/${user.uid}/${timestamp}.jpg`);
-        
-        // uploadString é ideal para base64 (data_url)
-        await uploadString(imageRef, photo, 'data_url');
-        const downloadURL = await getDownloadURL(imageRef);
-
-        // 2. Criar o Post no Firestore
-        await addDoc(collection(db, "posts"), {
-            usuarioId: user.uid,
-            usuarioNome: user.nome || "Atleta AAAKN",
-            usuarioAvatar: user.foto || "https://github.com/shadcn.png",
-            titulo: customTitle,
-            modalidade: selectedType,
-            legenda: `Treino de ${selectedType} pago! 🔥`,
-            foto: downloadURL, // Link do Storage
-            isChallenge: false,
-            validado: true,
-            likes: 0,
-            likedBy: [], // Array vazio para controlar quem curtiu
-            comentarios: [],
-            createdAt: serverTimestamp(),
-            // Datas formatadas para exibição rápida
-            data: "Hoje", 
-            tempo: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        });
-
-        // 3. Atualizar XP do Usuário
-        const userRef = doc(db, "users", user.uid);
-        await updateDoc(userRef, {
-            xp: increment(50)
+        await submitGymCheckin({
+            userId: user.uid,
+            userName: user.nome || "Atleta AAAKN",
+            userAvatar: user.foto || "https://github.com/shadcn.png",
+            selectedType,
+            title: customTitle,
+            photoDataUrl: photo,
         });
 
         localStorage.removeItem("tempCheckinPhoto");
-        alert(`Treino Validado! +50 XP 🦈`);
+        addToast("Treino validado! +50 XP", "success");
         router.push("/gym");
 
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Erro ao publicar:", error);
-        alert("Erro ao postar treino. Tente novamente.");
+        addToast("Erro ao postar treino. Tente novamente.", "error");
+    } finally {
         setIsSubmitting(false);
     }
   };
-
   if (!photo) return null;
 
   const isValid = selectedType !== "" && customTitle.trim().length > 0;
@@ -175,3 +150,4 @@ export default function CheckinDetailsPage() {
     </div>
   );
 }
+

@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { compressImageFile } from "../../../lib/imageCompression";
 
 // Lista de Poses (Estática é ok, pois é configuração visual)
 const DAILY_POSES = [
@@ -63,26 +64,41 @@ export default function CheckinPage() {
     if (videoRef.current && canvasRef.current) {
       const context = canvasRef.current.getContext("2d");
       if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvasRef.current.toDataURL("image/jpeg", 0.8); // Compressão leve (0.8)
+        const sourceWidth = videoRef.current.videoWidth;
+        const sourceHeight = videoRef.current.videoHeight;
+        const scale = Math.min(1280 / sourceWidth, 1280 / sourceHeight, 1);
+        const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+        canvasRef.current.width = targetWidth;
+        canvasRef.current.height = targetHeight;
+        context.drawImage(videoRef.current, 0, 0, targetWidth, targetHeight);
+        const dataUrl = canvasRef.current.toDataURL("image/jpeg", 0.8);
         processPhoto(dataUrl);
       }
     }
   };
 
-  const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if(typeof reader.result === 'string') processPhoto(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedFile = await compressImageFile(file, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.8,
+        });
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === "string") processPhoto(reader.result);
+        };
+        reader.readAsDataURL(compressedFile);
+      } catch (error: unknown) {
+        console.error(error);
+      }
     }
   };
-
   return (
     <div className="min-h-screen bg-black text-white flex flex-col font-sans relative overflow-hidden">
       {/* HEADER */}
@@ -133,3 +149,4 @@ export default function CheckinPage() {
     </div>
   );
 }
+

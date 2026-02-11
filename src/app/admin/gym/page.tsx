@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
+import { compressImageFile } from "../../../lib/imageCompression";
 
 // --- TIPAGEM ---
 
@@ -261,12 +262,22 @@ export default function AdminGymPage() {
       }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+        const compressedFile = await compressImageFile(file, {
+            maxWidth: 1280,
+            maxHeight: 1280,
+            quality: 0.8,
+        });
         const reader = new FileReader();
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(compressedFile);
         reader.onload = (ev) => setEditingChamp({ ...editingChamp, fotoCapa: ev.target?.result as string });
+    } catch (error: unknown) {
+        console.error(error);
+        addToast("Erro ao processar imagem.", "error");
     }
   };
 

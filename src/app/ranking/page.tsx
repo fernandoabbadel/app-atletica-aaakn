@@ -4,8 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, Users, User, Crown, Loader2 } from "lucide-react"; // 🦈 Removido 'Trophy' não utilizado
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image do Next.js
-import { db } from "../../lib/firebase";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { fetchGlobalRankingUsers } from "../../lib/rankingService";
 
 // Interface para o Usuário vindo do Firebase
 interface RankingUser {
@@ -35,30 +34,23 @@ export default function RankingPage() {
   useEffect(() => {
     async function fetchRanking() {
       try {
-        // 🦈 Busca os top 100 usuários ordenados por XP
-        const q = query(
-          collection(db, "users"), 
-          orderBy("xp", "desc"), 
-          limit(100)
-        );
-        
-        const snapshot = await getDocs(q);
-        const usersData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          nome: doc.data().nome || "Atleta Anônimo",
-          apelido: doc.data().apelido || "",
-          xp: doc.data().xp || 0,
-          foto: doc.data().foto || "https://github.com/shadcn.png",
-          turma: doc.data().turma || "Geral"
+        const usersData = (await fetchGlobalRankingUsers({
+          maxResults: 100,
+          forceRefresh: true,
+        })).map((entry) => ({
+          id: entry.id,
+          nome: entry.nome || "Atleta Anonimo",
+          apelido: entry.apelido || "",
+          xp: entry.xp || 0,
+          foto: entry.foto || "https://github.com/shadcn.png",
+          turma: entry.turma || "Geral",
         })) as RankingUser[];
 
         setUsers(usersData);
 
-        // 🦈 Cálculo Dinâmico das Turmas (Agregação no Cliente)
         const turmasMap: Record<string, RankingTurma> = {};
 
         usersData.forEach(user => {
-            // Normaliza a turma (Remove espaços, deixa maiúsculo)
             const turmaKey = user.turma ? user.turma.toUpperCase().trim() : "GERAL";
             
             if (!turmasMap[turmaKey]) {
@@ -74,20 +66,18 @@ export default function RankingPage() {
             turmasMap[turmaKey].membros += 1;
         });
 
-        // Transforma o mapa em array e ordena por pontos
         const turmasSorted = Object.values(turmasMap).sort((a, b) => b.pontos - a.pontos);
         setTurmas(turmasSorted);
 
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Erro ao carregar ranking:", error);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchRanking();
+    void fetchRanking();
   }, []);
-
   // Seleciona a lista baseada na aba
   const dataList = activeTab === "individual" ? users : turmas;
   const top3 = dataList.slice(0, 3);
@@ -279,3 +269,4 @@ export default function RankingPage() {
     </div>
   );
 }
+

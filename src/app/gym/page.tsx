@@ -10,18 +10,7 @@ import {
 import Link from "next/link";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  updateDoc, 
-  arrayUnion, 
-  arrayRemove, 
-  increment 
-} from "firebase/firestore";
+import { fetchGymFeed, toggleGymPostLike } from "../../lib/gymService";
 
 // --- TIPAGEM ---
 interface Post {
@@ -36,11 +25,10 @@ interface Post {
     tempo: string;
     foto: string;
     isChallenge: boolean;
-    validado: boolean;
-    likes: number;
-    likedBy: string[]; // Lista de UIDs que deram like
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    comentarios: any[];
+  validado: boolean;
+  likes: number;
+  likedBy: string[]; // Lista de UIDs que deram like
+  comentarios: unknown[];
 }
 
 const ACTIVE_CHALLENGE = {
@@ -66,27 +54,24 @@ export default function GymPage() {
 
   // 🦈 LISTENER EM TEMPO REAL DO FIRESTORE
   useEffect(() => {
-    // Cria a query: Coleção 'posts', ordenada por 'createdAt' decrescente
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-
-    // O onSnapshot mantem os dados vivos. Se alguém postar, aparece na hora.
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        const novosPosts = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as Post[];
-        
-        setPosts(novosPosts);
-        setLoading(false);
-    }, (error) => {
+    const loadFeed = async () => {
+      setLoading(true);
+      try {
+        const feed = await fetchGymFeed({
+          maxResults: 80,
+          forceRefresh: true,
+        });
+        setPosts(feed as Post[]);
+      } catch (error: unknown) {
         console.error("Erro ao buscar posts:", error);
         addToast("Erro ao carregar o feed.", "error");
+      } finally {
         setLoading(false);
-    });
+      }
+    };
 
-    return () => unsubscribe();
+    void loadFeed();
   }, [addToast]);
-
   const handleBack = () => {
       if (activeView !== "feed") {
           setActiveView("feed");
@@ -99,29 +84,50 @@ export default function GymPage() {
   const handleLike = async (post: Post) => {
     if (!user) return;
 
-    const postRef = doc(db, "posts", post.id);
     const jaDeuLike = post.likedBy?.includes(user.uid);
+    const likeDelta = jaDeuLike ? -1 : 1;
+    const nextLikedBy = jaDeuLike
+      ? post.likedBy.filter((uid) => uid !== user.uid)
+      : [...post.likedBy, user.uid];
 
     try {
-        if (jaDeuLike) {
-            // Remove Like
-            await updateDoc(postRef, {
-                likes: increment(-1),
-                likedBy: arrayRemove(user.uid)
-            });
-        } else {
-            // Adiciona Like
-            await updateDoc(postRef, {
-                likes: increment(1),
-                likedBy: arrayUnion(user.uid)
-            });
-        }
-    } catch (error) {
+        setPosts((current) =>
+          current.map((entry) =>
+            entry.id === post.id
+              ? {
+                  ...entry,
+                  likes: Math.max(0, (entry.likes || 0) + likeDelta),
+                  likedBy: nextLikedBy,
+                }
+              : entry
+          )
+        );
+        setDetailPost((current) =>
+          current && current.id === post.id
+            ? {
+                ...current,
+                likes: Math.max(0, (current.likes || 0) + likeDelta),
+                likedBy: nextLikedBy,
+              }
+            : current
+        );
+
+        await toggleGymPostLike({
+          postId: post.id,
+          userId: user.uid,
+          currentlyLiked: jaDeuLike,
+        });
+    } catch (error: unknown) {
         console.error("Erro no like:", error);
         addToast("Erro ao curtir.", "error");
+        setPosts((current) =>
+          current.map((entry) => (entry.id === post.id ? post : entry))
+        );
+        setDetailPost((current) =>
+          current && current.id === post.id ? post : current
+        );
     }
   };
-
   // Agrupamento Visual (Opcional, mantido para estética)
   const groupedPosts = posts.reduce((groups, post) => {
       const date = post.data || "Hoje";
@@ -312,3 +318,5 @@ export default function GymPage() {
     </div>
   );
 }
+
+

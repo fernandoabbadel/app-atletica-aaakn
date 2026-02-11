@@ -6,8 +6,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { db } from "../../../lib/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { fetchArenaUsers } from "../../../lib/arenaService";
 // 🦈 Importamos a calculadora oficial para garantir que o Admin vê a mesma coisa que o User
 import { calculateUserStats } from "../../../lib/games"; 
 
@@ -31,11 +30,12 @@ export default function AdminGamesPage() {
   useEffect(() => {
       const fetchUsers = async () => {
           try {
-            const q = query(collection(db, "users"), limit(50));
-            const snap = await getDocs(q);
-            // Cast seguro com fallback
-            setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as AdminUser)));
-          } catch (error) {
+            const usersRows = await fetchArenaUsers({
+              maxResults: 80,
+              forceRefresh: true,
+            });
+            setUsers(usersRows.map((row) => ({ ...row } as AdminUser)));
+          } catch (error: unknown) {
             console.error("Erro ao buscar usuários", error);
           } finally {
             setLoading(false);

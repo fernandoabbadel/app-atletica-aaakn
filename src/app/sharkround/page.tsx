@@ -11,9 +11,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "../../context/ToastContext"; 
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { collection, query, getDocs, where, orderBy, limit } from "firebase/firestore";
 import { logActivity } from "../../lib/logger";
+import {
+  fetchActiveSharkroundLeagues,
+  fetchSharkroundPlayersPreview,
+  fetchSharkroundTubasRanking,
+} from "../../lib/sharkroundGameService";
 
 // --- TIPAGENS ---
 type TipoCasa = 'LIGA' | 'SORTE' | 'AZAR' | 'PRISAO' | 'INICIO';
@@ -94,16 +97,16 @@ export default function SharkRoundPage() {
         const ligasMap: Record<string, LigaConfig> = {};
 
         try {
-            const q = query(collection(db, "ligas_config"), where("ativa", "==", true));
-            const snap = await getDocs(q);
-            
-            snap.docs.forEach(d => {
-                const data = d.data() as LigaConfig;
-                data.id = d.id; // Garante ID
-                ligasLoaded.push(data);
-                ligasMap[d.id] = data;
+            const activeLeagues = await fetchActiveSharkroundLeagues({
+              maxResults: 32,
+              forceRefresh: true,
             });
-        } catch(error) { console.log("Offline/Erro Ligas", error); }
+            activeLeagues.forEach((league) => {
+              const data = league as unknown as LigaConfig;
+              ligasLoaded.push(data);
+              ligasMap[league.id] = data;
+            });
+        } catch(error: unknown) { console.log("Offline/Erro Ligas", error); }
 
         setLigasAtivasMap(ligasMap); 
 
@@ -145,18 +148,20 @@ export default function SharkRoundPage() {
 
         // Carrega Jogadores
         try {
-            const usersQ = query(collection(db, "users"), limit(20)); 
-            const usersSnap = await getDocs(usersQ);
-            const players = usersSnap.docs.map(d => ({
-                id: d.id,
-                nome: d.data().nome || "Calouro",
-                avatar: d.data().foto || "https://github.com/shadcn.png",
+            const playersPreview = await fetchSharkroundPlayersPreview({
+              maxResults: 20,
+              forceRefresh: true,
+            });
+            const players = playersPreview.map((entry) => ({
+                id: entry.id,
+                nome: entry.nome || "Calouro",
+                avatar: entry.avatar || "https://github.com/shadcn.png",
                 posicao: Math.floor(Math.random() * 40),
                 preso: Math.random() > 0.8,
                 coracoes: Math.floor(Math.random() * 4)
             }));
             setOutrosJogadores(players);
-        } catch (error) {
+        } catch (error: unknown) {
              console.error("Erro ao carregar jogadores", error);
              setOutrosJogadores([{ id: 'p2', nome: 'Vivian', avatar: 'https://github.com/shadcn.png', posicao: 10, preso: true, coracoes: 2 }]);
         }
@@ -171,17 +176,17 @@ export default function SharkRoundPage() {
 
   const fetchRanking = async () => {
       try {
-          const q = query(collection(db, "users"), orderBy("tubas", "desc"), limit(10));
-          const snap = await getDocs(q);
-          if(!snap.empty) {
-              setRankingData(snap.docs.map(d => ({
-                  id: d.id, 
-                  nome: d.data().nome, 
-                  foto: d.data().foto, 
-                  tubas: d.data().tubas || 0
-              })));
-          }
-      } catch (error) { console.error(error); }
+          const ranking = await fetchSharkroundTubasRanking({
+            maxResults: 10,
+            forceRefresh: true,
+          });
+          setRankingData(ranking.map((entry) => ({
+            id: entry.id,
+            nome: entry.nome,
+            foto: entry.foto,
+            tubas: entry.tubas || 0,
+          })));
+      } catch (error: unknown) { console.error(error); }
   };
 
   // --- MECÂNICA ---
@@ -350,7 +355,7 @@ export default function SharkRoundPage() {
       
       {/* HEADER */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 p-4 flex justify-between items-center shadow-lg">
-         <div className="flex items-center gap-3"><Link href="sharkround" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition"><ArrowLeft size={24}/></Link><div><h1 className="font-black text-lg italic uppercase text-white">SharkRound</h1><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">O Jogo da Atlética</p></div></div>
+         <div className="flex items-center gap-3"><Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition"><ArrowLeft size={24}/></Link><div><h1 className="font-black text-lg italic uppercase text-white">SharkRound</h1><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">O Jogo da Atlética</p></div></div>
          <div className="flex gap-3">
              <button onClick={() => setModalRanking(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-yellow-500 hover:bg-zinc-700 transition"><Trophy size={18}/></button>
              <button onClick={() => setModalRegras(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-blue-400 hover:bg-zinc-700 transition"><HelpCircle size={18}/></button>

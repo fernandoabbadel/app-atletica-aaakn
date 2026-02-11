@@ -11,9 +11,12 @@ import Image from "next/image"; // 🦈 Importando Image
 import { useToast } from "../../context/ToastContext";
 import SharkAvatar from "../components/SharkAvatar";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../lib/firebase";
 import { calculateLevel, getNextLevelXP, calculateUserStats, HeroStats } from "../../lib/games";
-import { collection, query, getDocs, limit, addDoc, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
+import {
+  fetchArenaUsers,
+  registerArenaBattleResult,
+  registerArenaFlee,
+} from "../../lib/arenaService";
 
 // ============================================================================
 // 1. CONFIGURAÇÕES & FÓRMULA OFICIAL 🦈
@@ -173,73 +176,83 @@ export default function SharkLegendsPage() {
     }
     
     const fetchData = async () => {
-        if (!user) return;
-        
-        const usersRef = collection(db, "users");
-        const qUsers = query(usersRef, limit(100)); 
-        const usersSnap = await getDocs(qUsers);
-        
-        const allUsers: GameUser[] = usersSnap.docs.map(d => {
-            const u = d.data();
-            const s = calculateUserStats(u);
-            const p = Object.values(s).reduce((a, b) => (typeof a === 'number' && typeof b === 'number') ? a + b : 0, 0);
-            const colorIdx = d.id.charCodeAt(0) % 6; 
-            return {
-                id: d.id,
-                name: u.nome,
-                apelido: u.apelido || "Anon",
-                foto: u.foto || "https://github.com/shadcn.png",
-                xp: u.xp || 0,
-                level: calculateLevel(u.xp || 0),
-                wins: u.stats?.arenaWins || 0,
-                losses: u.stats?.arenaLosses || 0,
-                stats: s, 
-                power: p,
-                customColor: ["#ef4444", "#3b82f6", "#eab308", "#a855f7", "#10b981", "#f97316"][colorIdx],
-                customEyeColor: "#000000",
-            };
-        });
-
-        allUsers.sort((a, b) => b.power - a.power || b.wins - a.wins);
-        setRankingList(allUsers);
-
-        const myIndex = allUsers.findIndex(u => u.id === user.uid);
-        let potentialTargets: GameUser[] = [];
-        
-        if (myIndex !== -1) {
-            const above = allUsers.slice(Math.max(0, myIndex - 5), myIndex).map(u => ({...u, isHigher: true}));
-            const below = allUsers.slice(myIndex + 1, myIndex + 6).map(u => ({...u, isHigher: false}));
-            potentialTargets = [...above, ...below];
+        if (!user) {
+            setLoading(false);
+            return;
         }
 
-        if (potentialTargets.length === 0 && allUsers.length > 1) {
-             potentialTargets = allUsers.filter(u => u.id !== user.uid).slice(0, 5).map(u => ({...u, isHigher: false}));
-        }
+        try {
+            const usersRows = await fetchArenaUsers({
+                maxResults: 120,
+                forceRefresh: true,
+            });
 
-        const formattedOpponents: Combatant[] = potentialTargets.map(u => ({
-            id: u.id,
-            name: u.apelido,
-            avatarName: "Rival",
-            level: u.level,
-            customColor: u.customColor,
-            customEyeColor: u.customEyeColor,
-            profileImage: u.foto,
-            maxHp: u.stats.hp, currentHp: u.stats.hp,
-            maxStamina: u.stats.stamina, currentStamina: u.stats.stamina,
-            stats: u.stats,
-            expression: "normal" as const,
-            totalPower: u.power,
-            critCooldown: 0,
-            rewardXP: u.isHigher ? 70 : 60,
-            aiType: ["estrategista", "zueiro", "copao", "lerdo", "medio"][Math.floor(Math.random() * 5)] as AIType
-        }));
-        
-        setOpponents(formattedOpponents);
-        setLoading(false);
+            const allUsers: GameUser[] = usersRows.map((u) => {
+                const statsSource = (u.stats || {}) as Record<string, number | undefined>;
+                const s = calculateUserStats({ stats: statsSource, xp: u.xp });
+                const p = Object.values(s).reduce((a, b) => (typeof a === 'number' && typeof b === 'number') ? a + b : 0, 0);
+                const colorIdx = u.id.charCodeAt(0) % 6;
+                return {
+                    id: u.id,
+                    name: u.nome,
+                    apelido: u.apelido || "Anon",
+                    foto: u.foto || "https://github.com/shadcn.png",
+                    xp: u.xp || 0,
+                    level: calculateLevel(u.xp || 0),
+                    wins: statsSource.arenaWins || 0,
+                    losses: statsSource.arenaLosses || 0,
+                    stats: s,
+                    power: p,
+                    customColor: ["#ef4444", "#3b82f6", "#eab308", "#a855f7", "#10b981", "#f97316"][colorIdx],
+                    customEyeColor: "#000000",
+                };
+            });
+
+            allUsers.sort((a, b) => b.power - a.power || b.wins - a.wins);
+            setRankingList(allUsers);
+
+            const myIndex = allUsers.findIndex(u => u.id === user.uid);
+            let potentialTargets: GameUser[] = [];
+            
+            if (myIndex !== -1) {
+                const above = allUsers.slice(Math.max(0, myIndex - 5), myIndex).map(u => ({...u, isHigher: true}));
+                const below = allUsers.slice(myIndex + 1, myIndex + 6).map(u => ({...u, isHigher: false}));
+                potentialTargets = [...above, ...below];
+            }
+
+            if (potentialTargets.length === 0 && allUsers.length > 1) {
+                potentialTargets = allUsers.filter(u => u.id !== user.uid).slice(0, 5).map(u => ({...u, isHigher: false}));
+            }
+
+            const formattedOpponents: Combatant[] = potentialTargets.map(u => ({
+                id: u.id,
+                name: u.apelido,
+                avatarName: "Rival",
+                level: u.level,
+                customColor: u.customColor,
+                customEyeColor: u.customEyeColor,
+                profileImage: u.foto,
+                maxHp: u.stats.hp, currentHp: u.stats.hp,
+                maxStamina: u.stats.stamina, currentStamina: u.stats.stamina,
+                stats: u.stats,
+                expression: "normal" as const,
+                totalPower: u.power,
+                critCooldown: 0,
+                rewardXP: u.isHigher ? 70 : 60,
+                aiType: ["estrategista", "zueiro", "copao", "lerdo", "medio"][Math.floor(Math.random() * 5)] as AIType
+            }));
+            
+            setOpponents(formattedOpponents);
+        } catch (error: unknown) {
+            console.error(error);
+            addToast("Erro ao carregar os dados da arena.", "error");
+        } finally {
+            setLoading(false);
+        }
     };
 
     fetchData();
-  }, [user]);
+  }, [user, addToast]);
 
   const handleSaveName = async () => {
       if(!tempName.trim()) return addToast("Nome vazio!", "error");
@@ -287,34 +300,34 @@ export default function SharkLegendsPage() {
       setTimeout(() => setFloatingEffects(prev => prev.filter(e => e.id !== id)), 1000);
   };
 
-  const endBattle = useCallback(async (result: "victory" | "defeat" | "draw", finalHero: Combatant, finalEnemy: Combatant) => {
-    const finalResult: "victory" | "defeat" | "draw" = result === "draw" ? "victory" : result; 
+  const endBattle = useCallback(async (result: "victory" | "defeat" | "draw", _finalHero: Combatant, finalEnemy: Combatant) => {
+    const finalResult: "victory" | "defeat" | "draw" = result === "draw" ? "victory" : result;
     setBattleState(finalResult);
     clearGameState();
     if (!user) return;
 
     try {
-        await addDoc(collection(db, "arena_matches"), {
-            attackerId: user.uid, attackerName: user.nome, defenderId: finalEnemy.id, defenderName: finalEnemy.name,
-            result: finalResult, date: serverTimestamp(), rounds: round
+        const xpGain = finalResult === "victory" ? (result === "draw" ? 10 : finalEnemy.rewardXP) : 5;
+        await registerArenaBattleResult({
+            attackerId: user.uid,
+            attackerName: user.nome,
+            defenderId: finalEnemy.id,
+            defenderName: finalEnemy.name,
+            result: finalResult,
+            rounds: round,
+            rewardXp: xpGain,
         });
 
         if (finalResult === "victory") {
-            const xpGain = result === "draw" ? 10 : finalEnemy.rewardXP;
-            await updateDoc(doc(db, "users", user.uid), {
-                xp: increment(xpGain), "stats.arenaWins": increment(1), sharkCoins: increment(10)
-            });
             addToast(`Vitória! +${xpGain} XP 🏆`, "success");
         } else {
-            await updateDoc(doc(db, "users", user.uid), {
-                "stats.arenaLosses": increment(1), xp: increment(5)
-            });
             addToast("Derrota... Ganhou 5 XP.", "error");
-            try { await updateDoc(doc(db, "users", finalEnemy.id), { xp: increment(10), "stats.arenaWins": increment(1) }); } catch(error){ console.error(error); }
         }
-    } catch (error) { console.error(error); }
+    } catch (error: unknown) {
+        console.error(error);
+        addToast("Erro ao salvar resultado da batalha.", "error");
+    }
   }, [user, addToast, round]);
-
   const executeEnemyTurn = useCallback((lastPlayerMove: Move, currentHero: Combatant, currentEnemy: Combatant, currentLog: string[]) => {
       let enemyMoveType = lastPlayerMove.type;
       const staminaCost = lastPlayerMove.staminaCost;
@@ -429,11 +442,14 @@ export default function SharkLegendsPage() {
     addToast("Você fugiu! Covarde... 🐔", "error");
     
     if (user) {
-        try { await updateDoc(doc(db, "users", enemy.id), { xp: increment(5), "stats.arenaWins": increment(1) }); } catch(error){ console.error(error); }
+        try {
+            await registerArenaFlee({ defenderId: enemy.id });
+        } catch (error: unknown) {
+            console.error(error);
+        }
     }
     setHero(null); setEnemy(null);
   };
-
   // 🦈 GRÁFICO RADAR HEXAGONAL PROFISSIONAL (SVG)
   const calculateRadarPolygon = () => {
     if(!myStats) return "";
@@ -726,3 +742,4 @@ export default function SharkLegendsPage() {
     </div>
   );
 }
+

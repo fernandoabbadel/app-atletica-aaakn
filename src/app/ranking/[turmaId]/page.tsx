@@ -5,8 +5,7 @@ import { ArrowLeft, Users, Trophy, Loader2 } from "lucide-react";
 import Link from "next/link";
 // 🦈 1. Importar o componente Image
 import Image from "next/image";
-import { db } from "../../../lib/firebase";
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { fetchTurmaRankingUsers } from "../../../lib/rankingService";
 
 interface User {
   id: string;
@@ -33,34 +32,29 @@ export default function TurmaRankingPage({
   useEffect(() => {
       async function fetchTurmaData() {
           try {
-              // 🦈 Query com Índice Composto Necessário!
-              const q = query(
-                  collection(db, "users"),
-                  where("turma", "==", turmaReal),
-                  orderBy("xp", "desc")
-              );
-
-              const snapshot = await getDocs(q);
-              const data = snapshot.docs.map(doc => ({
-                  id: doc.id,
-                  nome: doc.data().nome || "Anônimo",
-                  apelido: doc.data().apelido,
-                  xp: doc.data().xp || 0,
-                  foto: doc.data().foto || "https://github.com/shadcn.png",
-                  turma: doc.data().turma
+              const data = (await fetchTurmaRankingUsers({
+                  turma: turmaReal,
+                  maxResults: 50,
+                  forceRefresh: true,
+              })).map((entry) => ({
+                  id: entry.id,
+                  nome: entry.nome || "Anonimo",
+                  apelido: entry.apelido || "",
+                  xp: entry.xp || 0,
+                  foto: entry.foto || "https://github.com/shadcn.png",
+                  turma: entry.turma || turmaReal,
               })) as User[];
 
               setAlunos(data);
-          } catch (error) {
-              console.error("Erro ao carregar turma. Verifique índices do Firestore.", error);
+          } catch (error: unknown) {
+              console.error("Erro ao carregar turma. Verifique indices do Firestore.", error);
           } finally {
               setLoading(false);
           }
       }
 
-      fetchTurmaData();
+      void fetchTurmaData();
   }, [turmaReal]);
-
   // Calcular total de pontos da turma
   const totalPontos = alunos.reduce((acc, curr) => acc + curr.xp, 0);
 
@@ -186,3 +180,4 @@ export default function TurmaRankingPage({
     </div>
   );
 }
+
