@@ -475,7 +475,7 @@ export default function DashboardPage() {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] border border-emerald-500/20 rounded-full animate-[ping_3s_linear_infinite_1s]"></div>
 
             {/* Grid Tático */}
-            <div className="absolute inset-0 bg-[url('/grid.png')] opacity-5 bg-repeat"></div>
+            <div className="absolute inset-0 opacity-10 [background-size:16px_16px] [background-image:linear-gradient(to_right,rgba(16,185,129,0.09)_1px,transparent_1px),linear-gradient(to_bottom,rgba(16,185,129,0.09)_1px,transparent_1px)]"></div>
 
             <div className="absolute inset-0 flex flex-col justify-between p-6 z-10">
                 <div className="flex justify-between items-start">
@@ -622,7 +622,7 @@ export default function DashboardPage() {
       {/* 7. COMUNIDADE (Posts) */}
       <div className="space-y-4">
           <SectionHeader title="Comunidade" icon={MessageCircle} link="/comunidade" colorClass="text-zinc-500"/>
-          {mensagens.length > 0 ? mensagens.map((msg) => {
+          {mensagens.length > 0 ? mensagens.slice(0, 2).map((msg) => {
               const userLikedMsg = msg.likes?.includes(userData?.uid);
               return (
               <div key={msg.id} className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden relative group">

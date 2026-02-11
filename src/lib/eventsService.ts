@@ -98,11 +98,23 @@ const shouldFallbackToClient = (error: unknown): boolean => {
   );
 };
 
+const shouldUseCallable = (): boolean => {
+  if (typeof window === "undefined") return true;
+  if (process.env.NEXT_PUBLIC_FORCE_CALLABLES === "true") return true;
+
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1";
+};
+
 async function callWithFallback<TReq, TRes>(
   callableName: string,
   payload: TReq,
   fallbackFn: () => Promise<TRes>
 ): Promise<TRes> {
+  if (!shouldUseCallable()) {
+    return fallbackFn();
+  }
+
   try {
     const callable = httpsCallable<TReq, TRes>(functions, callableName);
     const response = await callable(payload);

@@ -50,7 +50,7 @@ interface Evento {
     likes?: number;
   };
   lotes?: Lote[];
-  // ðŸ¦ˆ ID 12: Dados financeiros locais do evento
+  // ID 12: Dados financeiros locais do evento
   pixChave?: string;
   pixBanco?: string;
   pixTitular?: string;
@@ -116,7 +116,7 @@ interface PatenteConfig {
     iconName: string;
 }
 
-// --- CONFIGURAÃ‡ÃƒO DE ÃCONES ---
+// --- CONFIGURACAO DE ICONES ---
 const ICON_COMPONENTS: Record<string, React.ElementType> = {
     Fish, Swords, Crown, Skull, Rocket,
     Star, Zap, Trophy, Medal, Heart,
@@ -124,11 +124,11 @@ const ICON_COMPONENTS: Record<string, React.ElementType> = {
 };
 
 const DEFAULT_PATENTES: PatenteConfig[] = [
-    { titulo: "PlÃ¢ncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
-    { titulo: "Peixe PalhaÃ§o", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
+    { titulo: "Plâncton", minXp: 0, cor: "text-zinc-400", iconName: "Fish" },
+    { titulo: "Peixe Palhaço", minXp: 500, cor: "text-orange-400", iconName: "Fish" },
     { titulo: "Barracuda", minXp: 2000, cor: "text-blue-400", iconName: "Swords" },
-    { titulo: "TubarÃ£o Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
-    { titulo: "TubarÃ£o Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
+    { titulo: "Tubarão Martelo", minXp: 5000, cor: "text-purple-400", iconName: "Fish" },
+    { titulo: "Tubarão Branco", minXp: 15000, cor: "text-emerald-400", iconName: "Fish" },
     { titulo: "MEGALODON", minXp: 50000, cor: "text-red-600", iconName: "Crown" },
 ];
 
@@ -142,6 +142,10 @@ const TURMA_IMAGENS: Record<string, string> = {
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
     "T7": "/turma7.jpeg", "T8": "/turma8.jpeg", "Geral": "https://github.com/shadcn.png"
 };
+
+const COMMENT_MAX_CHARS = 280;
+const POLL_OPTION_MAX_CHARS = 40;
+const POLL_OPTION_MAX_COUNT = 10;
 
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
     try {
@@ -172,7 +176,7 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
         const diff = target.getTime() - now.getTime();
 
         if (diff <= 0) {
-            setStatus("ESTÃ ROLANDO!");
+            setStatus("ESTA ROLANDO!");
             setTimeLeft(null);
             return;
         }
@@ -203,12 +207,12 @@ function EventCountdown({ dateStr, timeStr }: { dateStr: string, timeStr: string
   );
 }
 
-// --- BADGES DO USUÃRIO ---
+// --- BADGES DO USUARIO ---
 const UserBadges = ({ data, patentesConfig }: { data: Comentario, patentesConfig: PatenteConfig[] }) => {
     const isAdminUser = data.role === 'admin_geral' || data.role === 'master';
     const PlanIcon = ICON_COMPONENTS[data.userPlanoIcon || 'Ghost'] || Ghost;
     const planColor = PLAN_COLORS[data.userPlanoCor || 'zinc'];
-    const patenteName = data.userPatente || "PlÃ¢ncton";
+    const patenteName = data.userPatente || "Plâncton";
     const patenteConfig = patentesConfig.find(p => p.titulo === patenteName) || patentesConfig[0] || DEFAULT_PATENTES[0];
     const PatenteIcon = ICON_COMPONENTS[patenteConfig.iconName] || Fish;
     const patenteColor = patenteConfig.cor || "text-zinc-400";
@@ -241,7 +245,7 @@ export default function DetalhesEventoPage() {
   
   const [currentPollIndex, setCurrentPollIndex] = useState(0);
 
-  // ðŸ¦ˆ NOVOS ESTADOS PARA PEDIDOS
+  // Novos estados para pedidos
   const [meusPedidos, setMeusPedidos] = useState<PedidoIngresso[]>([]);
   // Usando Record<string, unknown> para evitar 'any'
   const [globalFinanceiro, setGlobalFinanceiro] = useState<Record<string, unknown> | null>(null);
@@ -268,7 +272,7 @@ export default function DetalhesEventoPage() {
                   eventId,
                   userId: user?.uid || null,
                   rsvpsLimit: 600,
-                  commentsLimit: 180,
+                  commentsLimit: 300,
                   pollsLimit: 60,
                   pedidosLimit: 60,
                   forceRefresh: true,
@@ -320,7 +324,7 @@ export default function DetalhesEventoPage() {
   };
 
   const handleRSVP = async (status: "going" | "maybe") => {
-      if (!user || !evento) return addToast("FaÃ§a login para confirmar!", "error");
+      if (!user || !evento) return addToast("Faca login para confirmar!", "error");
       try {
           await runTransaction(db, async (t) => {
               const ref = doc(db, "eventos", evento.id, "rsvps", user.uid);
@@ -340,7 +344,7 @@ export default function DetalhesEventoPage() {
                       t.update(eventRef, { [`stats.${old === 'going' ? 'confirmados' : 'talvez'}`]: increment(-1) });
                   }
                   t.set(ref, {
-                      userId: user.uid, status, userName: user.nome || "AnÃ´nimo", 
+                      userId: user.uid, status, userName: user.nome || "Anonimo", 
                       userAvatar: user.foto || "", userTurma: user.turma || "Geral", timestamp: serverTimestamp()
                   });
                   t.update(eventRef, { 
@@ -355,19 +359,20 @@ export default function DetalhesEventoPage() {
   };
 
   const handleSendComment = async () => {
-      if (!newComment.trim() || !user || !evento) return;
+      const commentText = newComment.trim().slice(0, COMMENT_MAX_CHARS);
+      if (!commentText || !user || !evento) return;
       const newCommentData = {
-          text: newComment, userId: user.uid, userName: user.nome || "AnÃ´nimo",
+          text: commentText, userId: user.uid, userName: user.nome || "Anonimo",
           userAvatar: user.foto || "", userTurma: user.turma || "Geral",
           userPlanoCor: user.plano_cor || "zinc", userPlanoIcon: user.plano_icon || "ghost",
-          userPatente: user.patente || "PlÃ¢ncton", role: user.role || 'user',
+          userPatente: user.patente || "Plâncton", role: user.role || 'user',
           createdAt: serverTimestamp(), likes: [], reports: [], hidden: false
       };
       try {
           await addDoc(collection(db, "eventos", evento.id, "comentarios"), newCommentData);
           await updateDoc(doc(db, "users", user.uid), { "stats.commentsCount": increment(1) });
           setNewComment("");
-          addToast("ComentÃ¡rio enviado!", "success");
+          addToast("Comentario enviado!", "success");
           await refreshEventData();
       } catch { addToast("Erro ao comentar.", "error"); }
   };
@@ -390,10 +395,10 @@ export default function DetalhesEventoPage() {
   };
 
   const handleDeleteComment = async (comId: string) => {
-      if (!evento || !confirm("Apagar este comentÃ¡rio?")) return;
+      if (!evento || !confirm("Apagar este comentario?")) return;
       try {
           await deleteDoc(doc(db, "eventos", evento.id, "comentarios", comId));
-          addToast("ComentÃ¡rio apagado.", "info");
+          addToast("Comentario apagado.", "info");
           await refreshEventData();
       } catch {
           addToast("Erro ao apagar.", "error");
@@ -403,24 +408,24 @@ export default function DetalhesEventoPage() {
   const handleReportComment = async (comId: string) => {
       if (!user || !evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { reports: arrayUnion(user.uid) });
-      addToast("ComentÃ¡rio denunciado.", "info");
+      addToast("Comentario denunciado.", "info");
       await refreshEventData();
   };
 
   const handleToggleHideComment = async (comId: string, currentStatus: boolean) => {
       if(!evento) return;
       await updateDoc(doc(db, "eventos", evento.id, "comentarios", comId), { hidden: !currentStatus });
-      addToast(currentStatus ? "ComentÃ¡rio restaurado." : "ComentÃ¡rio ocultado.", "info");
+      addToast(currentStatus ? "Comentario restaurado." : "Comentario ocultado.", "info");
       await refreshEventData();
   };
 
   const handleVotePoll = async (pollId: string, optionIndex: number) => {
-      if (!user || !evento) return addToast("Login necessÃ¡rio.", "error");
+      if (!user || !evento) return addToast("Login necessario.", "error");
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       try {
         await runTransaction(db, async (t) => {
             const pollDoc = await t.get(pollRef);
-            if (!pollDoc.exists()) throw "Enquete nÃ£o existe";
+            if (!pollDoc.exists()) throw "Enquete nao existe";
             const data = pollDoc.data() as Enquete;
             const newOptions = [...data.options];
             const userVotes = data.userVotes || {}; 
@@ -433,7 +438,7 @@ export default function DetalhesEventoPage() {
                 userVotes[user.uid] = newMyVotes;
                 t.update(pollRef, { options: newOptions, userVotes: userVotes });
             } else {
-                if (myVotes.length >= 3) { throw "VocÃª jÃ¡ escolheu 3 opÃ§Ãµes!"; }
+                if (myVotes.length >= 3) { throw "Voce ja escolheu 3 opcoes!"; }
                 newOptions[optionIndex].votes = (newOptions[optionIndex].votes || 0) + 1;
                 const userTurma = user.turma || "Geral";
                 if(!newOptions[optionIndex].votesByTurma) newOptions[optionIndex].votesByTurma = {};
@@ -450,20 +455,38 @@ export default function DetalhesEventoPage() {
   };
 
   const handleCreatePollOption = async (pollId: string) => {
-      if(!newPollOption || !user || !evento) return;
+      const cleanOptionText = newPollOption.trim().slice(0, POLL_OPTION_MAX_CHARS);
+      if(!cleanOptionText || !user || !evento) return;
+
+      const current = enquetes.find((poll) => poll.id === pollId);
+      if (current && Array.isArray(current.options) && current.options.length >= POLL_OPTION_MAX_COUNT) {
+          addToast(`Cada enquete aceita no maximo ${POLL_OPTION_MAX_COUNT} respostas.`, "error");
+          return;
+      }
+
+      const optionAlreadyExists = Boolean(
+          current?.options?.some(
+              (option) => option.text.trim().toLowerCase() === cleanOptionText.toLowerCase()
+          )
+      );
+      if (optionAlreadyExists) {
+          addToast("Essa resposta ja existe na enquete.", "info");
+          return;
+      }
+
       const pollRef = doc(db, "eventos", evento.id, "enquetes", pollId);
       await updateDoc(pollRef, {
           options: arrayUnion({ 
-              text: newPollOption, votes: 0, creatorId: user.uid, creatorName: user.nome?.split(" ")[0] || "AnÃ´nimo", creatorAvatar: user.foto || "", votesByTurma: {} 
+              text: cleanOptionText, votes: 0, creatorId: user.uid, creatorName: user.nome?.split(" ")[0] || "Anonimo", creatorAvatar: user.foto || "", votesByTurma: {} 
           })
       });
       setNewPollOption("");
-      addToast("OpÃ§Ã£o adicionada!", "success");
+      addToast("Opcao adicionada!", "success");
       await refreshEventData();
   };
 
-  const handleReportPoll = async (_pollId: string) => { if(!user) return; void _pollId; addToast("Enquete reportada Ã  moderaÃ§Ã£o.", "info"); };
-  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; void _pollId; addToast(`OpÃ§Ã£o "${optionText}" denunciada.`, "info"); };
+  const handleReportPoll = async (_pollId: string) => { if(!user) return; void _pollId; addToast("Enquete reportada a moderacao.", "info"); };
+  const handleReportOption = async (_pollId: string, optionText: string) => { if(!user) return; void _pollId; addToast(`Opcao "${optionText}" denunciada.`, "info"); };
 
   const nextPoll = () => setCurrentPollIndex(prev => (prev + 1) % enquetes.length);
   const prevPoll = () => setCurrentPollIndex(prev => (prev - 1 + enquetes.length) % enquetes.length);
@@ -479,6 +502,21 @@ export default function DetalhesEventoPage() {
       });
       return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => t);
   }, [currentPoll]);
+
+  const sortedPollOptions = useMemo(() => {
+      if (!currentPoll?.options) return [];
+      return currentPoll.options
+          .map((opt, originalIndex) => ({ opt, originalIndex }))
+          .sort((left, right) => (right.opt.votes || 0) - (left.opt.votes || 0));
+  }, [currentPoll]);
+
+  const orderedComments = useMemo(() => {
+      return [...comentarios].sort((left, right) => {
+          const leftMs = left.createdAt?.toDate ? left.createdAt.toDate().getTime() : 0;
+          const rightMs = right.createdAt?.toDate ? right.createdAt.toDate().getTime() : 0;
+          return rightMs - leftMs;
+      });
+  }, [comentarios]);
 
   const handleShare = () => {
       if (evento && typeof navigator !== 'undefined' && navigator.share) {
@@ -501,20 +539,22 @@ export default function DetalhesEventoPage() {
   }, [rsvps]);
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
-  if (!evento) return <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4"><XCircle size={40} className="text-red-500"/> <p>Evento nÃ£o encontrado.</p> <Link href="/eventos" className="text-emerald-500 underline">Voltar</Link></div>;
+  if (!evento) return <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4"><XCircle size={40} className="text-red-500"/> <p>Evento nao encontrado.</p> <Link href="/eventos" className="text-emerald-500 underline">Voltar</Link></div>;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32 font-sans">
       
       {/* HERO IMAGE NEXT.JS */}
-        <div className="relative w-full h-full">
+        <div className="relative w-full h-[56vh] min-h-[360px] max-h-[640px]">
             <Image 
                 src={evento.imagem || "https://placehold.co/600x400/111/333"} 
                 alt={`Capa do evento ${evento.titulo}`}
                 fill
+                sizes="100vw"
+                priority
                 className="object-cover" 
                 style={{ objectPosition: `50% ${evento.imagePositionY || 50}%` }}
-                unoptimized // Adicione isso para evitar erros de domÃ­nio externo
+                unoptimized // Adicione isso para evitar erros de dominio externo
             />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent"></div>
         
@@ -556,45 +596,9 @@ export default function DetalhesEventoPage() {
         </div>
       </div>
 
-      {/* CONTEÃšDO */}
+      {/* CONTEUDO */}
       <div className="relative z-30 -mt-6 bg-[#050505] rounded-t-[30px] border-t border-white/10 p-6 space-y-8">
         
-        {/* ðŸ¦ˆ NOVO: ÃREA DE STATUS DOS PEDIDOS (Prioridade no topo) */}
-        {meusPedidos.length > 0 && (
-            <div className="space-y-3">
-                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-purple-500"/> Seus Pedidos</h3>
-                {meusPedidos.map(pedido => (
-                    <div key={pedido.id} className={`p-4 rounded-xl border flex flex-col gap-3 ${pedido.status === 'aprovado' ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-yellow-900/10 border-yellow-500/30'}`}>
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-sm font-bold text-white">{pedido.quantidade}x {pedido.loteNome}</p>
-                                <p className="text-xs text-zinc-400 font-mono">R$ {pedido.valorTotal}</p>
-                            </div>
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 ${pedido.status === 'aprovado' ? 'bg-emerald-500 text-black' : 'bg-yellow-500 text-black'}`}>
-                                {pedido.status === 'aprovado' ? <CheckCircle size={12}/> : <Clock size={12}/>}
-                                {pedido.status === 'aprovado' ? 'Confirmado' : 'Aguardando AprovaÃ§Ã£o'}
-                            </span>
-                        </div>
-
-                        {pedido.status !== 'aprovado' && (
-                            <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-xs">
-                                <p className="text-zinc-400 mb-1 flex items-center gap-1"><Phone size={12}/> Envie o comprovante para:</p>
-                                <p className="text-white font-mono">
-                                    {evento.contatoComprovante || contatoFinanceiro || "(Consulte a diretoria)"}
-                                </p>
-                            </div>
-                        )}
-
-                        {pedido.status !== 'aprovado' && (
-                            <button onClick={() => handleCancelOrder(pedido.id)} className="text-xs text-red-500 hover:text-red-400 font-bold uppercase flex items-center gap-1 self-end">
-                                <X size={12}/> Cancelar Pedido
-                            </button>
-                        )}
-                    </div>
-                ))}
-            </div>
-        )}
-
         {evento.descricao && (
             <div className="space-y-2">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Sobre o Evento</h3>
@@ -608,11 +612,11 @@ export default function DetalhesEventoPage() {
                     <div className="flex items-center gap-3">
                         <Star className="text-yellow-400 fill-yellow-400" size={24}/>
                         <div>
-                            <p className="text-yellow-400 font-black uppercase text-sm tracking-widest">Ãšltimas Vagas</p>
+                            <p className="text-yellow-400 font-black uppercase text-sm tracking-widest">Ultimas Vagas</p>
                             <p className="text-zinc-400 text-[10px]">O lote vai virar em breve!</p>
                         </div>
                     </div>
-                    {/* ðŸ¦ˆ Link para nova compra */}
+                    {/* Link para nova compra */}
                     {evento.lotes && evento.lotes.length > 0 && evento.lotes[0].status === 'ativo' && (
                           <Link href={`/eventos/compra?evento=${evento.id}&lote=${evento.lotes[0].id}`} className="bg-yellow-400 text-black font-black text-xs px-4 py-2 rounded-lg uppercase hover:bg-yellow-300">Garantir</Link>
                     )}
@@ -647,7 +651,7 @@ export default function DetalhesEventoPage() {
                         <p className="text-emerald-400 font-bold">R$ {l.preco}</p>
                     </div>
                     {l.status === 'ativo' ? 
-                        // ðŸ¦ˆ ID 4: Link atualizado para a nova pÃ¡gina de compra com query params
+                        // ID 4: Link atualizado para a nova pagina de compra com query params
                         <Link 
                             href={`/eventos/compra?evento=${evento.id}&lote=${l.id}`} 
                             className="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-400 transition shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
@@ -659,7 +663,7 @@ export default function DetalhesEventoPage() {
             ))}
         </div>
 
-        {/* ðŸ¦ˆ ENQUETES CARROSSEL */}
+        {/* ENQUETES CARROSSEL */}
         <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -701,15 +705,15 @@ export default function DetalhesEventoPage() {
         )}
 
                     <div className="space-y-2">
-                        {currentPoll.options?.sort((a: EnqueteOption, b: EnqueteOption) => (b.votes || 0) - (a.votes || 0)).map((opt: EnqueteOption, idx: number) => {
+                        {sortedPollOptions.map(({ opt, originalIndex }) => {
                             const totalVotes = currentPoll.options.reduce((acc, o) => acc + (o.votes || 0), 0);
                             const percent = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
-                            const userVotedHere = currentPoll.userVotes?.[user?.uid || ""]?.includes(idx);
+                            const userVotedHere = currentPoll.userVotes?.[user?.uid || ""]?.includes(originalIndex);
 
                             return (
-                                <div key={idx} className="relative group">
+                                <div key={`${opt.text}-${originalIndex}`} className="relative group">
                                     <button 
-                                        onClick={() => handleVotePoll(currentPoll.id, idx)} 
+                                        onClick={() => handleVotePoll(currentPoll.id, originalIndex)} 
                                         className={`w-full relative bg-black rounded overflow-hidden flex justify-between items-center h-10 text-xs hover:bg-zinc-800 transition ${userVotedHere ? 'border border-purple-500/50' : ''}`}
                                         title={`${opt.votes} votos`}
                                     >
@@ -724,6 +728,7 @@ export default function DetalhesEventoPage() {
                     height={20}
                     className="rounded-full border border-zinc-700 object-cover" 
                     title={`Criado por ${opt.creatorName}`}
+                    unoptimized
                 />
             )}
             <span className="truncate text-left flex items-center gap-1">
@@ -740,7 +745,7 @@ export default function DetalhesEventoPage() {
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleReportOption(currentPoll.id, opt.text); }}
                                         className="absolute right-[-20px] top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                        title="Reportar OpÃ§Ã£o"
+                                        title="Reportar Opcao"
                                     >
                                         <Flag size={10}/>
                                     </button>
@@ -755,20 +760,22 @@ export default function DetalhesEventoPage() {
                             onChange={e => setNewPollOption(e.target.value)}
                             placeholder="Adicionar resposta..."
                             className="bg-transparent text-xs text-white border-b border-zinc-700 outline-none flex-1 py-1"
-                            maxLength={20}
+                            maxLength={POLL_OPTION_MAX_CHARS}
                         />
                         <button onClick={() => handleCreatePollOption(currentPoll.id)} className="text-[10px] bg-purple-500/10 text-purple-400 px-2 rounded uppercase font-bold hover:bg-purple-500 hover:text-white transition">Add</button>
                     </div>
-                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">* MÃ¡ximo 3 escolhas por usuÃ¡rio.</p>
+                    <p className="text-[8px] text-zinc-600 mt-1 italic text-center">
+                        * Maximo 3 escolhas por usuario e {POLL_OPTION_MAX_COUNT} respostas por enquete. ({newPollOption.length}/{POLL_OPTION_MAX_CHARS})
+                    </p>
                 </div>
             ) : (
                 <p className="text-[10px] text-zinc-600 italic">Nenhuma enquete ativa no momento.</p>
             )}
         </div>
 
-        {/* COMENTÃRIOS */}
+        {/* COMENTARIOS */}
         <div className="space-y-6 pt-4 border-t border-zinc-800">
-            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do RolÃª</h3>
+            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Mural do Role</h3>
             
             <div className="flex gap-2">
                 <input 
@@ -776,14 +783,16 @@ export default function DetalhesEventoPage() {
                     onChange={e => setNewComment(e.target.value)}
                     placeholder="Solta o verbo..." 
                     className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
+                    maxLength={COMMENT_MAX_CHARS}
                 />
                 <button onClick={handleSendComment} className="bg-emerald-500 p-3 rounded-xl text-black hover:bg-emerald-400 shadow-lg shadow-emerald-900/20">
                     <Send size={18}/>
                 </button>
             </div>
+            <p className="text-[10px] text-zinc-500 -mt-3">Comentario: {newComment.length}/{COMMENT_MAX_CHARS}</p>
 
             <div className="space-y-4">
-                {comentarios.map((c) => {
+                {orderedComments.map((c) => {
                     const nameColorClass = PLAN_COLORS[c.userPlanoCor || 'zinc'] || "text-zinc-300";
                     const likesArray = Array.isArray(c.likes) ? c.likes : [];
 
@@ -808,7 +817,7 @@ export default function DetalhesEventoPage() {
                                             <p className={`text-xs font-black ${nameColorClass} flex items-center gap-1`}>
                                                 {c.userName}
                                             </p>
-                                            {/* ID 651: Nova LÃ³gica de Badge baseada na Config Global */}
+                                            {/* ID 651: Nova logica de badge baseada na config global */}
                                             <UserBadges data={c} patentesConfig={patentesConfig} />
                                         </div>
                                         {/* ID 653: Foto da Turma + Nome */}
@@ -851,9 +860,44 @@ export default function DetalhesEventoPage() {
                         </div>
                     );
                 })}
-                {comentarios.length === 0 && <p className="text-center text-xs text-zinc-600 py-4">Seja o primeiro a comentar!</p>}
+                {orderedComments.length === 0 && <p className="text-center text-xs text-zinc-600 py-4">Seja o primeiro a comentar!</p>}
             </div>
         </div>
+
+        {meusPedidos.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-zinc-800">
+                <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Ticket size={14} className="text-purple-500"/> Seus Pedidos</h3>
+                {meusPedidos.map(pedido => (
+                    <div key={pedido.id} className={`p-4 rounded-xl border flex flex-col gap-3 ${pedido.status === 'aprovado' ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-yellow-900/10 border-yellow-500/30'}`}>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-sm font-bold text-white">{pedido.quantidade}x {pedido.loteNome}</p>
+                                <p className="text-xs text-zinc-400 font-mono">R$ {pedido.valorTotal}</p>
+                            </div>
+                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 ${pedido.status === 'aprovado' ? 'bg-emerald-500 text-black' : 'bg-yellow-500 text-black'}`}>
+                                {pedido.status === 'aprovado' ? <CheckCircle size={12}/> : <Clock size={12}/>}
+                                {pedido.status === 'aprovado' ? 'Confirmado' : 'Aguardando Aprovacao'}
+                            </span>
+                        </div>
+
+                        {pedido.status !== 'aprovado' && (
+                            <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-xs">
+                                <p className="text-zinc-400 mb-1 flex items-center gap-1"><Phone size={12}/> Envie o comprovante para:</p>
+                                <p className="text-white font-mono">
+                                    {evento.contatoComprovante || contatoFinanceiro || "(Consulte a diretoria)"}
+                                </p>
+                            </div>
+                        )}
+
+                        {pedido.status !== 'aprovado' && (
+                            <button onClick={() => handleCancelOrder(pedido.id)} className="text-xs text-red-500 hover:text-red-400 font-bold uppercase flex items-center gap-1 self-end">
+                                <X size={12}/> Cancelar Pedido
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
+        )}
 
       </div>
 
@@ -892,7 +936,7 @@ export default function DetalhesEventoPage() {
                       {modalUsers.length === 0 && (
                           <div className="flex flex-col items-center justify-center py-12 text-zinc-600 gap-2">
                               <Users size={32} className="opacity-20"/>
-                              <p className="text-xs">NinguÃ©m nesta lista ainda.</p>
+                              <p className="text-xs">Ninguem nesta lista ainda.</p>
                           </div>
                       )}
                   </div>

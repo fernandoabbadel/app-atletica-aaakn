@@ -26,7 +26,7 @@ const READ_CACHE_TTL_MS = 30_000;
 
 const DASHBOARD_EVENTS_LIMIT = 5;
 const DASHBOARD_PRODUCTS_LIMIT = 8;
-const DASHBOARD_POSTS_LIMIT = 5;
+const DASHBOARD_POSTS_LIMIT = 2;
 const DASHBOARD_TREINOS_LIMIT = 4;
 const DASHBOARD_PARTNERS_LIMIT = 50;
 const DASHBOARD_LIGAS_LIMIT = 60;
@@ -92,6 +92,14 @@ const shouldFallbackToClientWrites = (error: unknown): boolean => {
   );
 };
 
+const shouldUseCallable = (): boolean => {
+  if (typeof window === "undefined") return true;
+  if (process.env.NEXT_PUBLIC_FORCE_CALLABLES === "true") return true;
+
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1";
+};
+
 const isIndexRequiredError = (error: unknown): boolean => {
   const code = getFirebaseErrorCode(error)?.toLowerCase();
   if (code?.includes("failed-precondition")) return true;
@@ -109,6 +117,10 @@ async function callWithFallback<TReq, TRes>(
   payload: TReq,
   fallbackFn: () => Promise<TRes>
 ): Promise<TRes> {
+  if (!shouldUseCallable()) {
+    return fallbackFn();
+  }
+
   try {
     const callable = httpsCallable<TReq, TRes>(functions, callableName);
     const response = await callable(payload);

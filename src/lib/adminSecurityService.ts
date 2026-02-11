@@ -24,6 +24,8 @@ const READ_CACHE_TTL_MS = 30_000;
 const MAX_ACTIVITY_LOG_RESULTS = 260;
 const MAX_PERMISSION_USER_RESULTS = 500;
 
+const FETCH_PERMISSION_MATRIX_CALLABLE = "permissionsAdminGetMatrix";
+const FETCH_PERMISSION_USERS_CALLABLE = "permissionsAdminListUsers";
 const SAVE_PERMISSION_MATRIX_CALLABLE = "permissionsAdminSaveMatrix";
 const UPDATE_USER_ROLE_CALLABLE = "permissionsAdminUpdateUserRole";
 
@@ -86,11 +88,23 @@ const shouldFallbackToClientWrites = (error: unknown): boolean => {
   );
 };
 
+const shouldUseCallable = (): boolean => {
+  if (typeof window === "undefined") return true;
+  if (process.env.NEXT_PUBLIC_FORCE_CALLABLES === "true") return true;
+
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1";
+};
+
 async function callWithFallback<TReq, TRes>(
   callableName: string,
   payload: TReq,
   fallbackFn: () => Promise<TRes>
 ): Promise<TRes> {
+  if (!shouldUseCallable()) {
+    return fallbackFn();
+  }
+
   try {
     const callable = httpsCallable<TReq, TRes>(functions, callableName);
     const response = await callable(payload);
@@ -148,6 +162,30 @@ const normalizePermissionMatrix = (raw: unknown): PermissionMatrix | null => {
   });
 
   return matrix;
+};
+
+const normalizePermissionUserRecord = (
+  raw: unknown,
+  fallbackId = ""
+): PermissionUserRecord | null => {
+  const obj = asObject(raw);
+  if (!obj) return null;
+
+  const id = asString(obj.id, fallbackId).trim();
+  if (!id) return null;
+
+  const nome = asString(obj.nome, "Sem nome").trim() || "Sem nome";
+  const email = asString(obj.email).trim();
+  const foto = asString(obj.foto).trim();
+  const role = asString(obj.role).trim();
+
+  return {
+    id,
+    nome,
+    email,
+    ...(foto ? { foto } : {}),
+    ...(role ? { role } : {}),
+  };
 };
 
 export interface AdminActivityLogRecord {
@@ -230,22 +268,25 @@ export async function fetchPermissionUsers(options?: {
     if (cached) return cached;
   }
 
-  const q = query(collection(db, "users"), limit(maxResults));
-  const snap = await getDocs(q);
-  const users = snap.docs
-    .map((row) => {
-      const data = asObject(row.data());
-      if (!data) return null;
-      const foto = asString(data.foto) || undefined;
-      const role = asString(data.role) || undefined;
+  const response = await callWithFallback<
+    { maxResults: number },
+    { users: PermissionUserRecord[] }
+  >(
+    FETCH_PERMISSION_USERS_CALLABLE,
+    { maxResults },
+    async () => {
+      const q = query(collection(db, "users"), limit(maxResults));
+      const snap = await getDocs(q);
       return {
-        id: row.id,
-        nome: asString(data.nome, "Sem nome"),
-        email: asString(data.email),
-        ...(foto ? { foto } : {}),
-        ...(role ? { role } : {}),
-      } satisfies PermissionUserRecord;
-    })
+        users: snap.docs
+          .map((row) => normalizePermissionUserRecord({ id: row.id, ...row.data() }))
+          .filter((row): row is PermissionUserRecord => row !== null),
+      };
+    }
+  );
+
+  const users = (Array.isArray(response.users) ? response.users : [])
+    .map((row) => normalizePermissionUserRecord(row))
     .filter((row): row is PermissionUserRecord => row !== null)
     .sort((left, right) => left.nome.localeCompare(right.nome, "pt-BR"));
 
@@ -266,13 +307,24 @@ export async function fetchPermissionMatrix(options?: {
     return permissionMatrixCache.value;
   }
 
-  const snap = await getDoc(doc(db, "settings", "permissions"));
-  if (!snap.exists()) {
+  const response = await callWithFallback<
+    { forceRefresh?: boolean },
+    { matrix: unknown | null }
+  >(
+    FETCH_PERMISSION_MATRIX_CALLABLE,
+    { forceRefresh },
+    async () => {
+      const snap = await getDoc(doc(db, "settings", "permissions"));
+      return { matrix: snap.exists() ? snap.data() : null };
+    }
+  );
+
+  if (response.matrix === null) {
     permissionMatrixCache = { cachedAt: Date.now(), value: null };
     return null;
   }
 
-  const normalized = normalizePermissionMatrix(snap.data());
+  const normalized = normalizePermissionMatrix(response.matrix);
   permissionMatrixCache = { cachedAt: Date.now(), value: normalized };
   return normalized;
 }

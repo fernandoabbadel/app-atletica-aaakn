@@ -8,7 +8,7 @@ import {
   ArrowLeft, ShoppingBag, Search, 
   Package, Zap, AlertCircle 
 } from "lucide-react";
-// addToast removido pois nÃ£o estava sendo usado, se precisar re-importe
+// addToast removido pois nao estava sendo usado, se precisar re-importe
 // import { useToast } from "../../context/ToastContext"; 
 import { fetchStoreProducts } from "../../lib/storeService";
 // --- TIPAGEM EXATA DO SEU FIREBASE ---
@@ -140,7 +140,7 @@ export default function LojaPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"/>
             <input 
                 type="text" 
-                placeholder="O que vocÃª procura?" 
+                placeholder="O que voce procura?" 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500 outline-none transition placeholder:text-zinc-600"
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
@@ -256,7 +256,7 @@ export default function LojaPage() {
         )}
       </main>
 
-      {/* BANNER PROMOCIONAL XP (INTEGRAÃ‡ÃƒO COM CONQUISTAS/FIDELIDADE) */}
+      {/* BANNER PROMOCIONAL XP (INTEGRACAO COM CONQUISTAS/FIDELIDADE) */}
       <div className="fixed bottom-20 left-0 w-full px-6 pointer-events-none">
           <div className="bg-gradient-to-r from-yellow-600/90 to-yellow-800/90 backdrop-blur-md p-3 rounded-xl border border-yellow-500/30 shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-10 duration-700 pointer-events-auto">
               <div className="bg-black/20 p-2 rounded-lg text-yellow-200"><Zap size={18}/></div>

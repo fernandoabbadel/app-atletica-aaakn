@@ -49,7 +49,7 @@ interface Order {
     price: number;
     status: 'pendente' | 'approved' | 'rejected' | 'delivered';
     createdAt: Timestamp | null;
-    updatedAt?: Timestamp | null; // Data da aprovaÃ§Ã£o
+    updatedAt?: Timestamp | null; // Data da aprovacao
 }
 
 export default function DetalheProdutoPage() {
@@ -61,11 +61,11 @@ export default function DetalheProdutoPage() {
     // Estados
     const [produto, setProduto] = useState<Produto | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
-    const [userOrder, setUserOrder] = useState<Order | null>(null); // Ãšltimo pedido deste produto
+    const [userOrder, setUserOrder] = useState<Order | null>(null); // Ultimo pedido deste produto
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'detalhes' | 'avaliacoes'>('detalhes');
     
-    // Estado do FormulÃ¡rio de Review
+    // Estado do formulario de review
     const [rating, setRating] = useState(5);
     const [comment, setComment] = useState("");
     const [submittingReview, setSubmittingReview] = useState(false);
@@ -116,7 +116,7 @@ export default function DetalheProdutoPage() {
         void refreshProductData(true);
     }, [refreshProductData]);
 
-    // 2. LÃ“GICA DE PERMISSÃƒO DE AVALIAÃ‡ÃƒO (5 DIAS APÃ“S APROVAÃ‡ÃƒO)
+    // 2. LOGICA DE PERMISSAO DE AVALIACAO (5 DIAS APOS APROVACAO)
     const canReview = useMemo(() => {
         if (!userOrder || userOrder.status !== 'approved') return false;
         
@@ -131,7 +131,7 @@ export default function DetalheProdutoPage() {
         return diffDays <= 5; 
     }, [userOrder]);
 
-    // ðŸ¦ˆ FIX ID 10: Verifica se existe um pedido ATIVO que impede nova compra
+    // FIX ID 10: Verifica se existe um pedido ATIVO que impede nova compra
     const isBlockingOrder = userOrder && (userOrder.status === 'pendente' || userOrder.status === 'approved');
 
     // 3. ACTIONS
@@ -211,7 +211,7 @@ export default function DetalheProdutoPage() {
     };
 
     if (loading) return <div className="h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
-    if (!produto) return <div className="h-screen bg-[#050505] flex items-center justify-center text-white">Produto nÃ£o encontrado.</div>;
+    if (!produto) return <div className="h-screen bg-[#050505] flex items-center justify-center text-white">Produto nao encontrado.</div>;
 
     const isLiked = produto.likes?.includes(user?.uid || "");
 
@@ -235,7 +235,7 @@ export default function DetalheProdutoPage() {
                 </button>
             </div>
 
-            {/* CONTEÃšDO */}
+            {/* CONTEUDO */}
             <div className="relative z-30 -mt-10 bg-[#050505] rounded-t-[2.5rem] border-t border-white/10 p-6 shadow-2xl min-h-[60vh]">
                 
                 <div className="flex justify-between items-start mb-6">
@@ -254,22 +254,22 @@ export default function DetalheProdutoPage() {
 
                 <div className="flex gap-4 border-b border-zinc-800 mb-6">
                     <button onClick={() => setActiveTab('detalhes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'detalhes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Detalhes</button>
-                    <button onClick={() => setActiveTab('avaliacoes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>AvaliaÃ§Ãµes ({reviews.length})</button>
+                    <button onClick={() => setActiveTab('avaliacoes')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition ${activeTab === 'avaliacoes' ? 'text-white border-b-2 border-emerald-500' : 'text-zinc-500'}`}>Avaliacoes ({reviews.length})</button>
                 </div>
 
                 {activeTab === 'detalhes' && (
                     <div className="space-y-6 animate-in fade-in">
                         <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{produto.descricao}</p>
                         
-                        {/* ðŸ¦ˆ STATUS DO PEDIDO OU BOTÃƒO DE COMPRA */}
+                        {/* STATUS DO PEDIDO OU BOTAO DE COMPRA */}
                         <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
                             {isBlockingOrder ? (
                                 <div className="text-center animate-in zoom-in-95">
                                     {userOrder?.status === 'pendente' && (
                                         <div className="flex flex-col items-center gap-2 text-yellow-500">
                                             <Clock size={32}/>
-                                            <h3 className="font-bold uppercase">Aguardando AprovaÃ§Ã£o</h3>
-                                            <p className="text-xs text-zinc-400">O admin estÃ¡ verificando seu pedido.</p>
+                                            <h3 className="font-bold uppercase">Aguardando Aprovacao</h3>
+                                            <p className="text-xs text-zinc-400">O admin esta verificando seu pedido.</p>
                                         </div>
                                     )}
                                     {userOrder?.status === 'approved' && (
@@ -297,7 +297,7 @@ export default function DetalheProdutoPage() {
                     <div className="space-y-6 animate-in fade-in">
                         {canReview ? (
                             <form onSubmit={handleSubmitReview} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 mb-6">
-                                <h3 className="text-sm font-bold text-white uppercase mb-3">Deixe sua avaliaÃ§Ã£o</h3>
+                                <h3 className="text-sm font-bold text-white uppercase mb-3">Deixe sua avaliacao</h3>
                                 <div className="flex gap-2 mb-4">
                                     {[1,2,3,4,5].map(star => (
                                         <button key={star} type="button" onClick={() => setRating(star)}>
@@ -314,14 +314,14 @@ export default function DetalheProdutoPage() {
                                     required
                                 />
                                 <button disabled={submittingReview} type="submit" className="w-full mt-3 bg-emerald-600 py-2 rounded-lg font-bold text-xs uppercase hover:bg-emerald-500 transition">
-                                    {submittingReview ? "Enviando..." : "Publicar AvaliaÃ§Ã£o"}
+                                    {submittingReview ? "Enviando..." : "Publicar Avaliacao"}
                                 </button>
                             </form>
                         ) : (
                             userOrder?.status === 'approved' && (
                                 <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-center">
                                     <AlertTriangle size={24} className="mx-auto text-red-500 mb-2"/>
-                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliaÃ§Ã£o expirado ou produto ainda nÃ£o aprovado.</p>
+                                    <p className="text-xs text-red-400 font-bold">Prazo de avaliacao expirado ou produto ainda nao aprovado.</p>
                                 </div>
                             )
                         )}
@@ -334,11 +334,12 @@ export default function DetalheProdutoPage() {
             <div className="flex items-center gap-2">
                 <div className="relative w-8 h-8 bg-zinc-800 rounded-full overflow-hidden">
                     <Image 
-                        src={`https://api.dicebear.com/7.x/initials/svg?seed=${rev.userName}`} 
+                        src={rev.userAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(rev.userName)}`} 
                         alt={rev.userName}
                         fill
                         sizes="32px"
                         className="object-cover"
+                        unoptimized
                     />
                 </div>
                 <span className="text-xs font-bold text-white">{rev.userName}</span>

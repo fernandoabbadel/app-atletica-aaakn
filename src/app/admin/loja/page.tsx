@@ -10,7 +10,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
-import { uploadImage } from "../../../lib/upload";
+import { MAX_UPLOAD_IMAGE_MB, uploadImage } from "../../../lib/upload";
 import {
   approveStoreOrder,
   createStoreCategory,
@@ -56,7 +56,12 @@ interface CategoriaData {
     nome: string;
 }
 
-const DEFAULT_CATEGORIES = ["VestuÃ¡rio", "AcessÃ³rios", "Kits", "Ingressos"];
+const DEFAULT_CATEGORIES = ["Vestuário", "Acessórios", "Kits", "Ingressos"];
+const MAX_PRODUCT_IMAGE_BYTES = MAX_UPLOAD_IMAGE_MB * 1024 * 1024;
+const MAX_PRODUCT_NAME_CHARS = 90;
+const MAX_PRODUCT_DESC_CHARS = 1500;
+const MAX_PRODUCT_FEATURES_CHARS = 600;
+const MAX_PRODUCT_TAG_CHARS = 24;
 
 export default function AdminLojaPage() {
   const { addToast } = useToast();
@@ -86,10 +91,10 @@ export default function AdminLojaPage() {
   const [categoriaNome, setCategoriaNome] = useState("");
   const [savingCategoria, setSavingCategoria] = useState(false);
   const tabs = [
-    { id: 'dashboard', label: 'VisÃ£o Geral', icon: PieChart },
+    { id: 'dashboard', label: 'Visão Geral', icon: PieChart },
     { id: 'produtos', label: 'Produtos', icon: Package },
     { id: 'pedidos', label: 'Pedidos Pendentes', icon: ShoppingBag },
-    { id: 'reviews', label: 'AvaliaÃ§Ãµes', icon: MessageSquare },
+    { id: 'reviews', label: 'Avaliações', icon: MessageSquare },
   ] as const;
 
     const loadStoreData = useCallback(async (forceRefresh = true) => {
@@ -176,13 +181,53 @@ export default function AdminLojaPage() {
   // Handlers de Produto
     const handleSaveProduto = async () => {
       if (saving) return;
+
+      const nome = String(formData.nome || "").trim().slice(0, MAX_PRODUCT_NAME_CHARS);
+      const categoria = String(formData.categoria || "").trim();
+      const descricao = String(formData.descricao || "").trim().slice(0, MAX_PRODUCT_DESC_CHARS);
+      const img = String(formData.img || "").trim();
+      const preco = Number(formData.preco || 0);
+      const precoAntigoRaw = Number(formData.precoAntigo || 0);
+      const lote = String(formData.lote || "").trim().slice(0, 60);
+      const tagLabel = String(formData.tagLabel || "").trim().slice(0, MAX_PRODUCT_TAG_CHARS);
+      const tagColor = String(formData.tagColor || "").trim();
+      const tagEffect = (formData.tagEffect || "none") as "pulse" | "shine" | "none";
+
+      if (!nome || !categoria || !descricao || !img || !Number.isFinite(preco) || preco <= 0) {
+          addToast("Preencha nome, categoria, descricao, imagem e preco valido.", "error");
+          return;
+      }
+
+      const caracteristicas = featuresInput
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .slice(0, 20);
+
+      const variantes = variantesTemp.map((item) => ({
+          ...item,
+          tamanho: String(item.tamanho || "").trim().slice(0, 20),
+          cor: String(item.cor || "").trim().slice(0, 30),
+          estoque: Math.max(0, Number(item.estoque || 0)),
+      }));
+
       setSaving(true);
       try {
           const payload = { 
-              ...formData, 
-              variantes: variantesTemp, 
-              caracteristicas: featuresInput.split(",").map(s=>s.trim()).filter(Boolean),
-              estoque: variantesTemp.reduce((a,b)=>a+Number(b.estoque),0),
+              ...formData,
+              nome,
+              categoria,
+              descricao,
+              img,
+              preco,
+              ...(precoAntigoRaw > preco ? { precoAntigo: precoAntigoRaw } : {}),
+              ...(lote ? { lote } : {}),
+              ...(tagLabel ? { tagLabel } : {}),
+              ...(tagColor ? { tagColor } : {}),
+              ...(tagEffect ? { tagEffect } : {}),
+              variantes,
+              caracteristicas,
+              estoque: variantes.reduce((acc, item) => acc + Number(item.estoque), 0),
               updatedAt: new Date().toISOString() 
           };
           await upsertStoreProduct({
@@ -202,9 +247,22 @@ export default function AdminLojaPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if(file) {
+          if (!file.type.startsWith("image/")) {
+              addToast("Selecione um arquivo de imagem valido.", "error");
+              return;
+          }
+          if (file.size > MAX_PRODUCT_IMAGE_BYTES) {
+              addToast("Imagem muito grande. Limite: 5MB.", "error");
+              return;
+          }
           setUploading(true);
-          const { url } = await uploadImage(file, "produtos");
-          if(url) setFormData(p => ({...p, img: url}));
+          const { url, error } = await uploadImage(file, "produtos");
+          if (error) {
+              addToast(error, "error");
+          }
+          if (url) {
+              setFormData((prev) => ({ ...prev, img: url }));
+          }
           setUploading(false);
       }
   };
@@ -215,7 +273,7 @@ export default function AdminLojaPage() {
       setNovaVariante({ tamanho: "", cor: "", estoque: 0 });
   };
 
-  // --- GESTÃƒO CATEGORIAS ---
+  // --- GESTÃO CATEGORIAS ---
     const handleCreateCategoria = async () => {
       if(!categoriaNome) return;
       setSavingCategoria(true);
@@ -243,11 +301,11 @@ export default function AdminLojaPage() {
       <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <h1 className="text-lg font-black text-white uppercase tracking-tighter">GestÃ£o da Loja</h1>
+          <h1 className="text-lg font-black text-white uppercase tracking-tighter">Gestão da Loja</h1>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowModalCategoria(true)} className="bg-zinc-800 border border-zinc-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-zinc-700 transition"><Tag size={16} /> Categoria</button>
-          <button onClick={() => { setFormData({}); setIsEditing(false); setShowModalProduto(true); }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95"><Plus size={16} /> Novo Produto</button>
+          <button onClick={() => { setFormData({ nome: "", descricao: "", categoria: allCategories[0] || DEFAULT_CATEGORIES[0], preco: 0, img: "", lote: "", tagLabel: "", tagColor: "emerald", tagEffect: "none", variantes: [] }); setFeaturesInput(""); setVariantesTemp([]); setIsEditing(false); setShowModalProduto(true); }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95"><Plus size={16} /> Novo Produto</button>
         </div>
       </header>
 
@@ -265,7 +323,7 @@ export default function AdminLojaPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in">
                 <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Total Vendas</p><p className="text-3xl font-black text-emerald-400 mt-2">R$ {pedidos.filter(p=>p.status==='approved').reduce((a,b)=>a+(b.price || 0),0).toLocaleString('pt-BR')}</p></div>
                 <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Pedidos Pendentes</p><p className="text-3xl font-black text-yellow-500 mt-2">{pedidos.filter(p=>p.status==='pendente').length}</p></div>
-                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Valor em GÃ´ndola</p><p className="text-3xl font-black text-blue-400 mt-2">R$ {stats.valorEstoque.toLocaleString('pt-BR')}</p></div>
+                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Valor em Gôndola</p><p className="text-3xl font-black text-blue-400 mt-2">R$ {stats.valorEstoque.toLocaleString('pt-BR')}</p></div>
             </div>
         )}
 
@@ -312,7 +370,7 @@ export default function AdminLojaPage() {
                     </div>
                 ))}
                 
-                <h3 className="text-xs font-bold text-zinc-500 uppercase mt-8 mb-2">HistÃ³rico Recente</h3>
+                <h3 className="text-xs font-bold text-zinc-500 uppercase mt-8 mb-2">Histórico Recente</h3>
                 <div className="space-y-2 opacity-60">
                     {pedidos.filter(o => o.status !== 'pendente').slice(0, 5).map(order => (
                         <div key={order.id} className="flex justify-between items-center p-3 bg-zinc-950 rounded-lg border border-zinc-900">
@@ -369,18 +427,96 @@ export default function AdminLojaPage() {
              
              <div className="grid grid-cols-2 gap-6">
                  <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-zinc-700 rounded-xl h-40 flex items-center justify-center cursor-pointer hover:border-emerald-500 relative overflow-hidden">
-                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageUpload}/>
+                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
                      {uploading ? <span className="text-xs animate-pulse text-emerald-500">Enviando...</span> : formData.img ? <Image src={formData.img} alt="Preview" fill className="object-contain" unoptimized/> : <div className="text-center"><UploadCloud size={32}/><span className="text-xs uppercase font-bold">Foto</span></div>}
                  </div>
                  <div className="space-y-3">
-                     <input type="text" placeholder="Nome" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.nome || ""} onChange={e => setFormData({...formData, nome: e.target.value})}/>
+                     <input type="text" placeholder="Nome" maxLength={MAX_PRODUCT_NAME_CHARS} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.nome || ""} onChange={e => setFormData({...formData, nome: e.target.value})}/>
+                     <p className="text-[10px] text-zinc-500">Maximo: {MAX_PRODUCT_NAME_CHARS} caracteres</p>
                      <div className="flex gap-2">
-                         <input type="number" placeholder="PreÃ§o" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.preco || ""} onChange={e => setFormData({...formData, preco: Number(e.target.value)})}/>
+                         <input type="number" min={0} step="0.01" placeholder="Preco" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.preco || ""} onChange={e => setFormData({...formData, preco: Number(e.target.value)})}/>
                          <select className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-400" value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value})}>
                              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                          </select>
                      </div>
                  </div>
+             </div>
+
+             <p className="text-[10px] text-zinc-500">Upload de imagem: maximo {MAX_UPLOAD_IMAGE_MB}MB (JPG/PNG/WebP).</p>
+
+             <div className="space-y-3">
+                 <textarea
+                     rows={4}
+                     maxLength={MAX_PRODUCT_DESC_CHARS}
+                     placeholder="Descricao do produto"
+                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white resize-none"
+                     value={formData.descricao || ""}
+                     onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                 />
+                 <p className="text-[10px] text-zinc-500">
+                     Descricao: {(formData.descricao || "").length}/{MAX_PRODUCT_DESC_CHARS}
+                 </p>
+                 <input
+                     type="text"
+                     maxLength={MAX_PRODUCT_FEATURES_CHARS}
+                     placeholder="Caracteristicas (separar por virgula)"
+                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
+                     value={featuresInput}
+                     onChange={(e) => setFeaturesInput(e.target.value)}
+                 />
+                 <p className="text-[10px] text-zinc-500">
+                     Caracteristicas: {featuresInput.length}/{MAX_PRODUCT_FEATURES_CHARS}
+                 </p>
+             </div>
+
+             <div className="grid grid-cols-2 gap-3">
+                 <input
+                     type="text"
+                     placeholder="Lote"
+                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
+                     value={formData.lote || ""}
+                     onChange={(e) => setFormData({ ...formData, lote: e.target.value })}
+                 />
+                 <input
+                     type="number"
+                     min={0}
+                     step="0.01"
+                     placeholder="Preco antigo (opcional)"
+                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
+                     value={formData.precoAntigo || ""}
+                     onChange={(e) => setFormData({ ...formData, precoAntigo: Number(e.target.value) })}
+                 />
+             </div>
+
+             <div className="grid grid-cols-3 gap-3">
+                 <input
+                     type="text"
+                     maxLength={MAX_PRODUCT_TAG_CHARS}
+                     placeholder="Tag"
+                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
+                     value={formData.tagLabel || ""}
+                     onChange={(e) => setFormData({ ...formData, tagLabel: e.target.value })}
+                 />
+                 <select
+                     className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-300"
+                     value={formData.tagColor || "emerald"}
+                     onChange={(e) => setFormData({ ...formData, tagColor: e.target.value })}
+                 >
+                     <option value="emerald">Verde</option>
+                     <option value="red">Vermelho</option>
+                     <option value="orange">Laranja</option>
+                     <option value="purple">Roxo</option>
+                     <option value="blue">Azul</option>
+                 </select>
+                 <select
+                     className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-300"
+                     value={formData.tagEffect || "none"}
+                     onChange={(e) => setFormData({ ...formData, tagEffect: e.target.value as "pulse" | "shine" | "none" })}
+                 >
+                     <option value="none">Sem efeito</option>
+                     <option value="pulse">Pulse</option>
+                     <option value="shine">Shine</option>
+                 </select>
              </div>
 
              <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800">

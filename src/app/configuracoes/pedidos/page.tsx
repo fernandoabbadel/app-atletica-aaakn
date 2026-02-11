@@ -43,12 +43,44 @@ type PedidoRaw = {
   eventoNome?: string;
   quantidade?: number;
   loteNome?: string;
-  valorTotal?: number;
+  valorTotal?: unknown;
   itens?: unknown[];
-  total?: number;
+  total?: unknown;
   planoNome?: string;
-  valor?: number;
+  valor?: unknown;
   status?: PedidoUnificado["status"];
+};
+
+const parseCurrencyValue = (value: unknown): number => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+
+    const sanitized = trimmed.replace(/[^\d,.-]/g, "");
+    if (!sanitized) return 0;
+
+    const lastComma = sanitized.lastIndexOf(",");
+    const lastDot = sanitized.lastIndexOf(".");
+
+    let normalized = sanitized;
+    if (lastComma >= 0 && lastDot >= 0) {
+      normalized =
+        lastComma > lastDot
+          ? sanitized.replace(/\./g, "").replace(",", ".")
+          : sanitized.replace(/,/g, "");
+    } else if (lastComma >= 0) {
+      normalized = sanitized.replace(",", ".");
+    }
+
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
 };
 
 const normalizePedido = (item: PedidoRaw, activeTab: "eventos" | "loja" | "planos"): PedidoUnificado => {
@@ -64,15 +96,15 @@ const normalizePedido = (item: PedidoRaw, activeTab: "eventos" | "loja" | "plano
   if (activeTab === "eventos") {
     titulo = item.eventoNome || "Ingresso";
     subtitulo = `${item.quantidade || 1}x ${item.loteNome || "Lote Unico"}`;
-    valor = item.valorTotal || 0;
+    valor = parseCurrencyValue(item.valorTotal);
   } else if (activeTab === "loja") {
     titulo = `Pedido #${item.id.slice(0, 6).toUpperCase()}`;
     subtitulo = `${item.itens?.length || 0} itens`;
-    valor = item.total || 0;
+    valor = parseCurrencyValue(item.total);
   } else {
     titulo = item.planoNome || "Adesao";
     subtitulo = "Anuidade";
-    valor = item.valor || 0;
+    valor = parseCurrencyValue(item.valor);
   }
 
   return {

@@ -6,7 +6,7 @@ import {
   Loader2, ArrowRight, Heart, Clock, Zap, Users
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // ðŸ¦ˆ Importado para corrigir erro de LCP
+import Image from "next/image"; // Importado para corrigir erro de LCP
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { toggleEventLike } from "../../lib/eventCardService";
@@ -40,7 +40,7 @@ interface Evento {
   interessados?: string[]; // Array de UIDs para controle
 }
 
-// --- CONFIGURAÃ‡ÃƒO DE IMAGENS ---
+// --- CONFIGURACAO DE IMAGENS ---
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
@@ -68,7 +68,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         const months: Record<string, number> = {
             'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
             'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11,
-            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARÃ‡O': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
+            'JANEIRO': 0, 'FEVEREIRO': 1, 'MARCO': 2, 'ABRIL': 3, 'MAIO': 4, 'JUNHO': 5,
             'JULHO': 6, 'AGOSTO': 7, 'SETEMBRO': 8, 'OUTUBRO': 9, 'NOVEMBRO': 10, 'DEZEMBRO': 11
         };
         const cleanDate = dateStr.toUpperCase().trim();
@@ -81,9 +81,9 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
             const monthKey = Object.keys(months).find(m => m.startsWith(monthStr));
             
             if (monthKey && !isNaN(day)) {
-                // ðŸ¦ˆ Fix: 'const' aqui pois a referÃªncia do objeto nÃ£o muda, sÃ³ suas propriedades
+                // Fix: "const" aqui pois a referencia do objeto nao muda, so suas propriedades
                 const eventDate = new Date(currentYear, months[monthKey], day, hours || 0, mins || 0);
-                // Se a data jÃ¡ passou (ex: JAN sendo que estamos em DEZ), assume prÃ³ximo ano
+                // Se a data ja passou (ex: JAN sendo que estamos em DEZ), assume proximo ano
                 if (eventDate < now && (now.getMonth() - months[monthKey]) > 6) {
                     eventDate.setFullYear(currentYear + 1);
                 }
@@ -92,7 +92,7 @@ const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
         }
         return null;
     } catch {
-        // ðŸ¦ˆ Fix: removido argumento 'e' nÃ£o usado
+        // Fix: removido argumento "e" nao usado
         return null;
     }
 };
@@ -149,7 +149,7 @@ function EventCountdown({ targetDate, targetTime }: { targetDate: string, target
         if (!targetDate) return "EM BREVE";
         
         const eventDate = parseEventDate(targetDate, targetTime);
-        if (!eventDate) return targetDate; // Fallback se nÃ£o conseguir parsear
+        if (!eventDate) return targetDate; // Fallback se nao conseguir parsear
 
         const now = new Date();
         const diff = eventDate.getTime() - now.getTime();
@@ -232,7 +232,7 @@ function EventCard({
         
         {/* 1. IMAGEM */}
         <div className="relative h-56 w-full shrink-0 overflow-hidden">
-            {/* ðŸ¦ˆ Fix: Image otimizada com fill e unoptimized */}
+            {/* Fix: Image otimizada com fill e unoptimized */}
             <Image 
                 src={ev.imagem || "https://placehold.co/600x400/111/333?text=Evento"} 
                 alt={ev.titulo}
@@ -261,10 +261,10 @@ function EventCard({
             </div>
         </div>
 
-        {/* 2. CONTEÃšDO */}
+        {/* 2. CONTEUDO */}
         <div className="flex flex-col flex-1 p-5 gap-4">
             
-            {/* TÃ­tulo */}
+            {/* Titulo */}
             <div>
                 <h2 className="text-xl font-black italic uppercase leading-tight text-white mb-2 line-clamp-2">
                     {ev.titulo}
@@ -282,14 +282,14 @@ function EventCard({
             {/* Footer do Card */}
             <div className="mt-auto pt-4 border-t border-zinc-800 flex items-center justify-between">
                 
-                {/* PreÃ§o */}
+                {/* Preco */}
                 <div>
                     <p className="text-[10px] text-zinc-500 font-bold uppercase">A partir de</p>
                     <p className={`text-lg font-black ${loteAtivo ? 'text-white' : 'text-zinc-600'}`}>{precoDisplay}</p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* BOTÃƒO DE LIKE */}
+                    {/* BOTAO DE LIKE */}
                     <button 
                         onClick={handleLike}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-all ${liked ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'}`}
@@ -311,7 +311,7 @@ function EventCard({
   );
 }
 
-// --- PÃGINA PRINCIPAL ---
+// --- PAGINA PRINCIPAL ---
 export default function EventosPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -362,8 +362,8 @@ export default function EventosPage() {
                 <ArrowLeft size={20} className="text-zinc-400"/>
             </Link>
             <div>
-                <h1 className="text-3xl font-black uppercase tracking-tighter italic">Agenda<span className="text-emerald-500">TubarÃ£o</span></h1>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">PrÃ³ximos Eventos</p>
+                <h1 className="text-3xl font-black uppercase tracking-tighter italic">Agenda<span className="text-emerald-500">Tubarao</span></h1>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Proximos Eventos</p>
             </div>
         </div>
       </header>

@@ -3,12 +3,12 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { ArrowLeft, MessageCircle, Loader2, Copy, Ticket, Minus, Plus, Wallet, Clock } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // ðŸ¦ˆ Importando Image
+import Image from "next/image"; // Importando Image
 import { useSearchParams } from "next/navigation";
 import { useToast } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/AuthContext";
 import { createEventTicketRequest, fetchEventCheckoutData } from "../../../lib/eventsService";
-// ðŸ¦ˆ Interfaces para tipagem forte (Fim do any)
+// Interfaces para tipagem forte (fim do any)
 interface Lote {
     id: string;
     nome: string;
@@ -89,7 +89,7 @@ function CompraContent() {
           }
       };
       void loadData();
-  }, [eventoId, loteId, addToast]); // ðŸ¦ˆ DependÃªncias corrigidas
+  }, [eventoId, loteId, addToast]); // Dependencias corrigidas
 
   const handleFinish = async () => {
       if (!user || !evento || !lote) return;
@@ -115,7 +115,7 @@ function CompraContent() {
 
           // 2. Gerar Link do WhatsApp
           const adminPhone = pixData.whatsapp || "5512999999999"; 
-          const message = `ðŸ¦ˆ Fala TubarÃ£o! Quero garantir meu lugar no *${evento.titulo}*.\n\nðŸŽŸï¸ *${quantidade}x ${lote.nome}*\nðŸ’° Valor Total: R$ ${valorTotal.toFixed(2)}\nðŸ†” Pedido: ${ticketRequest.id.slice(0,5)}\n\nSegue o comprovante!`;
+          const message = `Fala Tubarao! Quero garantir meu lugar no *${evento.titulo}*.\n\n[INGRESSO] *${quantidade}x ${lote.nome}*\n[VALOR] Valor Total: R$ ${valorTotal.toFixed(2)}\n[PEDIDO] Pedido: ${ticketRequest.id.slice(0,5)}\n\nSegue o comprovante!`;
           const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
 
           // 3. Redirecionar
@@ -142,7 +142,7 @@ function CompraContent() {
   };
 
   if (fetching) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500"><Loader2 className="animate-spin"/></div>;
-  if (!evento || !lote) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Lote ou Evento invÃ¡lido.</div>;
+  if (!evento || !lote) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Lote ou evento invalido.</div>;
 
   const valorTotalDisplay = (parseFloat(lote.preco.replace(',', '.')) * quantidade).toFixed(2).replace('.', ',');
 
@@ -171,7 +171,7 @@ function CompraContent() {
             </div>
         </div>
 
-        {/* PASSO 1: QUANTIDADE E CONFIRMAÃ‡ÃƒO */}
+        {/* PASSO 1: QUANTIDADE E CONFIRMACAO */}
         {step === 1 && (
             <div className="space-y-6 animate-in slide-in-from-right">
                 
@@ -267,9 +267,9 @@ function CompraContent() {
                 </div>
 
                 <div className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 text-left">
-                    <p className="text-xs text-zinc-300 mb-2">â„¹ï¸ <span className="font-bold text-white">Status do Pedido:</span></p>
+                    <p className="text-xs text-zinc-300 mb-2">[INFO] <span className="font-bold text-white">Status do Pedido:</span></p>
                     <div className="flex items-center gap-2 text-yellow-500 font-bold text-xs uppercase tracking-wide bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
-                        <Clock size={14}/> AnÃ¡lise Financeira
+                        <Clock size={14}/> Analise Financeira
                     </div>
                 </div>
 
@@ -282,7 +282,7 @@ function CompraContent() {
   );
 }
 
-// ðŸ¦ˆ SUSPENSE WRAPPER (ObrigatÃ³rio para useSearchParams no Next.js 15)
+// SUSPENSE WRAPPER (obrigatorio para useSearchParams no Next.js 15)
 export default function EventoCompraPage() {
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden font-sans">

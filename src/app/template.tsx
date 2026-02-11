@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-// 🦈 1. Importação do Image otimizado
 import Image from "next/image";
 
 export default function Template({ children }: { children: React.ReactNode }) {
@@ -11,69 +10,56 @@ export default function Template({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // 🦈 2. Movi a lista para DENTRO do useEffect
-    // Isso resolve o aviso de dependência ausente
     const frases = [
-      "Afiando o bisturi... e os dentes. 🦈",
-      "Os tubarões estão revisando Anatomia...",
-      "Procurando a veia certa... aguarde.",
-      "Tubarão não dorme, estuda Fisiologia.",
-      "Calibrando a mordida para o Intermed. 🏆",
+      "Afiando o bisturi e os dentes.",
+      "Os tubaroes estao revisando Anatomia.",
+      "Procurando a veia certa. Aguarde.",
+      "Tubarão nao dorme, estuda Fisiologia.",
+      "Calibrando a mordida para o Intermed.",
       "Mergulhando em um mar de apostilas.",
-      "Oxigenando as brânquias para o plantão. 🫁",
-      "Esperando o R1 passar a visita...",
-      "Consultando o Harrison... um momento. 📚",
-      "Nadando contra a corrente (e o sono).",
+      "Oxigenando as branquias para o plantao.",
+      "Esperando o R1 passar a visita.",
+      "Consultando o Harrison. Um momento.",
+      "Nadando contra a corrente e o sono.",
     ];
 
-    // 1. Sorteia a frase
     setFrase(frases[Math.floor(Math.random() * frases.length)]);
-
-    // 2. Inicia o Loading
     setLoading(true);
 
-    // 3. Espera 5 segundos (5000ms) e libera a tela
     const timer = setTimeout(() => {
       setLoading(false);
     }, 5000);
 
     return () => clearTimeout(timer);
-  }, [pathname]); // Roda toda vez que muda a rota (pathname)
+  }, [pathname]);
 
-  // SE ESTIVER CARREGANDO, MOSTRA A TELA DE SPLASH
   if (loading) {
     return (
       <div className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center animate-in fade-in duration-300">
-        {/* CONTAINER DO LOGO E ANIMAÇÃO */}
         <div className="relative w-40 h-40 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
-          {/* LOGO DA ATLÉTICA (Fixo no centro) */}
           <div className="relative z-20 w-28 h-28 flex items-center justify-center">
-            {/* 🦈 3. Substituição por <Image /> com priority */}
             <Image
               src="/logo.png"
-              alt="Logo Atlética"
+              alt="Logo Atletica"
               fill
+              sizes="112px"
               className="object-contain drop-shadow-2xl"
-              priority // Carrega instantaneamente pois é Splash Screen
+              priority
             />
           </div>
 
-          {/* ONDA VERDE (Animação subindo) */}
-          <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/90 rounded-[40%] animate-wave z-10 top-[100%]"></div>
+          <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/90 rounded-[40%] animate-wave z-10 top-[100%]" />
         </div>
 
-        {/* TEXTO */}
         <div className="text-center px-6">
           <h2 className="text-emerald-500 font-black text-xl tracking-widest mb-3 animate-pulse">
             CARREGANDO....
           </h2>
-          {/* 🦈 4. Correção das Aspas (&quot;) */}
           <p className="text-zinc-400 text-sm font-medium italic max-w-xs mx-auto leading-relaxed">
             &quot;{frase}&quot;
           </p>
         </div>
 
-        {/* CSS DA ANIMAÇÃO DA ONDA */}
         <style jsx>{`
           @keyframes wave {
             0% {
@@ -82,17 +68,16 @@ export default function Template({ children }: { children: React.ReactNode }) {
             }
             100% {
               transform: rotate(360deg);
-              top: -20%; /* Sobe até cobrir tudo */
+              top: -20%;
             }
           }
           .animate-wave {
-            animation: wave 5s ease-in-out forwards; /* 5s de duração */
+            animation: wave 5s ease-in-out forwards;
           }
         `}</style>
       </div>
     );
   }
 
-  // SE TERMINOU, MOSTRA A PÁGINA NORMAL
   return <>{children}</>;
 }

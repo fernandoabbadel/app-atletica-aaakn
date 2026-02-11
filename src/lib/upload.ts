@@ -6,6 +6,9 @@ export interface UploadResult {
   error: string | null;
 }
 
+export const MAX_UPLOAD_IMAGE_MB = 5;
+export const MAX_UPLOAD_IMAGE_BYTES = MAX_UPLOAD_IMAGE_MB * 1024 * 1024;
+
 /**
  * Envia uma imagem para o Firebase Storage.
  * @param file O arquivo selecionado no input
@@ -13,6 +16,12 @@ export interface UploadResult {
  */
 export async function uploadImage(file: File, path: string): Promise<UploadResult> {
   if (!file) return { url: null, error: "Nenhum arquivo selecionado" };
+  if (!file.type.startsWith("image/")) {
+    return { url: null, error: "Envie apenas arquivos de imagem." };
+  }
+  if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+    return { url: null, error: `A imagem excede ${MAX_UPLOAD_IMAGE_MB}MB.` };
+  }
 
   try {
     // 🦈 Sanidade do Tubarão: Remove espaços e caracteres estranhos do nome

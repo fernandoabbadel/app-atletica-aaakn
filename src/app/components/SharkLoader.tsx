@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 
-// 🦈 Constante fora do componente para evitar recriação e warning de dependência
 const FRASES_TUBARAO = [
-  "Afiando o bisturi... e os dentes. 🦈",
-  "Os tubarões estão revisando Anatomia...",
-  "Procurando a veia certa... aguarde.",
-  "Tubarão não dorme, estuda Fisiologia.",
-  "Calibrando a mordida para o Intermed. 🏆",
+  "Afiando o bisturi e os dentes.",
+  "Os tubaroes estao revisando Anatomia.",
+  "Procurando a veia certa. Aguarde.",
+  "Tubarao nao dorme, estuda Fisiologia.",
+  "Calibrando a mordida para o Intermed.",
   "Mergulhando em um mar de apostilas.",
-  "Oxigenando as brânquias para o plantão. 🫁"
+  "Oxigenando as branquias para o plantao.",
 ];
 
 export default function SharkLoader() {
@@ -19,9 +18,8 @@ export default function SharkLoader() {
   const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
-    // Define frase inicial
     setFrase(FRASES_TUBARAO[Math.floor(Math.random() * FRASES_TUBARAO.length)]);
-    
+
     const interval = setInterval(() => {
       setFrase(FRASES_TUBARAO[Math.floor(Math.random() * FRASES_TUBARAO.length)]);
     }, 2500);
@@ -32,44 +30,55 @@ export default function SharkLoader() {
   return (
     <div className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center">
       <div className="relative w-32 h-32 rounded-full border-4 border-zinc-800 overflow-hidden bg-black shadow-[0_0_50px_rgba(16,185,129,0.3)] mb-8 flex items-center justify-center">
-        
-        {/* LOGO CENTRAL */}
         <div className="relative z-20 w-20 h-20 flex items-center justify-center">
           {!imgError ? (
             <div className="relative w-full h-full">
-                <Image 
-                    src="/logo.png" 
-                    alt="Loading" 
-                    fill
-                    className="object-contain drop-shadow-2xl animate-pulse" 
-                    onError={() => setImgError(true)}
-                    unoptimized
-                />
+              <Image
+                src="/logo.png"
+                alt="Loading"
+                fill
+                sizes="80px"
+                priority
+                className="object-contain drop-shadow-2xl animate-pulse"
+                onError={() => setImgError(true)}
+                unoptimized
+              />
             </div>
           ) : (
-            <span style={{ fontSize: '3rem' }}>🦈</span>
+            <span style={{ fontSize: "3rem" }}>T</span>
           )}
         </div>
 
-        {/* ONDAS VERDES (Animação) */}
-        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/20 rounded-[40%] animate-wave-fill z-10"></div>
-        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-500/10 rounded-[45%] animate-wave-fill z-0" style={{ animationDuration: "4s", animationDelay: "1s" }}></div>
+        <div className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-600/20 rounded-[40%] animate-wave-fill z-10" />
+        <div
+          className="absolute left-[-50%] w-[200%] h-[200%] bg-emerald-500/10 rounded-[45%] animate-wave-fill z-0"
+          style={{ animationDuration: "4s", animationDelay: "1s" }}
+        />
       </div>
 
-      {/* TEXTO */}
       <div className="text-center px-6 max-w-sm">
-        <h2 className="text-emerald-500 font-black text-xl tracking-[0.2em] animate-pulse mb-3 uppercase">Carregando</h2>
+        <h2 className="text-emerald-500 font-black text-xl tracking-[0.2em] animate-pulse mb-3 uppercase">
+          Carregando
+        </h2>
         <p className="text-zinc-400 text-sm font-medium italic leading-relaxed min-h-[3rem] transition-all duration-500">
-            &quot;{frase}&quot;
+          &quot;{frase}&quot;
         </p>
       </div>
 
       <style jsx>{`
         @keyframes wave-fill {
-          0% { transform: rotate(0deg) translateY(0); top: 100%; }
-          100% { transform: rotate(360deg) translateY(0); top: 20%; }
+          0% {
+            transform: rotate(0deg) translateY(0);
+            top: 100%;
+          }
+          100% {
+            transform: rotate(360deg) translateY(0);
+            top: 20%;
+          }
         }
-        .animate-wave-fill { animation: wave-fill 2.5s ease-in-out infinite alternate; }
+        .animate-wave-fill {
+          animation: wave-fill 2.5s ease-in-out infinite alternate;
+        }
       `}</style>
     </div>
   );

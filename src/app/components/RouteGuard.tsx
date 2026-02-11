@@ -106,6 +106,12 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const currentPath = pathname ? pathname.split("?")[0] : "/";
 
+    if (currentPath === "/login" && !authLoading && user) {
+      setAuthorized(false);
+      router.replace("/dashboard");
+      return;
+    }
+
     const isPublic = PUBLIC_PATHS.some(
       (p) => currentPath === p || currentPath.startsWith("/public")
     );
