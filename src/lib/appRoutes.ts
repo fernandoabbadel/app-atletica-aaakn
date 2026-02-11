@@ -32,6 +32,8 @@ export const GUEST_ALLOWED_PATHS = [
 
 // 3. ZONA DE OBRAS (Funcionalidades em desenvolvimento - redirecionam para Em Breve)
 export const COMING_SOON_PATHS = [
+  "/carrinho",
+  "/checkout",
   // "/marketplace-futuro",
   // "/shark-tv"
 ];
@@ -66,7 +68,6 @@ export const APP_PAGES = [
 
     // --- PÚBLICO / MEMBROS ---
     { path: '/album', label: '📸 Álbum' },
-    { path: '/carrinho', label: '🛒 Carrinho' },
     { path: '/carteirinha', label: '🪪 Carteirinha' },
     { path: '/comunidade', label: '💬 Comunidade' },
     { path: '/configuracoes', label: '⚙️ Ajustes (User)' },

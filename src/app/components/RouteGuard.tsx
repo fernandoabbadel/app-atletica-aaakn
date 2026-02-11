@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+
+import SharkLoader from "./SharkLoader";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import SharkLoader from "./SharkLoader";
-import { usePathname, useRouter } from "next/navigation";
 import {
   PUBLIC_PATHS,
   COMING_SOON_PATHS,
@@ -15,6 +16,14 @@ import {
   type PermissionMatrix,
 } from "@/lib/adminSecurityService";
 import { isFirebasePermissionError } from "@/lib/firebaseErrors";
+
+const ADMIN_FALLBACK_ROLES = new Set([
+  "master",
+  "admin",
+  "admin_geral",
+  "admin_gestor",
+  "staff",
+]);
 
 const normalizePermissionMatrix = (raw: unknown): PermissionMatrix | null => {
   if (typeof raw !== "object" || raw === null) return null;
@@ -45,7 +54,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     useState<PermissionMatrix | null>(null);
   const [rulesLoading, setRulesLoading] = useState(true);
 
-  // 1. BUSCA DE REGRAS (BLINDADA CONTRA ERROS)
   useEffect(() => {
     let isMounted = true;
 
@@ -68,22 +76,19 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
       try {
         const liveRules = await fetchPermissionMatrix({ forceRefresh: true });
+        if (!isMounted) return;
 
-        if (isMounted) {
-          const resolvedRules = liveRules ?? {};
-          setPermissionMatrix(resolvedRules);
+        const resolvedRules = liveRules ?? {};
+        setPermissionMatrix(resolvedRules);
 
-          if (liveRules) {
-            localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
-          } else {
-            localStorage.removeItem("shark_permissions");
-          }
+        if (liveRules) {
+          localStorage.setItem("shark_permissions", JSON.stringify(liveRules));
+        } else {
+          localStorage.removeItem("shark_permissions");
         }
       } catch (error: unknown) {
         if (!isFirebasePermissionError(error)) {
-          console.warn(
-            "RouteGuard: usando regras locais (Firebase bloqueado ou offline)."
-          );
+          console.warn("RouteGuard: usando regras locais (offline/permissao).");
         }
 
         if (isMounted && !hasCachedRules) {
@@ -102,7 +107,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  // 2. LOGICA DE PROTECAO
   useEffect(() => {
     const currentPath = pathname ? pathname.split("?")[0] : "/";
 
@@ -113,7 +117,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     }
 
     const isPublic = PUBLIC_PATHS.some(
-      (p) => currentPath === p || currentPath.startsWith("/public")
+      (path) => currentPath === path || currentPath.startsWith("/public")
     );
     if (isPublic) {
       setAuthorized(true);
@@ -130,7 +134,9 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
     if (
       currentPath !== "/em-breve" &&
-      COMING_SOON_PATHS.some((p) => currentPath.startsWith(p))
+      COMING_SOON_PATHS.some(
+        (path) => currentPath === path || currentPath.startsWith(`${path}/`)
+      )
     ) {
       setAuthorized(false);
       router.replace("/em-breve");
@@ -148,18 +154,20 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
     if (user.status === "banned" || user.status === "bloqueado") {
       setAuthorized(false);
-      if (currentPath !== "/banned") router.replace("/banned");
+      if (currentPath !== "/banned") {
+        router.replace("/banned");
+      }
       return;
     }
 
     if (userRole === "guest_anon") {
       const isAllowed = GUEST_ALLOWED_PATHS.some(
-        (p) => currentPath === p || currentPath.startsWith(`${p}/`)
+        (path) => currentPath === path || currentPath.startsWith(`${path}/`)
       );
 
       if (!isAllowed) {
         setAuthorized(false);
-        addToast("Essa área é exclusiva para membros oficiais!", "error");
+        addToast("Essa area eh exclusiva para membros oficiais!", "error");
         const fallbackPath = currentPath === "/dashboard" ? "/login" : "/dashboard";
         router.replace(fallbackPath);
         return;
@@ -175,9 +183,14 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       permissionMatrix !== null && Object.keys(permissionMatrix).length > 0;
 
     if (!hasPermissionRules && currentPath.startsWith("/admin")) {
-      setAuthorized(false);
-      addToast("Opa! Área restrita da diretoria!", "error");
-      router.replace("/sem-permissao");
+      if (!ADMIN_FALLBACK_ROLES.has(userRole)) {
+        setAuthorized(false);
+        addToast("Opa! Area restrita da diretoria!", "error");
+        router.replace("/sem-permissao");
+        return;
+      }
+
+      setAuthorized(true);
       return;
     }
 
@@ -190,20 +203,20 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
         .sort((a, b) => b.length - a.length)[0];
 
       if (matchedRulePath) {
-        const allowedRoles = permissionMatrix[matchedRulePath].map((r) =>
-          r.toLowerCase()
+        const allowedRoles = permissionMatrix[matchedRulePath].map((role) =>
+          role.toLowerCase()
         );
         const isRoleAllowed = allowedRoles.includes(userRole);
 
         if (!isRoleAllowed) {
           setAuthorized(false);
-          addToast("Eita! Você não tem permissão para essa área!", "error");
+          addToast("Eita! Voce nao tem permissao para essa area!", "error");
           router.replace(user.isAnonymous ? "/dashboard" : "/sem-permissao");
           return;
         }
       } else if (currentPath.startsWith("/admin")) {
         setAuthorized(false);
-        addToast("Opa! Área restrita da diretoria!", "error");
+        addToast("Opa! Area restrita da diretoria!", "error");
         router.replace("/sem-permissao");
         return;
       }
@@ -220,7 +233,6 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     addToast,
   ]);
 
-  // 3. RENDERIZACAO
   const currentPath = pathname ? pathname.split("?")[0] : "/";
   const isPublicRenderCheck = PUBLIC_PATHS.includes(currentPath);
 

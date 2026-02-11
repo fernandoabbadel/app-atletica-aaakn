@@ -20,6 +20,7 @@ import {
   updateProfileFields,
   uploadProfileImage
 } from "../../lib/profileService";
+import { validateImageFile } from "../../lib/upload";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -327,8 +328,9 @@ export default function MeuPerfilPage() {
       if (!e.target.files || !e.target.files[0] || !user) return;
       const file = e.target.files[0];
       
-      if (file.size > 5 * 1024 * 1024) { 
-          addToast("Imagem muito grande! Max 5MB.", "error");
+      const validationError = validateImageFile(file);
+      if (validationError) {
+          addToast(validationError, "error");
           return;
       }
 

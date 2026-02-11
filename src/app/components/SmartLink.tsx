@@ -2,9 +2,11 @@
 
 import React from "react";
 import Link from "next/link";
-import { useAuth } from "../../context/AuthContext";
-import { useToast } from "../../context/ToastContext";
 import { Lock } from "lucide-react";
+
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { COMING_SOON_PATHS } from "@/lib/appRoutes";
 
 interface SmartLinkProps {
   href: string;
@@ -12,6 +14,14 @@ interface SmartLinkProps {
   className?: string;
   showLockIcon?: boolean;
 }
+
+const ADMIN_FALLBACK_ROLES = new Set([
+  "master",
+  "admin",
+  "admin_geral",
+  "admin_gestor",
+  "staff",
+]);
 
 const parsePermissionMatrix = (
   raw: string
@@ -49,19 +59,34 @@ export default function SmartLink({
 
   const checkAccess = () => {
     if (typeof window === "undefined") return true;
-
     if (!user) return false;
-    if (user.role === "master") return true;
+
+    const path = href.toString().split("?")[0];
+    const userRole = (user.role || "user").toLowerCase();
+
+    const isComingSoon = COMING_SOON_PATHS.some(
+      (comingPath) => path === comingPath || path.startsWith(`${comingPath}/`)
+    );
+    if (isComingSoon) return false;
+
+    if (userRole === "master") return true;
 
     const cachedRules = localStorage.getItem("shark_permissions");
-    if (!cachedRules) return true;
+    if (!cachedRules) {
+      if (path.startsWith("/admin")) {
+        return ADMIN_FALLBACK_ROLES.has(userRole);
+      }
+      return true;
+    }
 
     try {
       const permissionMatrix = parsePermissionMatrix(cachedRules);
-      if (!permissionMatrix) return true;
-
-      const path = href.toString().split("?")[0];
-      const userRole = (user.role || "user").toLowerCase();
+      if (!permissionMatrix) {
+        if (path.startsWith("/admin")) {
+          return ADMIN_FALLBACK_ROLES.has(userRole);
+        }
+        return true;
+      }
 
       const matchedPath = Object.keys(permissionMatrix)
         .filter(
@@ -70,13 +95,20 @@ export default function SmartLink({
         .sort((a, b) => b.length - a.length)[0];
 
       if (matchedPath) {
-        const allowedRoles = permissionMatrix[matchedPath].map((r) =>
-          r.toLowerCase()
+        const allowedRoles = permissionMatrix[matchedPath].map((role) =>
+          role.toLowerCase()
         );
         return allowedRoles.includes(userRole);
       }
+
+      if (path.startsWith("/admin")) {
+        return ADMIN_FALLBACK_ROLES.has(userRole);
+      }
     } catch (error: unknown) {
-      console.error("Erro ao verificar permissão no SmartLink", error);
+      console.error("Erro ao verificar permissao no SmartLink", error);
+      if (path.startsWith("/admin")) {
+        return ADMIN_FALLBACK_ROLES.has(userRole);
+      }
       return true;
     }
 
@@ -85,14 +117,11 @@ export default function SmartLink({
 
   const hasPermission = checkAccess();
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (!hasPermission) {
-      e.preventDefault();
-      addToast(
-        "Acesso Bloqueado: Você não tem permissão para essa área.",
-        "error"
-      );
-    }
+  const handleClick = (event: React.MouseEvent) => {
+    if (hasPermission) return;
+
+    event.preventDefault();
+    addToast("Acesso bloqueado para essa area.", "error");
   };
 
   if (!hasPermission && showLockIcon) {

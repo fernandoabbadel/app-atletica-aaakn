@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { markProfileComplete, uploadProfileImage } from "../../lib/profileService";
+import { validateImageFile } from "../../lib/upload";
 import { useToast } from "../../context/ToastContext"; 
 
 // --- DADOS ---
@@ -183,13 +184,9 @@ export default function CadastroPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
-      if (file.size > 5 * 1024 * 1024) {
-          addToast("A imagem deve ter no máximo 5MB!", "error");
-          return;
-      }
-      if (!file.type.startsWith("image/")) {
-          addToast("Apenas arquivos de imagem são permitidos.", "error");
+      const validationError = validateImageFile(file);
+      if (validationError) {
+          addToast(validationError, "error");
           return;
       }
 

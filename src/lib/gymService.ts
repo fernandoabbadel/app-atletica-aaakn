@@ -19,6 +19,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { compressImageFile } from "./imageCompression";
 import { db, functions, storage } from "./firebase";
 import { getFirebaseErrorCode } from "./firebaseErrors";
+import { validateImageFile } from "./upload";
 
 type CacheEntry<T> = {
   cachedAt: number;
@@ -232,11 +233,21 @@ export async function submitGymCheckin(payload: {
   if (!userId) throw new Error("Usuario invalido.");
 
   const originalFile = await convertDataUrlToFile(payload.photoDataUrl);
+  const sourceValidationError = validateImageFile(originalFile);
+  if (sourceValidationError) {
+    throw new Error(sourceValidationError);
+  }
+
   const compressedFile = await compressImageFile(originalFile, {
     maxWidth: 1280,
     maxHeight: 1280,
     quality: 0.8,
   });
+
+  const compressedValidationError = validateImageFile(compressedFile);
+  if (compressedValidationError) {
+    throw new Error(compressedValidationError);
+  }
 
   const timestamp = Date.now();
   const storageRef = ref(storage, `posts/${userId}/${timestamp}_${compressedFile.name}`);

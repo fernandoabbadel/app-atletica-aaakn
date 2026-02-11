@@ -18,6 +18,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { db, functions, storage } from "./firebase";
 import { getFirebaseErrorCode } from "./firebaseErrors";
+import { validateImageFile } from "./upload";
 
 type CacheEntry<T> = {
   cachedAt: number;
@@ -205,8 +206,14 @@ export async function uploadHistoryImage(
   file: File,
   pathPrefix: string
 ): Promise<string> {
+  const validationError = validateImageFile(file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
   const safePathPrefix = pathPrefix.trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
-  const fileName = `${Date.now()}_${file.name}`;
+  const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 120);
+  const fileName = `${Date.now()}_${safeName}`;
   const storageRef = ref(storage, `${safePathPrefix}/${fileName}`);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);

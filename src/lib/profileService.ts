@@ -18,6 +18,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { compressImageFile } from "./imageCompression";
 import { db, functions, storage } from "./firebase";
 import { getFirebaseErrorCode } from "./firebaseErrors";
+import { validateImageFile } from "./upload";
 
 type CacheEntry<T> = {
   cachedAt: number;
@@ -679,11 +680,21 @@ export async function uploadProfileImage(payload: {
     throw new Error("Usuario invalido para upload.");
   }
 
+  const sourceValidationError = validateImageFile(payload.file);
+  if (sourceValidationError) {
+    throw new Error(sourceValidationError);
+  }
+
   const compressedFile = await compressImageFile(payload.file, {
     maxWidth: payload.kind === "capa" ? 1800 : 1200,
     maxHeight: payload.kind === "capa" ? 1800 : 1200,
     quality: 0.82,
   });
+
+  const compressedValidationError = validateImageFile(compressedFile);
+  if (compressedValidationError) {
+    throw new Error(compressedValidationError);
+  }
 
   const baseName = compressedFile.name
     .replace(/[^a-zA-Z0-9_.-]/g, "_")

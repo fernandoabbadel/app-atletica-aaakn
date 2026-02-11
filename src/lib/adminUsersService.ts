@@ -8,6 +8,7 @@ import {
   limit,
   orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   type QueryConstraint,
@@ -163,6 +164,12 @@ export interface AdminUserListItem {
   foto: string;
   xp: number;
   role: string;
+}
+
+export interface AdminUsersPageResult {
+  users: AdminUserListItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export interface AdminUserProfileRecord {
@@ -394,6 +401,43 @@ export async function fetchAdminUsersList(options?: {
 
   setCachedValue(usersListCache, cacheKey, rows);
   return rows;
+}
+
+export async function fetchAdminUsersPage(options?: {
+  pageSize?: number;
+  cursorId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<AdminUsersPageResult> {
+  const pageSize = boundedLimit(options?.pageSize ?? 20, MAX_USERS_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const forceRefresh = options?.forceRefresh ?? false;
+
+  if (forceRefresh) {
+    clearAdminUsersCache();
+  }
+
+  const constraints: QueryConstraint[] = [
+    orderBy("nome", "asc"),
+    limit(pageSize + 1),
+  ];
+
+  if (cursorId) {
+    const cursorSnap = await getDoc(doc(db, "users", cursorId));
+    if (cursorSnap.exists()) {
+      constraints.splice(1, 0, startAfter(cursorSnap));
+    }
+  }
+
+  const snap = await getDocs(query(collection(db, "users"), ...constraints));
+  const pageDocs = snap.docs.slice(0, pageSize);
+  const users = pageDocs
+    .map((row) => normalizeAdminUserListItem(row.id, row.data()))
+    .filter((row): row is AdminUserListItem => row !== null);
+
+  const hasMore = snap.docs.length > pageSize;
+  const nextCursor = users.length > 0 ? users[users.length - 1].id : null;
+
+  return { users, nextCursor, hasMore };
 }
 
 export async function updateAdminUser(payload: {

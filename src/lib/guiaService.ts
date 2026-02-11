@@ -16,6 +16,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { compressImageFile } from "./imageCompression";
 import { db, functions, storage } from "./firebase";
 import { getFirebaseErrorCode } from "./firebaseErrors";
+import { validateImageFile } from "./upload";
 
 type CacheEntry<T> = { cachedAt: number; value: T };
 type Row = Record<string, unknown>;
@@ -184,8 +185,9 @@ export async function deleteGuideItem(itemId: string): Promise<void> {
 }
 
 export async function uploadGuidePhoto(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Arquivo invalido");
+  const sourceValidationError = validateImageFile(file);
+  if (sourceValidationError) {
+    throw new Error(sourceValidationError);
   }
 
   const compressed = await compressImageFile(file, {
@@ -193,6 +195,11 @@ export async function uploadGuidePhoto(file: File): Promise<string> {
     maxHeight: 1280,
     quality: 0.8,
   });
+
+  const compressedValidationError = validateImageFile(compressed);
+  if (compressedValidationError) {
+    throw new Error(compressedValidationError);
+  }
 
   const storageRef = ref(storage, `guia/${Date.now()}_${compressed.name}`);
   await uploadBytes(storageRef, compressed);

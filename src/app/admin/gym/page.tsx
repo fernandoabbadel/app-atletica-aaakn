@@ -11,6 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { compressImageFile } from "../../../lib/imageCompression";
+import { validateImageFile } from "../../../lib/upload";
 
 // --- TIPAGEM ---
 
@@ -265,6 +266,12 @@ export default function AdminGymPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const validationError = validateImageFile(file);
+    if (validationError) {
+        addToast(validationError, "error");
+        return;
+    }
 
     try {
         const compressedFile = await compressImageFile(file, {

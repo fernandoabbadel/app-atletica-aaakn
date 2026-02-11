@@ -27,6 +27,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { Security } from "../../lib/security";
 import { compressImageFile } from "../../lib/imageCompression";
+import { validateImageFile } from "../../lib/upload";
 import {
   fetchCommunityComments,
   fetchCommunityConfig,
@@ -211,6 +212,21 @@ export default function ComunidadePage() {
   const [newComment, setNewComment] = useState("");
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [commentMenuOpen, setCommentMenuOpen] = useState<string | null>(null);
+
+  const handleSelectImage = (file: File | null) => {
+      if (!file) {
+          setImageFile(null);
+          return;
+      }
+
+      const validationError = validateImageFile(file);
+      if (validationError) {
+          addToast(validationError, "error");
+          return;
+      }
+
+      setImageFile(file);
+  };
 
     useEffect(() => {
     let mounted = true;
@@ -398,6 +414,12 @@ export default function ComunidadePage() {
     try {
       let imageUrl: string | null = null;
       if (imageFile) {
+        const validationError = validateImageFile(imageFile);
+        if (validationError) {
+          addToast(validationError, "error");
+          return;
+        }
+
         const optimizedImage = await compressImageFile(imageFile, {
           maxWidth: 1600,
           maxHeight: 1600,
@@ -822,7 +844,7 @@ export default function ComunidadePage() {
                 </div>
             </div>
             <div className="flex justify-between items-center mt-3">
-                <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => setImageFile(e.target.files?.[0] || null)}/></label>
+                <label className="p-2 hover:bg-zinc-800 rounded-full cursor-pointer text-emerald-500"><ImageIcon size={20}/><input type="file" className="hidden" onChange={e => handleSelectImage(e.target.files?.[0] || null)}/></label>
                 
                 <button 
                     onClick={handlePublish} 

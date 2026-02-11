@@ -8,7 +8,9 @@ import {
   orderBy,
   query,
   setDoc,
+  startAfter,
   updateDoc,
+  type QueryConstraint,
 } from "firebase/firestore";
 
 import { db, functions } from "./firebase";
@@ -198,6 +200,12 @@ export interface AdminActivityLogRecord {
   timestamp: unknown;
 }
 
+export interface AdminActivityLogsPageResult {
+  logs: AdminActivityLogRecord[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export interface PermissionUserRecord {
   id: string;
   nome: string;
@@ -207,6 +215,63 @@ export interface PermissionUserRecord {
 }
 
 export type PermissionMatrix = Record<string, string[]>;
+
+const normalizeActivityLogRow = (
+  id: string,
+  raw: unknown
+): AdminActivityLogRecord | null => {
+  const data = asObject(raw);
+  if (!data) return null;
+
+  return {
+    id,
+    userId: asString(data.userId),
+    userName: asString(data.userName, "Sistema"),
+    action: asString(data.action, "UNKNOWN"),
+    resource: asString(data.resource, "Sistema"),
+    details: asString(data.details),
+    timestamp: data.timestamp,
+  };
+};
+
+export async function fetchAdminActivityLogsPage(options?: {
+  pageSize?: number;
+  cursorId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<AdminActivityLogsPageResult> {
+  const pageSize = boundedLimit(options?.pageSize ?? 20, MAX_ACTIVITY_LOG_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const forceRefresh = options?.forceRefresh ?? false;
+
+  if (forceRefresh) {
+    activityLogsCache.clear();
+  }
+
+  const constraints: QueryConstraint[] = [
+    orderBy("timestamp", "desc"),
+    limit(pageSize + 1),
+  ];
+
+  if (cursorId) {
+    const cursorSnap = await getDoc(doc(db, "activity_logs", cursorId));
+    if (cursorSnap.exists()) {
+      constraints.splice(1, 0, startAfter(cursorSnap));
+    }
+  }
+
+  const snap = await getDocs(query(collection(db, "activity_logs"), ...constraints));
+
+  const pageDocs = snap.docs.slice(0, pageSize);
+  const logs = pageDocs
+    .map((row) => normalizeActivityLogRow(row.id, row.data()))
+    .filter((row): row is AdminActivityLogRecord => row !== null)
+    .sort((left, right) => toMillis(right.timestamp) - toMillis(left.timestamp));
+
+  const hasMore = snap.docs.length > pageSize;
+  const nextCursor = logs.length > 0 ? logs[logs.length - 1].id : null;
+
+  return { logs, nextCursor, hasMore };
+}
 
 export async function fetchAdminActivityLogs(options?: {
   maxResults?: number;
@@ -232,19 +297,7 @@ export async function fetchAdminActivityLogs(options?: {
   const snap = await getDocs(q);
 
   const rows = snap.docs
-    .map((row) => {
-      const data = asObject(row.data());
-      if (!data) return null;
-      return {
-        id: row.id,
-        userId: asString(data.userId),
-        userName: asString(data.userName, "Sistema"),
-        action: asString(data.action, "UNKNOWN"),
-        resource: asString(data.resource, "Sistema"),
-        details: asString(data.details),
-        timestamp: data.timestamp,
-      } satisfies AdminActivityLogRecord;
-    })
+    .map((row) => normalizeActivityLogRow(row.id, row.data()))
     .filter((row): row is AdminActivityLogRecord => row !== null)
     .sort((left, right) => toMillis(right.timestamp) - toMillis(left.timestamp));
 

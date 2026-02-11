@@ -20,6 +20,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { fetchAlbumConfig, fetchAlbumRankings, saveAlbumConfig } from "../../../lib/albumService";
 import { compressImageFile } from "../../../lib/imageCompression";
 import { logActivity } from "../../../lib/logger";
+import { validateImageFile } from "../../../lib/upload";
 
 // --- TIPAGENS ---
 interface Hunter {
@@ -119,10 +120,9 @@ export default function AdminAlbumPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    
-    // Validação de tipo/tamanho básica
-    if (!file.type.startsWith("image/")) {
-        addToast("Apenas imagens são permitidas!", "error");
+    const validationError = validateImageFile(file);
+    if (validationError) {
+        addToast(validationError, "error");
         return;
     }
 
