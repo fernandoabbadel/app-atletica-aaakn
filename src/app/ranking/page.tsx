@@ -36,7 +36,7 @@ export default function RankingPage() {
       try {
         const usersData = (await fetchGlobalRankingUsers({
           maxResults: 100,
-          forceRefresh: true,
+          forceRefresh: false,
         })).map((entry) => ({
           id: entry.id,
           nome: entry.nome || "Atleta Anonimo",

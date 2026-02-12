@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   increment,
@@ -11,6 +12,7 @@ import {
   orderBy,
   query,
   runTransaction,
+  startAfter,
   updateDoc,
   where,
   type QueryConstraint,
@@ -82,6 +84,28 @@ export interface PartnerLoginResult {
   passwordValid: boolean;
 }
 
+export interface AdminPartnersPageResult {
+  partners: PartnerRecord[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface AdminPartnerScansPageResult {
+  scans: PartnerScanRecord[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface AdminPartnersTierCounts {
+  total: number;
+  ativos: number;
+  pendentes: number;
+  desativados: number;
+  ouro: number;
+  prata: number;
+  standard: number;
+}
+
 const READ_CACHE_TTL_MS = 30_000;
 const MAX_PARTNERS_RESULTS = 600;
 const MAX_SCANS_RESULTS = 1_200;
@@ -100,9 +124,44 @@ const adminBundleCache = new Map<
   string,
   CacheEntry<{ partners: PartnerRecord[]; scans: PartnerScanRecord[] }>
 >();
+const adminPartnersPageCache = new Map<
+  string,
+  CacheEntry<{
+    partners: PartnerRecord[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>
+>();
+const adminScansPageCache = new Map<
+  string,
+  CacheEntry<{
+    scans: PartnerScanRecord[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>
+>();
+const adminTierCountsCache = new Map<string, CacheEntry<AdminPartnersTierCounts>>();
+const publicPartnersCache = new Map<string, CacheEntry<PartnerRecord[]>>();
 const partnerByIdCache = new Map<string, CacheEntry<PartnerRecord | null>>();
 const partnerScansCache = new Map<string, CacheEntry<PartnerScanRecord[]>>();
 const scannerFieldsCache = new Map<string, CacheEntry<Record<string, string[]>>>();
+const partnersPageInflight = new Map<
+  string,
+  Promise<{
+    partners: PartnerRecord[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>
+>();
+const scansPageInflight = new Map<
+  string,
+  Promise<{
+    scans: PartnerScanRecord[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>
+>();
+const tierCountsInflight = new Map<string, Promise<AdminPartnersTierCounts>>();
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -134,6 +193,16 @@ const normalizeStatus = (value: unknown): PartnerStatus => {
   const status = asString(value).toLowerCase();
   if (status === "pending" || status === "disabled") return status;
   return "active";
+};
+
+const normalizeStatusFilter = (
+  value: unknown
+): PartnerStatus | "all" => {
+  const status = asString(value).toLowerCase();
+  if (status === "active" || status === "pending" || status === "disabled") {
+    return status;
+  }
+  return "all";
 };
 
 const normalizeCoupon = (raw: unknown): PartnerCoupon | null => {
@@ -252,6 +321,16 @@ const setMapCacheValue = <T>(
   value: T
 ): void => {
   cache.set(key, { cachedAt: Date.now(), value });
+};
+
+const clearAdminPartnersCaches = (): void => {
+  adminBundleCache.clear();
+  adminPartnersPageCache.clear();
+  adminScansPageCache.clear();
+  adminTierCountsCache.clear();
+  partnersPageInflight.clear();
+  scansPageInflight.clear();
+  tierCountsInflight.clear();
 };
 
 const isIndexRequiredError = (error: unknown): boolean => {
@@ -425,6 +504,334 @@ export async function fetchAdminPartnersBundle(options?: {
   return bundle;
 }
 
+export async function fetchAdminPartnersPage(options?: {
+  pageSize?: number;
+  cursorId?: string | null;
+  status?: PartnerStatus | "all";
+  forceRefresh?: boolean;
+}): Promise<AdminPartnersPageResult> {
+  const pageSize = boundedLimit(options?.pageSize ?? 20, MAX_PARTNERS_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const statusFilter = normalizeStatusFilter(options?.status);
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = `${statusFilter}:${pageSize}:${cursorId || "first"}`;
+
+  if (forceRefresh) {
+    clearAdminPartnersCaches();
+  } else {
+    const cached = getMapCacheValue(adminPartnersPageCache, cacheKey);
+    if (cached) return cached;
+
+    const pending = partnersPageInflight.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const requestPromise = (async () => {
+    const cursorSnap = cursorId ? await getDoc(doc(db, "parceiros", cursorId)) : null;
+
+    const makeBaseConstraints = (requestedLimit: number): QueryConstraint[] => {
+      const constraints: QueryConstraint[] = [
+        orderBy("nome", "asc"),
+        limit(requestedLimit),
+      ];
+      if (cursorSnap?.exists()) {
+        constraints.splice(1, 0, startAfter(cursorSnap));
+      }
+      return constraints;
+    };
+
+    const normalizeRows = (
+      docs: Array<{ id: string; data: () => Record<string, unknown> }>
+    ): PartnerRecord[] =>
+      docs
+        .map((row) => normalizePartner(row.id, row.data()))
+        .filter((row): row is PartnerRecord => row !== null);
+
+    const buildResult = (rows: PartnerRecord[]): AdminPartnersPageResult => {
+      const pageRows = rows.slice(0, pageSize);
+      return {
+        partners: pageRows,
+        hasMore: rows.length > pageSize,
+        nextCursor: pageRows.length ? pageRows[pageRows.length - 1].id : null,
+      };
+    };
+
+    try {
+      const baseConstraints = makeBaseConstraints(pageSize + 1);
+      const constraints =
+        statusFilter === "all"
+          ? baseConstraints
+          : [where("status", "==", statusFilter), ...baseConstraints];
+
+      const snap = await getDocs(query(collection(db, "parceiros"), ...constraints));
+      const normalizedRows = normalizeRows(snap.docs);
+      const filteredRows =
+        statusFilter === "all"
+          ? normalizedRows
+          : normalizedRows.filter((row) => row.status === statusFilter);
+
+      const result = buildResult(filteredRows);
+      setMapCacheValue(adminPartnersPageCache, cacheKey, result);
+      return result;
+    } catch (error: unknown) {
+      if (statusFilter === "all" || !isIndexRequiredError(error)) {
+        throw error;
+      }
+
+      const fallbackConstraints = makeBaseConstraints(pageSize * 4 + 1);
+      const snap = await getDocs(
+        query(collection(db, "parceiros"), ...fallbackConstraints)
+      );
+      const filteredRows = normalizeRows(snap.docs).filter(
+        (row) => row.status === statusFilter
+      );
+
+      const result = buildResult(filteredRows);
+      setMapCacheValue(adminPartnersPageCache, cacheKey, result);
+      return result;
+    }
+  })();
+
+  partnersPageInflight.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    partnersPageInflight.delete(cacheKey);
+  }
+}
+
+export async function fetchAdminPartnerScansPage(options?: {
+  pageSize?: number;
+  cursorId?: string | null;
+  partnerId?: string;
+  forceRefresh?: boolean;
+}): Promise<AdminPartnerScansPageResult> {
+  const pageSize = boundedLimit(options?.pageSize ?? 20, MAX_SCANS_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const partnerId = options?.partnerId?.trim() || "";
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = `${partnerId || "all"}:${pageSize}:${cursorId || "first"}`;
+
+  if (forceRefresh) {
+    clearAdminPartnersCaches();
+  } else {
+    const cached = getMapCacheValue(adminScansPageCache, cacheKey);
+    if (cached) return cached;
+
+    const pending = scansPageInflight.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const requestPromise = (async () => {
+    const cursorSnap = cursorId ? await getDoc(doc(db, "scans", cursorId)) : null;
+
+    const makeConstraints = (requestedLimit: number): QueryConstraint[] => {
+      const constraints: QueryConstraint[] = [orderBy("timestamp", "desc"), limit(requestedLimit)];
+      if (cursorSnap?.exists()) {
+        constraints.splice(1, 0, startAfter(cursorSnap));
+      }
+      if (partnerId) {
+        constraints.unshift(where("empresaId", "==", partnerId));
+      }
+      return constraints;
+    };
+
+    const buildResult = (rows: PartnerScanRecord[]): AdminPartnerScansPageResult => {
+      const pageRows = rows.slice(0, pageSize);
+      return {
+        scans: pageRows,
+        hasMore: rows.length > pageSize,
+        nextCursor: pageRows.length ? pageRows[pageRows.length - 1].id : null,
+      };
+    };
+
+    const normalizeRows = (
+      docs: Array<{ id: string; data: () => Record<string, unknown> }>
+    ): PartnerScanRecord[] =>
+      docs
+        .map((row) => normalizeScan(row.id, row.data()))
+        .filter((row): row is PartnerScanRecord => row !== null)
+        .sort((left, right) => toMillis(right.timestamp) - toMillis(left.timestamp));
+
+    try {
+      const snap = await getDocs(
+        query(collection(db, "scans"), ...makeConstraints(pageSize + 1))
+      );
+      const result = buildResult(normalizeRows(snap.docs));
+      setMapCacheValue(adminScansPageCache, cacheKey, result);
+      return result;
+    } catch (error: unknown) {
+      if (!isIndexRequiredError(error)) {
+        throw error;
+      }
+
+      const fallbackConstraints: QueryConstraint[] = [
+        ...(partnerId ? [where("empresaId", "==", partnerId)] : []),
+        limit(pageSize + 1),
+      ];
+      if (cursorSnap?.exists()) {
+        fallbackConstraints.splice(1, 0, startAfter(cursorSnap));
+      }
+
+      const snap = await getDocs(query(collection(db, "scans"), ...fallbackConstraints));
+      const result = buildResult(normalizeRows(snap.docs));
+      setMapCacheValue(adminScansPageCache, cacheKey, result);
+      return result;
+    }
+  })();
+
+  scansPageInflight.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    scansPageInflight.delete(cacheKey);
+  }
+}
+
+export async function fetchAdminPartnersTierCounts(options?: {
+  forceRefresh?: boolean;
+}): Promise<AdminPartnersTierCounts> {
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = "global";
+
+  if (forceRefresh) {
+    clearAdminPartnersCaches();
+  } else {
+    const cached = getMapCacheValue(adminTierCountsCache, cacheKey);
+    if (cached) return cached;
+
+    const pending = tierCountsInflight.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const requestPromise = (async () => {
+    try {
+      const baseCollection = collection(db, "parceiros");
+
+      const [totalSnap, activeSnap, pendingSnap, disabledSnap, ouroSnap, prataSnap, standardSnap] =
+        await Promise.all([
+          getCountFromServer(baseCollection),
+          getCountFromServer(query(baseCollection, where("status", "==", "active"))),
+          getCountFromServer(query(baseCollection, where("status", "==", "pending"))),
+          getCountFromServer(query(baseCollection, where("status", "==", "disabled"))),
+          getCountFromServer(
+            query(
+              baseCollection,
+              where("status", "==", "active"),
+              where("tier", "==", "ouro")
+            )
+          ),
+          getCountFromServer(
+            query(
+              baseCollection,
+              where("status", "==", "active"),
+              where("tier", "==", "prata")
+            )
+          ),
+          getCountFromServer(
+            query(
+              baseCollection,
+              where("status", "==", "active"),
+              where("tier", "==", "standard")
+            )
+          ),
+        ]);
+
+      const result: AdminPartnersTierCounts = {
+        total: totalSnap.data().count,
+        ativos: activeSnap.data().count,
+        pendentes: pendingSnap.data().count,
+        desativados: disabledSnap.data().count,
+        ouro: ouroSnap.data().count,
+        prata: prataSnap.data().count,
+        standard: standardSnap.data().count,
+      };
+      setMapCacheValue(adminTierCountsCache, cacheKey, result);
+      return result;
+    } catch (error: unknown) {
+      if (!isIndexRequiredError(error)) {
+        throw error;
+      }
+
+      const rows = await fetchRowsWithFallback("parceiros", [[limit(MAX_PARTNERS_RESULTS)]]);
+      const normalized = rows
+        .map((row) => normalizePartner(asString(row.id), row))
+        .filter((row): row is PartnerRecord => row !== null);
+
+      const result: AdminPartnersTierCounts = {
+        total: normalized.length,
+        ativos: normalized.filter((row) => row.status === "active").length,
+        pendentes: normalized.filter((row) => row.status === "pending").length,
+        desativados: normalized.filter((row) => row.status === "disabled").length,
+        ouro: normalized.filter(
+          (row) => row.status === "active" && row.tier === "ouro"
+        ).length,
+        prata: normalized.filter(
+          (row) => row.status === "active" && row.tier === "prata"
+        ).length,
+        standard: normalized.filter(
+          (row) => row.status === "active" && row.tier === "standard"
+        ).length,
+      };
+      setMapCacheValue(adminTierCountsCache, cacheKey, result);
+      return result;
+    }
+  })();
+
+  tierCountsInflight.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    tierCountsInflight.delete(cacheKey);
+  }
+}
+
+const tierRank = (tier: PartnerTier): number => {
+  if (tier === "ouro") return 0;
+  if (tier === "prata") return 1;
+  return 2;
+};
+
+export async function fetchPublicPartners(options?: {
+  maxResults?: number;
+  forceRefresh?: boolean;
+}): Promise<PartnerRecord[]> {
+  const maxResults = boundedLimit(options?.maxResults ?? 240, MAX_PARTNERS_RESULTS);
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = `${maxResults}`;
+
+  if (!forceRefresh) {
+    const cached = getMapCacheValue(publicPartnersCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const rows = await fetchRowsWithFallback("parceiros", [
+    [
+      where("status", "==", "active"),
+      orderBy("tier", "asc"),
+      orderBy("nome", "asc"),
+      limit(maxResults),
+    ],
+    [where("status", "==", "active"), orderBy("nome", "asc"), limit(maxResults)],
+    [where("status", "==", "active"), limit(maxResults)],
+    [orderBy("nome", "asc"), limit(maxResults)],
+  ]);
+
+  const partners = rows
+    .map((row) => normalizePartner(asString(row.id), row))
+    .filter((row): row is PartnerRecord => row !== null)
+    .filter((row) => row.status === "active")
+    .sort((left, right) => {
+      const byTier = tierRank(left.tier) - tierRank(right.tier);
+      if (byTier !== 0) return byTier;
+      return left.nome.localeCompare(right.nome, "pt-BR");
+    })
+    .slice(0, maxResults);
+
+  setMapCacheValue(publicPartnersCache, cacheKey, partners);
+  return partners;
+}
+
 export async function fetchPartnerById(
   partnerId: string,
   options?: { forceRefresh?: boolean }
@@ -584,7 +991,8 @@ export async function createPartnerLead(payload: {
     }
   );
 
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
   return result;
 }
 
@@ -608,7 +1016,8 @@ export async function setPartnerStatus(payload: {
   );
 
   partnerByIdCache.delete(partnerId);
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
 }
 
 export async function upsertPartner(payload: {
@@ -647,7 +1056,8 @@ export async function upsertPartner(payload: {
     response
   );
 
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
   if (normalized) {
     partnerByIdCache.set(normalized.id, {
       cachedAt: Date.now(),
@@ -671,7 +1081,8 @@ export async function deletePartnerById(partnerId: string): Promise<void> {
   );
 
   partnerByIdCache.delete(cleanPartnerId);
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
 }
 
 export async function createPartnerScan(payload: {
@@ -774,7 +1185,8 @@ export async function createPartnerScan(payload: {
     }
   });
   partnerByIdCache.delete(partnerId);
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
 
   return {
     scan,
@@ -802,7 +1214,8 @@ export async function updatePartnerProfile(payload: {
   );
 
   partnerByIdCache.delete(partnerId);
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
 }
 
 const fileToDataUrl = (file: File): Promise<string> =>
@@ -875,7 +1288,8 @@ export async function scanFirestoreCollectionFields(options: {
 }
 
 export function clearPartnersCaches(): void {
-  adminBundleCache.clear();
+  clearAdminPartnersCaches();
+  publicPartnersCache.clear();
   partnerByIdCache.clear();
   partnerScansCache.clear();
   scannerFieldsCache.clear();

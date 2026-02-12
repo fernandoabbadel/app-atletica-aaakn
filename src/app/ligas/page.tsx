@@ -202,7 +202,7 @@ export default function LigasAdminPage() {
       let mounted = true;
       const loadPolls = async () => {
           try {
-              const data = await fetchEventPolls(pollModal, { maxResults: 80, forceRefresh: true });
+              const data = await fetchEventPolls(pollModal, { maxResults: 80, forceRefresh: false });
               if (!mounted) return;
               setPolls(data as Poll[]);
           } catch (error: unknown) {
@@ -221,7 +221,7 @@ export default function LigasAdminPage() {
       if (!selectedLigaId || !senhaInput) return addToast("Preencha todos os campos!", "error");
       setLoading(true);
       try {
-          const target = await fetchLeagueById(selectedLigaId, { forceRefresh: true });
+          const target = await fetchLeagueById(selectedLigaId, { forceRefresh: false });
           
           if (target && target.senha === senhaInput) {
               setLigaData({

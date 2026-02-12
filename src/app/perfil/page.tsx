@@ -247,7 +247,7 @@ export default function MeuPerfilPage() {
 
     const fetchProfile = async () => {
         try {
-            const bundle = await fetchOwnProfileBundle(user.uid, { forceRefresh: true });
+            const bundle = await fetchOwnProfileBundle(user.uid, { forceRefresh: false });
             if (bundle?.profile) {
                 const data = bundle.profile as UserProfile;
                 setProfile(data);
@@ -286,7 +286,7 @@ export default function MeuPerfilPage() {
       setActiveModal(type);
       const list = await fetchFollowList(user.uid, type, {
           maxResults: 220,
-          forceRefresh: true,
+          forceRefresh: false,
       });
       if(type === 'followers') setFollowersList(list);
       else setFollowingList(list);

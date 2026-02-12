@@ -275,7 +275,7 @@ export default function DetalhesEventoPage() {
                   commentsLimit: 300,
                   pollsLimit: 60,
                   pedidosLimit: 60,
-                  forceRefresh: true,
+                  forceRefresh: false,
               });
 
               setEvento(bundle.evento as Evento | null);

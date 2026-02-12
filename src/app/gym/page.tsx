@@ -59,7 +59,7 @@ export default function GymPage() {
       try {
         const feed = await fetchGymFeed({
           maxResults: 80,
-          forceRefresh: true,
+          forceRefresh: false,
         });
         setPosts(feed as Post[]);
       } catch (error: unknown) {

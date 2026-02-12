@@ -32,7 +32,7 @@ export default function AdminGamesPage() {
           try {
             const usersRows = await fetchArenaUsers({
               maxResults: 80,
-              forceRefresh: true,
+              forceRefresh: false,
             });
             setUsers(usersRows.map((row) => ({ ...row } as AdminUser)));
           } catch (error: unknown) {

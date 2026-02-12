@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   QrCode, Ticket, Edit, Calendar, Store,
-  Camera, LogOut, Loader2, X
+  Camera, LogOut, Loader2, X, FileText, ChevronRight
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "../../../context/ToastContext";
 import {
   createPartnerScan,
@@ -103,11 +104,11 @@ export default function EmpresaDashboard() {
         if (!empresaId) return;
         try {
             const [partnerData, partnerScans] = await Promise.all([
-              fetchPartnerById(empresaId, { forceRefresh: true }),
+              fetchPartnerById(empresaId, { forceRefresh: false }),
               fetchPartnerScans({
                 partnerId: empresaId,
-                maxResults: 500,
-                forceRefresh: true,
+                maxResults: 120,
+                forceRefresh: false,
               }),
             ]);
 
@@ -119,7 +120,7 @@ export default function EmpresaDashboard() {
                 addToast("Empresa não encontrada.", "error");
                 router.push("/empresa");
             }
-            setHistory(partnerScans as ScanData[]);
+            setHistory((partnerScans as ScanData[]).slice(0, 10));
         } catch (error: unknown) {
             console.error(error);
         } finally {
@@ -133,36 +134,63 @@ export default function EmpresaDashboard() {
 
   const handleScan = async () => {
       if (!partner) return;
+
+      const rawPayload = window.prompt(
+          "Cole o payload do QR (JSON com userId/usuario/cupom/valorEconomizado, ou apenas userId):"
+      );
+      if (!rawPayload?.trim()) return;
+
+      let scanUserId = "";
+      let scanUsuario = "";
+      let scanCupom = partner.cupons?.[0]?.titulo || "Desconto";
+      let scanValor = partner.cupons?.[0]?.valor || "R$ 0,00";
+
+      try {
+          const parsed = JSON.parse(rawPayload) as Record<string, unknown>;
+          scanUserId = String(parsed.userId || parsed.uid || "").trim();
+          scanUsuario = String(parsed.usuario || parsed.userName || "").trim();
+          scanCupom = String(parsed.cupom || scanCupom).trim() || scanCupom;
+          scanValor = String(parsed.valorEconomizado || scanValor).trim() || scanValor;
+      } catch {
+          scanUserId = rawPayload.trim();
+      }
+
+      if (!scanUserId) {
+          addToast("QR invalido: userId ausente.", "error");
+          return;
+      }
+      if (!scanUsuario) {
+          scanUsuario = `Aluno ${scanUserId.slice(0, 8)}`;
+      }
+
       setScanning(true);
-      // Simulação de Scan (Num app real, abriria câmera)
       setTimeout(async () => {
           setScanning(false);
-          
+
           try {
               const scanResult = await createPartnerScan({
                   partnerId: empresaId,
                   partnerName: partner.nome,
-                  usuario: "Aluno Exemplo", // Viria do QR Code lido
-                  userId: "u123",
-                  cupom: partner.cupons?.[0]?.titulo || "Desconto",
-                  valorEconomizado: partner.cupons?.[0]?.valor || "R$ 0,00",
-                  data: new Date().toLocaleDateString('pt-BR'),
-                  hora: new Date().toLocaleTimeString('pt-BR'),
+                  usuario: scanUsuario,
+                  userId: scanUserId,
+                  cupom: scanCupom,
+                  valorEconomizado: scanValor,
+                  data: new Date().toLocaleDateString("pt-BR"),
+                  hora: new Date().toLocaleTimeString("pt-BR"),
               });
 
               const nextTotal =
                 scanResult.totalScans > 0
                   ? scanResult.totalScans
                   : (partner.totalScans || 0) + 1;
-              setHistory(prev => [scanResult.scan as ScanData, ...prev]);
+              setHistory((prev) => [scanResult.scan as ScanData, ...prev].slice(0, 10));
               setPartner((prev) => prev ? ({...prev, totalScans: nextTotal}) : null);
-              addToast("✅ Cupom Validado com Sucesso!", "success");
-
-          } catch(error: unknown) {
+              addToast("Cupom validado com sucesso.", "success");
+          } catch (error: unknown) {
               console.error(error);
               addToast("Erro ao registrar scan.", "error");
           }
-      }, 2000);
+      }, 600);
   };
 
   const handleSaveProfile = async () => {
@@ -220,7 +248,20 @@ export default function EmpresaDashboard() {
                   <p className="text-xs text-zinc-400 font-bold uppercase">Meus Dados</p>
                   <p className="text-white font-bold text-sm">Mantenha sua página sempre atualizada.</p>
               </div>
-              <button onClick={() => setShowEditModal(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-500 transition"><Edit size={14}/> Editar</button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/empresa/${empresaId}/historico`}
+                  className="p-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 flex items-center gap-2 text-xs font-bold uppercase"
+                >
+                  <FileText size={14} /> Historico
+                </Link>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="p-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 flex items-center gap-2 text-xs font-bold uppercase"
+                >
+                  <Edit size={14} /> Editar
+                </button>
+              </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -252,7 +293,15 @@ export default function EmpresaDashboard() {
             <div className="lg:col-span-2">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl h-full flex flex-col">
                     <div className="p-6 border-b border-zinc-800 bg-black/20">
-                        <h3 className="font-bold text-white flex items-center gap-2"><QrCode size={18} className="text-emerald-500"/> Histórico de Uso</h3>
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="font-bold text-white flex items-center gap-2"><QrCode size={18} className="text-emerald-500"/> Ultimos scans</h3>
+                          <Link
+                            href={`/empresa/${empresaId}/historico`}
+                            className="text-[10px] uppercase font-black text-emerald-400 flex items-center gap-1 hover:text-emerald-300"
+                          >
+                            Ver completo <ChevronRight size={12} />
+                          </Link>
+                        </div>
                     </div>
                     <div className="overflow-x-auto flex-1 custom-scrollbar">
                         <table className="w-full text-left whitespace-nowrap">

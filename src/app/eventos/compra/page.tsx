@@ -60,7 +60,7 @@ function CompraContent() {
               const checkoutData = await fetchEventCheckoutData({
                   eventId: eventoId,
                   loteId,
-                  forceRefresh: true,
+                  forceRefresh: false,
               });
 
               if (checkoutData.evento) {

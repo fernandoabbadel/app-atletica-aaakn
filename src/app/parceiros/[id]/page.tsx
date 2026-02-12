@@ -48,7 +48,7 @@ export default function ParceiroDetalhePage() {
       const fetchParceiro = async () => {
           if(!parceiroId) return;
           try {
-              const foundPartner = await fetchPartnerById(parceiroId, { forceRefresh: true });
+              const foundPartner = await fetchPartnerById(parceiroId, { forceRefresh: false });
               if (foundPartner) {
                   setParceiro(foundPartner as Parceiro);
               } else {

@@ -324,7 +324,7 @@ export default function EventosPage() {
 
     const loadEvents = async () => {
       try {
-        const rows = await fetchEventsFeed({ maxResults: 60, forceRefresh: true });
+        const rows = await fetchEventsFeed({ maxResults: 60, forceRefresh: false });
         if (!mounted) return;
         setEventos(rows as unknown as Evento[]);
       } catch (error: unknown) {

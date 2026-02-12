@@ -238,7 +238,7 @@ export default function PerfilPublicoPage() {
 
     const fetchProfile = async () => {
         try {
-            const bundle = await fetchPublicProfileBundle(uid, user?.uid, { forceRefresh: true });
+            const bundle = await fetchPublicProfileBundle(uid, user?.uid, { forceRefresh: false });
             if (bundle?.profile) {
                 const data = bundle.profile as UserProfile;
 
@@ -312,7 +312,7 @@ export default function PerfilPublicoPage() {
       try {
           const list = await fetchFollowList(profile.uid, type, {
               maxResults: 220,
-              forceRefresh: true,
+              forceRefresh: false,
           });
           if (type === 'followers') setFollowersList(list);
           else setFollowingList(list);

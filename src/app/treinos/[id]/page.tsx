@@ -87,9 +87,9 @@ export default function TreinoDetalhesPage() {
           setLoading(true);
           try {
               const [treinoDoc, listaRsvp, listaChamada] = await Promise.all([
-                  fetchTreinoById(treinoId, { forceRefresh: true }),
-                  fetchTreinoRsvps(treinoId, { maxResults: 220, forceRefresh: true }),
-                  fetchTreinoChamada(treinoId, { maxResults: 220, forceRefresh: true }),
+                  fetchTreinoById(treinoId, { forceRefresh: false }),
+                  fetchTreinoRsvps(treinoId, { maxResults: 220, forceRefresh: false }),
+                  fetchTreinoChamada(treinoId, { maxResults: 220, forceRefresh: false }),
               ]);
 
               if (!treinoDoc) {
@@ -187,10 +187,10 @@ export default function TreinoDetalhesPage() {
               status,
           });
 
-          const treinoAtualizado = await fetchTreinoById(treino.id, { forceRefresh: true });
+          const treinoAtualizado = await fetchTreinoById(treino.id, { forceRefresh: false });
           const [listaRsvp, listaChamada] = await Promise.all([
-              fetchTreinoRsvps(treino.id, { maxResults: 220, forceRefresh: true }),
-              fetchTreinoChamada(treino.id, { maxResults: 220, forceRefresh: true }),
+              fetchTreinoRsvps(treino.id, { maxResults: 220, forceRefresh: false }),
+              fetchTreinoChamada(treino.id, { maxResults: 220, forceRefresh: false }),
           ]);
 
           if (treinoAtualizado) {

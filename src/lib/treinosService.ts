@@ -37,6 +37,7 @@ const MAX_CHAMADA_RESULTS = 240;
 const MAX_MODALIDADES = 30;
 const MAX_RECURRING_WEEKS = 20;
 
+const TREINO_SETTINGS_GET_CALLABLE = "treinoAdminGetSettings";
 const TREINO_SETTINGS_SAVE_CALLABLE = "treinoAdminSaveSettings";
 const TREINO_UPSERT_CALLABLE = "treinoAdminUpsert";
 const TREINO_RECURRING_CALLABLE = "treinoAdminCreateRecurring";
@@ -56,6 +57,10 @@ const treinoRsvpsCache = new Map<string, CacheEntry<TreinoRsvpRecord[]>>();
 const treinoChamadaCache = new Map<string, CacheEntry<TreinoChamadaRecord[]>>();
 const userDirectoryCache = new Map<string, CacheEntry<TreinoUserDirectoryItem[]>>();
 let modalidadesCache: CacheEntry<string[]> | null = null;
+let modalidadesInFlight: Promise<string[]> | null = null;
+
+const TREINO_SETTINGS_SESSION_KEY = "aaakn:treino-settings";
+const TREINO_SETTINGS_SESSION_TS_KEY = "aaakn:treino-settings:ts";
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -99,6 +104,42 @@ const setMapCachedValue = <T>(
   value: T
 ): void => {
   cache.set(key, { cachedAt: Date.now(), value });
+};
+
+const getSessionCachedModalidades = (): string[] | null => {
+  if (typeof window === "undefined") return null;
+
+  const rawValue = window.sessionStorage.getItem(TREINO_SETTINGS_SESSION_KEY);
+  const rawTs = window.sessionStorage.getItem(TREINO_SETTINGS_SESSION_TS_KEY);
+  if (!rawValue || !rawTs) return null;
+
+  const timestamp = Number(rawTs);
+  if (!Number.isFinite(timestamp)) return null;
+  if (Date.now() - timestamp > READ_CACHE_TTL_MS) return null;
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    const normalized = normalizeModalidades(parsed);
+    return normalized;
+  } catch {
+    return null;
+  }
+};
+
+const setSessionCachedModalidades = (modalidades: string[]): void => {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      TREINO_SETTINGS_SESSION_KEY,
+      JSON.stringify(modalidades)
+    );
+    window.sessionStorage.setItem(
+      TREINO_SETTINGS_SESSION_TS_KEY,
+      String(Date.now())
+    );
+  } catch {
+    // Storage pode falhar em modo privado; cache em memoria continua.
+  }
 };
 
 const shouldFallbackToClientWrites = (error: unknown): boolean => {
@@ -402,13 +443,44 @@ export async function fetchTreinoSettings(options?: {
     return modalidadesCache.value;
   }
 
-  const snap = await getDoc(doc(db, "settings", "treinos"));
-  const modalidades = snap.exists()
-    ? normalizeModalidades(snap.data().modalidades)
-    : [...DEFAULT_MODALIDADES];
+  if (!forceRefresh) {
+    const sessionCached = getSessionCachedModalidades();
+    if (sessionCached) {
+      modalidadesCache = { cachedAt: Date.now(), value: sessionCached };
+      return sessionCached;
+    }
 
-  modalidadesCache = { cachedAt: Date.now(), value: modalidades };
-  return modalidades;
+    if (modalidadesInFlight) {
+      return modalidadesInFlight;
+    }
+  }
+
+  const request = callWithFallback<
+    { forceRefresh: boolean },
+    { modalidades?: string[] }
+  >(
+    TREINO_SETTINGS_GET_CALLABLE,
+    { forceRefresh },
+    async () => {
+      const snap = await getDoc(doc(db, "settings", "treinos"));
+      const modalidades = snap.exists()
+        ? normalizeModalidades(snap.data().modalidades)
+        : [...DEFAULT_MODALIDADES];
+      return { modalidades };
+    }
+  )
+    .then((result) => {
+      const modalidades = normalizeModalidades(result.modalidades);
+      modalidadesCache = { cachedAt: Date.now(), value: modalidades };
+      setSessionCachedModalidades(modalidades);
+      return modalidades;
+    })
+    .finally(() => {
+      modalidadesInFlight = null;
+    });
+
+  modalidadesInFlight = request;
+  return request;
 }
 
 export async function saveTreinoSettings(modalidades: string[]): Promise<void> {
@@ -424,6 +496,7 @@ export async function saveTreinoSettings(modalidades: string[]): Promise<void> {
   );
 
   modalidadesCache = { cachedAt: Date.now(), value: normalized };
+  setSessionCachedModalidades(normalized);
 }
 
 export async function fetchTreinosAdminList(options?: {

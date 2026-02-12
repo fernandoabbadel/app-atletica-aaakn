@@ -99,7 +99,7 @@ export default function SharkRoundPage() {
         try {
             const activeLeagues = await fetchActiveSharkroundLeagues({
               maxResults: 32,
-              forceRefresh: true,
+              forceRefresh: false,
             });
             activeLeagues.forEach((league) => {
               const data = league as unknown as LigaConfig;
@@ -150,7 +150,7 @@ export default function SharkRoundPage() {
         try {
             const playersPreview = await fetchSharkroundPlayersPreview({
               maxResults: 20,
-              forceRefresh: true,
+              forceRefresh: false,
             });
             const players = playersPreview.map((entry) => ({
                 id: entry.id,
@@ -178,7 +178,7 @@ export default function SharkRoundPage() {
       try {
           const ranking = await fetchSharkroundTubasRanking({
             maxResults: 10,
-            forceRefresh: true,
+            forceRefresh: false,
           });
           setRankingData(ranking.map((entry) => ({
             id: entry.id,

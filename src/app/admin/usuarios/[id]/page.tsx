@@ -1,451 +1,380 @@
-"use client";
+﻿"use client";
 
-import React, { use, useState, useEffect, useMemo } from "react";
-import { 
-  ArrowLeft, User, Ban, 
-  Dumbbell, ShoppingBag, MessageCircle, 
-  LayoutGrid, Activity, Award, 
-  Gamepad2, Coins, ShieldAlert, GraduationCap, Loader2,
-  Trophy, DollarSign, Calendar, Mail, Phone, Lock, CreditCard,
-  Zap, Power, Trash2, PowerOff
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Ban,
+  Loader2,
+  Save,
+  ShieldCheck,
+  Trash2,
+  User,
 } from "lucide-react";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useToast } from "../../../../context/ToastContext"; 
+
+import { useToast } from "@/context/ToastContext";
 import {
   deleteAdminUser,
-  fetchAdminUserDossier,
+  fetchAdminUserProfile,
   setAdminUserStatus,
-  type AdminUserAchievementRecord,
-  type AdminUserGymRecord,
-  type AdminUserMatchRecord,
-  type AdminUserOrderRecord,
-  type AdminUserPostRecord,
-  type AdminUserProfileRecord
-} from "../../../../lib/adminUsersService";
+  updateAdminUser,
+  type AdminUserProfileRecord,
+} from "@/lib/adminUsersService";
 
-// --- TIPOS AUXILIARES ---
-type TabType = "visao" | "financeiro" | "social" | "games" | "seguranca";
+type AdminStatus = "ativo" | "inadimplente" | "pendente" | "bloqueado";
+type AdminPlan = "lenda" | "atleta" | "cardume" | "bicho";
 
-type UserData = AdminUserProfileRecord;
-type Post = AdminUserPostRecord;
-type Order = AdminUserOrderRecord;
-type Achievement = AdminUserAchievementRecord;
-type Match = AdminUserMatchRecord;
-type GymLog = AdminUserGymRecord;
+interface UserForm {
+  nome: string;
+  telefone: string;
+  matricula: string;
+  turma: string;
+  status: AdminStatus;
+  plano: AdminPlan;
+}
 
-export default function AdminUsuarioDetalhe({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+const normalizeStatus = (value: unknown): AdminStatus => {
+  if (
+    value === "ativo" ||
+    value === "inadimplente" ||
+    value === "pendente" ||
+    value === "bloqueado"
+  ) {
+    return value;
+  }
+  return "pendente";
+};
+
+const normalizePlan = (value: unknown): AdminPlan => {
+  if (value === "lenda" || value === "atleta" || value === "cardume") {
+    return value;
+  }
+  return "bicho";
+};
+
+const toInitialForm = (profile: AdminUserProfileRecord): UserForm => ({
+  nome: typeof profile.nome === "string" ? profile.nome : "",
+  telefone: typeof profile.telefone === "string" ? profile.telefone : "",
+  matricula: typeof profile.matricula === "string" ? profile.matricula : "",
+  turma: typeof profile.turma === "string" ? profile.turma : "",
+  status: normalizeStatus(profile.status),
+  plano: normalizePlan(profile.tier),
+});
+
+export default function AdminUsuarioDetalhePage() {
+  const params = useParams<{ id: string }>();
   const router = useRouter();
   const { addToast } = useToast();
-  
-  // Estado Principal
-  const [user, setUser] = useState<UserData | null>(null);
-  
-  // Estados de Dados
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [gymLogs, setGymLogs] = useState<GymLog[]>([]);
-  
-  // Controle de UI
-  const [activeTab, setActiveTab] = useState<TabType>("visao");
-  const tabs: Array<{ id: TabType; label: string; icon: React.ElementType }> = [
-    { id: 'visao', label: 'Visão 360º', icon: LayoutGrid },
-    { id: 'financeiro', label: 'Loja & Financeiro', icon: DollarSign },
-    { id: 'social', label: 'Comunidade & Gym', icon: MessageCircle },
-    { id: 'games', label: 'Gamification', icon: Trophy },
-    { id: 'seguranca', label: 'Auth & Segurança', icon: ShieldAlert },
-  ];
+
+  const userId = useMemo(() => params?.id?.trim() || "", [params]);
+
+  const [profile, setProfile] = useState<AdminUserProfileRecord | null>(null);
+  const [form, setForm] = useState<UserForm | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // 1. CARREGAMENTO DE DADOS
+  const loadProfile = useCallback(async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await fetchAdminUserProfile(userId, { forceRefresh: false });
+      if (!result) {
+        addToast("Usuario nao encontrado.", "error");
+        router.replace("/admin/usuarios");
+        return;
+      }
+
+      setProfile(result);
+      setForm(toInitialForm(result));
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao carregar usuario.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, addToast, router]);
+
   useEffect(() => {
-      const fetchDossier = async () => {
-          try {
-              // A. Usuário
-              const dossier = await fetchAdminUserDossier(id, { forceRefresh: true });
+    void loadProfile();
+  }, [loadProfile]);
 
-              if (!dossier?.user) {
-                  addToast("Usuário não encontrado.", "error");
-                  router.push('/admin/usuarios');
-                  return;
-              }
-              setUser(dossier.user as UserData);
+  const handleSave = async () => {
+    if (!userId || !form) return;
 
-              setPosts(dossier.posts as Post[]);
-              setOrders(dossier.orders as Order[]);
-              setAchievements(dossier.achievements as Achievement[]);
-              setMatches(dossier.matches as Match[]);
-              setGymLogs(dossier.gymLogs as GymLog[]);
+    setSaving(true);
+    try {
+      await updateAdminUser({
+        userId,
+        nome: form.nome,
+        telefone: form.telefone,
+        matricula: form.matricula,
+        turma: form.turma,
+        status: form.status,
+        plano: form.plano,
+      });
 
-          } catch (error: unknown) {
-              console.error(error);
-              addToast("Erro ao carregar dados.", "error");
-          } finally {
-              setLoading(false);
-          }
-      };
-      void fetchDossier();
-  }, [id, addToast, router]);
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          nome: form.nome,
+          telefone: form.telefone,
+          matricula: form.matricula,
+          turma: form.turma,
+          status: form.status,
+          tier: form.plano,
+        };
+      });
 
-  // --- CÁLCULO LTV ---
-  const ltv = useMemo(() => orders.reduce((acc, curr) => acc + (curr.total || 0), 0), [orders]);
-
-  const parseDateValue = (value: unknown): Date | null => {
-      if (value instanceof Date) return value;
-      if (typeof value === "string" || typeof value === "number") {
-          const parsed = new Date(value);
-          return Number.isNaN(parsed.getTime()) ? null : parsed;
-      }
-      if (typeof value === "object" && value !== null) {
-          const candidate = (value as { toDate?: unknown }).toDate;
-          if (typeof candidate === "function") {
-              const result = candidate.call(value) as Date;
-              if (result instanceof Date && !Number.isNaN(result.getTime())) return result;
-          }
-      }
-      return null;
+      addToast("Usuario atualizado.", "success");
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao salvar.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const formatDateValue = (value: unknown, withTime = false): string => {
-      const parsed = parseDateValue(value);
-      if (!parsed) return withTime ? "-" : "Antigo";
-      return withTime ? parsed.toLocaleString() : parsed.toLocaleDateString();
-  };
-
-  // --- AÇÃO: ATIVAR / DESATIVAR (Toggle Status) ---
   const handleToggleStatus = async () => {
-      if (!user) return;
-      // Se estiver ativo, vira bloqueado (banned/suspenso). Se não, vira ativo.
-      const newStatus = user.status === 'ativo' ? 'bloqueado' : 'ativo';
-      const msg = newStatus === 'bloqueado' 
-        ? "Tem certeza? O usuário perderá acesso imediato ao app." 
-        : "Reativar acesso do usuário?";
-      
-      if (confirm(msg)) {
-          setActionLoading(true);
-          try {
-              await setAdminUserStatus({ userId: id, status: newStatus });
-              setUser({ ...user, status: newStatus });
-              addToast(newStatus === 'bloqueado' ? "Conta desativada." : "Conta reativada!", newStatus === 'bloqueado' ? "info" : "success");
-          } catch (error: unknown) {
-              console.error(error);
-              addToast("Erro ao atualizar status.", "error");
-          } finally {
-              setActionLoading(false);
-          }
-      }
+    if (!userId || !form) return;
+
+    const nextStatus: AdminStatus =
+      form.status === "bloqueado" ? "ativo" : "bloqueado";
+
+    setChangingStatus(true);
+    try {
+      await setAdminUserStatus({ userId, status: nextStatus });
+      setForm((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      setProfile((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      addToast(
+        nextStatus === "bloqueado"
+          ? "Usuario bloqueado."
+          : "Usuario desbloqueado.",
+        "success"
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao alterar status.", "error");
+    } finally {
+      setChangingStatus(false);
+    }
   };
 
-  // --- AÇÃO: DELETAR CONTA (Danger Zone) ---
-  const handleDeleteAccount = async () => {
-      const confirmText = prompt("PARA DELETAR, DIGITE 'DELETAR' ABAIXO.\nIsso apagará permanentemente o usuário do banco de dados.");
-      
-      if (confirmText === "DELETAR") {
-          setActionLoading(true);
-          try {
-              // 1. Deleta o documento do usuário
-              await deleteAdminUser(id);
-              
-              // (Opcional) Aqui você poderia deletar subcoleções ou logs, mas o Firestore não faz cascata automático.
-              
-              addToast("Usuário deletado permanentemente.", "success");
-              router.push('/admin/usuarios'); // Volta para a lista
-          } catch (error) {
-              console.error(error);
-              addToast("Erro ao deletar usuário.", "error");
-              setActionLoading(false);
-          }
-      } else {
-          if (confirmText !== null) addToast("Texto de confirmação incorreto.", "error");
-      }
+  const handleDelete = async () => {
+    if (!userId) return;
+
+    const confirmed = window.confirm(
+      "Confirmar exclusao permanente deste usuario?"
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteAdminUser(userId);
+      addToast("Usuario excluido.", "success");
+      router.replace("/admin/usuarios");
+    } catch (error: unknown) {
+      console.error(error);
+      addToast("Erro ao excluir usuario.", "error");
+      setDeleting(false);
+    }
   };
 
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40}/></div>;
-  if (!user) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
+        <Loader2 className="animate-spin text-emerald-500" size={28} />
+      </div>
+    );
+  }
+
+  if (!profile || !form) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20 selection:bg-emerald-500">
-      
-      {/* HEADER DE COMANDO */}
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 shadow-lg flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 transition border border-zinc-800 group">
-            <ArrowLeft size={20} className="text-zinc-400 group-hover:text-white" />
-          </button>
-          <div>
-            <h1 className="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-2">
-              <User className="text-emerald-500" /> Dossiê Supremo
-            </h1>
-            <p className="text-[10px] text-zinc-500 font-mono">UID: {id}</p>
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
+      <header className="sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 px-6 py-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/usuarios"
+              className="p-2 rounded-full border border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
+            >
+              <ArrowLeft size={18} className="text-zinc-300" />
+            </Link>
+            <div>
+              <h1 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+                <User size={18} className="text-emerald-400" /> Perfil do Usuario
+              </h1>
+              <p className="text-[11px] text-zinc-500 font-bold">UID: {userId}</p>
+            </div>
           </div>
-        </div>
-        
-        <div className="flex gap-2">
-            {/* BOTÃO RESETAR SENHA (Simulação/Placeholder) */}
-            <button onClick={() => addToast("Função de reset enviada por email!", "success")} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold uppercase hover:text-white hover:border-zinc-500 transition flex items-center gap-2">
-                <Lock size={14}/> Resetar Senha
-            </button>
 
-            {/* BOTÃO ATIVAR/DESATIVAR */}
-            <button 
-                onClick={handleToggleStatus} 
-                disabled={actionLoading} 
-                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 border transition ${user.status === 'ativo' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20'}`}
-            >
-                {user.status === 'ativo' ? <><PowerOff size={14}/> Desativar</> : <><Power size={14}/> Ativar</>}
-            </button>
-
-            {/* BOTÃO DELETAR (PERIGO) */}
-            <button 
-                onClick={handleDeleteAccount} 
-                disabled={actionLoading} 
-                className="bg-red-500/10 text-red-500 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-bold uppercase hover:bg-red-500/20 transition flex items-center gap-2"
-            >
-                <Trash2 size={14}/> Excluir
-            </button>
+          <div className="text-right">
+            <p className="text-xs text-zinc-400">{profile.email || "sem email"}</p>
+            <p className="text-[11px] uppercase font-black text-zinc-500">
+              role: {profile.role || "user"}
+            </p>
+          </div>
         </div>
       </header>
 
-      <main className="p-6 max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-        
-        {/* --- 1. HERO CARD (PERFIL) --- */}
-        <div className={`bg-zinc-900 border rounded-[2rem] p-8 relative overflow-hidden shadow-2xl transition-colors ${user.status === 'ativo' ? 'border-zinc-800' : 'border-red-900/50 opacity-90'}`}>
-            <div className={`absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r ${user.status === 'ativo' ? 'from-emerald-500 via-teal-500 to-black' : 'from-red-600 via-red-900 to-black'}`}></div>
-            
-            {user.status !== 'ativo' && (
-                <div className="absolute top-4 right-4 bg-red-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-2 animate-pulse">
-                    <Ban size={12}/> Conta Desativada
-                </div>
-            )}
-
-            <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
-                {/* Avatar & Badges */}
-                <div className="flex flex-col items-center gap-4">
-                    <div className="relative">
-                        <div className="w-36 h-36 rounded-full p-1 bg-gradient-to-br from-zinc-700 to-black shadow-2xl overflow-hidden relative">
-                            <Image 
-                                src={user.foto || "https://github.com/shadcn.png"} 
-                                alt={user.nome}
-                                fill
-                                className={`rounded-full object-cover border-4 border-[#050505] ${user.status !== 'ativo' ? 'grayscale' : ''}`}
-                                unoptimized
-                            />
-                        </div>
-                        <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full border-4 border-[#050505] shadow-lg flex items-center gap-1">
-                            LV {user.level || 1}
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        {/* 🦈 EXIBE O PLANO BADGE (Nome Personalizado) */}
-                        <span className="badge-shark bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{user.plano_badge || user.tier || "Sem Plano"}</span>
-                        <span className="badge-shark bg-purple-500/10 text-purple-500 border-purple-500/20">{user.patente || "Novato"}</span>
-                    </div>
-                </div>
-
-                {/* Dados Principais */}
-                <div className="flex-1 w-full text-center lg:text-left">
-                    <div className="flex flex-col lg:flex-row justify-between items-center lg:items-start mb-6">
-                        <div>
-                            <h2 className="text-4xl font-black text-white uppercase tracking-tighter mb-1">{user.nome}</h2>
-                            <p className="text-zinc-400 text-sm flex items-center justify-center lg:justify-start gap-2"><Mail size={14}/> {user.email}</p>
-                        </div>
-                        <div className="mt-4 lg:mt-0 text-right">
-                            <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Saldo Atual</p>
-                            <p className="text-3xl font-black text-emerald-400 flex items-center justify-center lg:justify-end gap-2"><Coins size={24}/> {user.sharkCoins || 0}</p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="stat-box">
-                            <p className="label">Matrícula</p>
-                            <p className="value"><CreditCard size={14} className="inline mr-1 text-zinc-500"/> {user.matricula || "---"}</p>
-                        </div>
-                        <div className="stat-box">
-                            <p className="label">Turma</p>
-                            <p className="value"><GraduationCap size={14} className="inline mr-1 text-zinc-500"/> {user.turma || "---"}</p>
-                        </div>
-                        <div className="stat-box">
-                            <p className="label">Celular</p>
-                            <p className="value"><Phone size={14} className="inline mr-1 text-zinc-500"/> {user.telefone || "---"}</p>
-                        </div>
-                        <div className="stat-box">
-                            <p className="label">Data Cadastro</p>
-                            <p className="value"><Calendar size={14} className="inline mr-1 text-zinc-500"/> {formatDateValue(user.createdAt, false)}</p>
-                        </div>
-                    </div>
-                </div>
+      <main className="px-6 py-6 max-w-3xl mx-auto space-y-4">
+        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Nome
+              </label>
+              <input
+                value={form.nome}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev ? { ...prev, nome: event.target.value } : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              />
             </div>
-        </div>
 
-        {/* --- NAVEGAÇÃO (ABAS) --- */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide border-b border-zinc-800">
-            {tabs.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase transition border-b-2 ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500 bg-zinc-900/50' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}>
-                    <tab.icon size={16}/> {tab.label}
-                </button>
-            ))}
-        </div>
-
-        {/* --- CONTEÚDO DINÂMICO --- */}
-        
-        {/* 1. VISÃO GERAL */}
-        {activeTab === 'visao' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in">
-                <div className="card-kpi border-emerald-500/20">
-                    <div className="flex justify-between items-start">
-                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">LTV (Total Gasto)</p><p className="text-2xl font-black text-white">R$ {ltv.toFixed(2)}</p></div>
-                        <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500"><DollarSign size={20}/></div>
-                    </div>
-                </div>
-                <div className="card-kpi border-yellow-500/20">
-                    <div className="flex justify-between items-start">
-                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">XP Acumulado</p><p className="text-2xl font-black text-white">{user.xp || 0}</p></div>
-                        <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Zap size={20}/></div>
-                    </div>
-                </div>
-                <div className="card-kpi border-blue-500/20">
-                    <div className="flex justify-between items-start">
-                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">Engajamento (Posts)</p><p className="text-2xl font-black text-white">{posts.length}</p></div>
-                        <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><MessageCircle size={20}/></div>
-                    </div>
-                </div>
-                <div className="card-kpi border-purple-500/20">
-                    <div className="flex justify-between items-start">
-                        <div><p className="text-zinc-500 text-[10px] font-bold uppercase">Conquistas</p><p className="text-2xl font-black text-white">{achievements.length}</p></div>
-                        <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><Award size={20}/></div>
-                    </div>
-                </div>
-
-                <div className="col-span-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mt-4">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Activity size={18} className="text-emerald-500"/> Últimas Atividades</h3>
-                    <div className="space-y-0">
-                        {posts.slice(0,3).map(p => (
-                            <div key={p.id} className="py-3 border-b border-zinc-800 flex justify-between items-center">
-                                <span className="text-xs text-zinc-400"><MessageCircle size={12} className="inline mr-2 text-blue-500"/>Postou na comunidade</span>
-                                <span className="text-[10px] text-zinc-600">{formatDateValue(p.createdAt, true)}</span>
-                            </div>
-                        ))}
-                        {orders.slice(0,3).map(o => (
-                            <div key={o.id} className="py-3 border-b border-zinc-800 flex justify-between items-center">
-                                <span className="text-xs text-zinc-400"><ShoppingBag size={12} className="inline mr-2 text-emerald-500"/>Comprou {o.itens}</span>
-                                <span className="text-[10px] text-zinc-600">{formatDateValue(o.createdAt, true)}</span>
-                            </div>
-                        ))}
-                        {achievements.length === 0 && posts.length === 0 && orders.length === 0 && (
-                            <p className="text-zinc-600 text-xs italic text-center py-4">Sem atividade recente.</p>
-                        )}
-                    </div>
-                </div>
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Telefone
+              </label>
+              <input
+                value={form.telefone}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev ? { ...prev, telefone: event.target.value } : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              />
             </div>
-        )}
 
-        {/* 2. FINANCEIRO */}
-        {activeTab === 'financeiro' && (
-            <div className="space-y-6 animate-in fade-in">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-                    <div className="p-4 bg-black/20 border-b border-zinc-800"><h3 className="font-bold text-white">Histórico de Compras</h3></div>
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-black/40 text-zinc-500 font-bold uppercase"><tr><th className="p-4">Pedido</th><th className="p-4">Itens</th><th className="p-4">Data</th><th className="p-4 text-right">Valor</th></tr></thead>
-                        <tbody className="divide-y divide-zinc-800 text-zinc-300">
-                            {orders.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-zinc-500">Nenhuma compra.</td></tr>}
-                            {orders.map(order => (
-                                <tr key={order.id} className="hover:bg-zinc-800/30">
-                                    <td className="p-4 font-mono text-zinc-500">#{order.id.slice(0,6)}</td>
-                                    <td className="p-4">{order.itens}</td>
-                                    <td className="p-4">{formatDateValue(order.createdAt, false)}</td>
-                                    <td className="p-4 text-right font-bold text-emerald-400">R$ {order.total}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Matricula
+              </label>
+              <input
+                value={form.matricula}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev ? { ...prev, matricula: event.target.value } : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              />
             </div>
-        )}
 
-        {/* 3. SOCIAL & GYM */}
-        {activeTab === 'social' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-fit">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Dumbbell className="text-red-500"/> Histórico de Treinos (Gym Rats)</h3>
-                    <div className="space-y-2">
-                        {gymLogs.length === 0 && <p className="text-zinc-600 text-xs">Sem registros de treino.</p>}
-                        {gymLogs.map((log, i) => (
-                            <div key={i} className="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-zinc-800">
-                                <span className="text-xs text-white font-bold">{log.local || "Academia Parceira"}</span>
-                                <span className="text-[10px] text-zinc-500">{log.date}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-fit">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2"><MessageCircle className="text-blue-500"/> Posts na Comunidade</h3>
-                    <div className="space-y-3">
-                        {posts.map(post => (
-                            <div key={post.id} className="p-3 bg-black/30 rounded-xl border border-zinc-800">
-                                <p className="text-xs text-zinc-300 italic mb-2">&quot;{post.texto}&quot;</p>
-                                <div className="flex gap-3 text-[10px] text-zinc-500 font-bold uppercase">
-                                    <span>❤️ {post.likes?.length || 0} Likes</span>
-                                    <span>💬 {post.comentarios || 0} Coments</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Turma
+              </label>
+              <input
+                value={form.turma}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev ? { ...prev, turma: event.target.value } : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              />
             </div>
-        )}
 
-        {/* 4. GAMES & CONQUISTAS */}
-        {activeTab === 'games' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Trophy className="text-yellow-500"/> Conquistas Desbloqueadas</h3>
-                    <div className="grid grid-cols-1 gap-2">
-                        {achievements.map((ach, i) => (
-                            <div key={i} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl border border-zinc-800">
-                                <div className="p-2 bg-yellow-500/10 rounded-full text-yellow-500"><Award size={16}/></div>
-                                <div><p className="text-xs font-bold text-white">{ach.achievementTitle}</p><p className="text-[10px] text-zinc-500">{formatDateValue(ach.timestamp, true)}</p></div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Gamepad2 className="text-purple-500"/> Partidas na Arena</h3>
-                    <div className="space-y-2">
-                        {matches.length === 0 && <p className="text-zinc-600 text-xs">Sem partidas registradas.</p>}
-                        {matches.map((match, i) => (
-                            <div key={i} className="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-zinc-800">
-                                <span className="text-xs text-white font-bold">{match.game}</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${match.result === 'win' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>{match.result === 'win' ? 'VITÓRIA' : 'DERROTA'}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Plano
+              </label>
+              <select
+                value={form.plano}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev
+                      ? { ...prev, plano: normalizePlan(event.target.value) }
+                      : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              >
+                <option value="bicho">Bicho</option>
+                <option value="cardume">Cardume</option>
+                <option value="atleta">Atleta</option>
+                <option value="lenda">Lenda</option>
+              </select>
             </div>
-        )}
 
-        {/* 5. SEGURANÇA (AUTH CONTEXT DUMP) */}
-        {activeTab === 'seguranca' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 animate-in fade-in overflow-hidden">
-                <h3 className="font-bold text-white mb-4 flex items-center gap-2"><ShieldAlert className="text-zinc-400"/> Dados Brutos do AuthContext (Debug)</h3>
-                <pre className="text-[10px] text-emerald-400 font-mono bg-black p-4 rounded-xl overflow-x-auto border border-emerald-900/30">
-                    {JSON.stringify(user, null, 2)}
-                </pre>
+            <div>
+              <label className="text-[11px] font-black uppercase text-zinc-500 block mb-1">
+                Status
+              </label>
+              <select
+                value={form.status}
+                onChange={(event) =>
+                  setForm((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          status: normalizeStatus(event.target.value),
+                        }
+                      : prev
+                  )
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              >
+                <option value="ativo">Ativo</option>
+                <option value="pendente">Pendente</option>
+                <option value="inadimplente">Inadimplente</option>
+                <option value="bloqueado">Bloqueado</option>
+              </select>
             </div>
-        )}
+          </div>
 
+          <div className="flex flex-wrap gap-2 pt-2">
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase flex items-center gap-2 disabled:opacity-60"
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+              Salvar
+            </button>
+
+            <button
+              onClick={() => void handleToggleStatus()}
+              disabled={changingStatus}
+              className="px-4 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200 text-xs font-black uppercase flex items-center gap-2 disabled:opacity-60"
+            >
+              {changingStatus ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : form.status === "bloqueado" ? (
+                <ShieldCheck size={15} />
+              ) : (
+                <Ban size={15} />
+              )}
+              {form.status === "bloqueado" ? "Desbloquear" : "Bloquear"}
+            </button>
+
+            <button
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl border border-red-700/40 bg-red-900/20 text-red-300 text-xs font-black uppercase flex items-center gap-2 disabled:opacity-60"
+            >
+              {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              Excluir
+            </button>
+          </div>
+        </section>
       </main>
-
-      <style jsx global>{`
-        .badge-shark { @apply px-3 py-1 rounded-full text-[10px] font-black uppercase border flex items-center gap-1; }
-        .stat-box { @apply bg-black/30 p-3 rounded-xl border border-zinc-800; }
-        .stat-box .label { @apply text-[10px] text-zinc-500 uppercase font-bold mb-1; }
-        .stat-box .value { @apply text-sm text-white font-bold truncate; }
-        .card-kpi { @apply bg-zinc-900 border p-5 rounded-2xl; }
-      `}</style>
     </div>
   );
 }

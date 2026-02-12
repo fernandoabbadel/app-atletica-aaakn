@@ -244,7 +244,7 @@ export default function AdminEventosPage() {
               eventId: showGestaoModal.id,
               rsvpsLimit: loadAll ? 1500 : 350,
               vendasLimit: loadAll ? 1500 : 350,
-              forceRefresh: true,
+              forceRefresh: false,
           });
           setParticipantesReais(mapParticipantsFromRows(rows.rsvps, rows.vendas));
       } catch (error: unknown) {
@@ -262,7 +262,7 @@ export default function AdminEventosPage() {
           const rows = await fetchAdminEventPolls({
               eventId: showPollModal.id,
               maxResults: 80,
-              forceRefresh: true,
+              forceRefresh: false,
           });
           setPolls(
             rows.map((row) => ({

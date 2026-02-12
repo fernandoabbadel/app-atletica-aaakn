@@ -77,7 +77,7 @@ export default function GuiaPage() {
             fetchGuideData({
               category,
               maxResults: 60,
-              forceRefresh: true,
+              forceRefresh: false,
             })
           )
         );

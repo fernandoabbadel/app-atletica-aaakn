@@ -32,6 +32,9 @@ const RESOLVE_BANNED_CALLABLE = "adminResolveBannedAppeal";
 const RESOLVE_SUPPORT_CALLABLE = "adminResolveSupportRequest";
 const DELETE_BANNED_CALLABLE = "adminDeleteBannedAppeal";
 const DELETE_SUPPORT_CALLABLE = "adminDeleteSupportRequest";
+const FETCH_BANNED_REPORTS_CALLABLE = "adminGetBannedAppeals";
+const FETCH_SUPPORT_REPORTS_CALLABLE = "adminGetSupportReports";
+const FETCH_USER_SUPPORT_CALLABLE = "supportGetMyRequests";
 
 type ReportStatus = "pendente" | "resolvida";
 
@@ -73,6 +76,7 @@ export interface SupportTicketRecord {
 
 const adminReportsCache = new Map<string, CacheEntry<AdminReportRecord[]>>();
 const userSupportCache = new Map<string, CacheEntry<SupportTicketRecord[]>>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -81,6 +85,9 @@ const asObject = (value: unknown): Record<string, unknown> | null => {
 
 const asString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
+
+const asNumber = (value: unknown, fallback = 0): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
 const boundedLimit = (requested: number, maxAllowed: number): number => {
   if (!Number.isFinite(requested)) return maxAllowed;
@@ -114,6 +121,20 @@ const setCachedValue = <T>(
 const clearReportsCache = (): void => {
   adminReportsCache.clear();
   userSupportCache.clear();
+};
+
+const withInFlight = async <T>(
+  key: string,
+  runner: () => Promise<T>
+): Promise<T> => {
+  const existing = inFlightRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const request = runner().finally(() => {
+    inFlightRequests.delete(key);
+  });
+  inFlightRequests.set(key, request);
+  return request;
 };
 
 const shouldFallbackToClientWrites = (error: unknown): boolean => {
@@ -226,6 +247,8 @@ const buildBannedAppealRecord = (
   const obj = asObject(raw);
   if (!obj) return null;
 
+  const createdAtMs = asNumber(obj.createdAtMs, toMillis(obj.createdAt));
+
   return {
     id,
     autor: asString(obj.userName, "Usuario Desconhecido"),
@@ -233,8 +256,8 @@ const buildBannedAppealRecord = (
     categoria: "banidos",
     motivo: "Solicitacao de Desbloqueio",
     descricao: asString(obj.message).slice(0, 5_000),
-    data: toDateLabel(obj.createdAt),
-    createdAtMs: toMillis(obj.createdAt),
+    data: createdAtMs ? new Date(createdAtMs).toLocaleString("pt-BR") : toDateLabel(obj.createdAt),
+    createdAtMs,
     status: toReportStatus(obj.status),
     respostaAdmin: asString(obj.response) || undefined,
     originCollection: "banned_appeals",
@@ -248,6 +271,7 @@ const buildSupportRecord = (id: string, raw: unknown): AdminReportRecord | null 
 
   const category = normalizeSupportCategory(obj.category);
   const subject = asString(obj.subject, "Suporte").trim();
+  const createdAtMs = asNumber(obj.createdAtMs, toMillis(obj.createdAt));
 
   return {
     id,
@@ -256,8 +280,8 @@ const buildSupportRecord = (id: string, raw: unknown): AdminReportRecord | null 
     categoria: "suporte",
     motivo: subject || `Chamado (${supportCategoryLabel(category)})`,
     descricao: asString(obj.message).slice(0, 5_000),
-    data: toDateLabel(obj.createdAt),
-    createdAtMs: toMillis(obj.createdAt),
+    data: createdAtMs ? new Date(createdAtMs).toLocaleString("pt-BR") : toDateLabel(obj.createdAt),
+    createdAtMs,
     status: toReportStatus(obj.status),
     respostaAdmin: asString(obj.response) || undefined,
     originCollection: "support_requests",
@@ -273,18 +297,35 @@ export async function fetchBannedAppeals(
   const cached = getCachedValue(adminReportsCache, cacheKey, ADMIN_REPORT_CACHE_TTL_MS);
   if (cached) return cached;
 
-  const q = query(
-    collection(db, "banned_appeals"),
-    orderBy("createdAt", "desc"),
-    limit(safeLimit)
-  );
-  const snap = await getDocs(q);
-  const reports = snap.docs
-    .map((row) => buildBannedAppealRecord(row.id, row.data()))
-    .filter((item): item is AdminReportRecord => item !== null);
+  return withInFlight(cacheKey, async () => {
+    const response = await callWithFallback<
+      { maxResults: number },
+      { reports: Array<Record<string, unknown>> }
+    >(
+      FETCH_BANNED_REPORTS_CALLABLE,
+      { maxResults: safeLimit },
+      async () => {
+        const q = query(
+          collection(db, "banned_appeals"),
+          orderBy("createdAt", "desc"),
+          limit(safeLimit)
+        );
+        const snap = await getDocs(q);
+        const reports = snap.docs.map((row) => ({
+          id: row.id,
+          ...(row.data() as Record<string, unknown>),
+        }));
+        return { reports };
+      }
+    );
 
-  setCachedValue(adminReportsCache, cacheKey, reports);
-  return reports;
+    const reports = response.reports
+      .map((row) => buildBannedAppealRecord(asString(row.id), row))
+      .filter((item): item is AdminReportRecord => item !== null);
+
+    setCachedValue(adminReportsCache, cacheKey, reports);
+    return reports;
+  });
 }
 
 export async function fetchSupportReports(
@@ -295,18 +336,35 @@ export async function fetchSupportReports(
   const cached = getCachedValue(adminReportsCache, cacheKey, ADMIN_REPORT_CACHE_TTL_MS);
   if (cached) return cached;
 
-  const q = query(
-    collection(db, "support_requests"),
-    orderBy("createdAt", "desc"),
-    limit(safeLimit)
-  );
-  const snap = await getDocs(q);
-  const reports = snap.docs
-    .map((row) => buildSupportRecord(row.id, row.data()))
-    .filter((item): item is AdminReportRecord => item !== null);
+  return withInFlight(cacheKey, async () => {
+    const response = await callWithFallback<
+      { maxResults: number },
+      { reports: Array<Record<string, unknown>> }
+    >(
+      FETCH_SUPPORT_REPORTS_CALLABLE,
+      { maxResults: safeLimit },
+      async () => {
+        const q = query(
+          collection(db, "support_requests"),
+          orderBy("createdAt", "desc"),
+          limit(safeLimit)
+        );
+        const snap = await getDocs(q);
+        const reports = snap.docs.map((row) => ({
+          id: row.id,
+          ...(row.data() as Record<string, unknown>),
+        }));
+        return { reports };
+      }
+    );
 
-  setCachedValue(adminReportsCache, cacheKey, reports);
-  return reports;
+    const reports = response.reports
+      .map((row) => buildSupportRecord(asString(row.id), row))
+      .filter((item): item is AdminReportRecord => item !== null);
+
+    setCachedValue(adminReportsCache, cacheKey, reports);
+    return reports;
+  });
 }
 
 export async function resolveAdminReport(payload: {
@@ -464,66 +522,95 @@ export async function fetchUserSupportRequests(
   const cached = getCachedValue(userSupportCache, cacheKey, USER_SUPPORT_CACHE_TTL_MS);
   if (cached) return cached;
 
-  let tickets: SupportTicketRecord[] = [];
+  return withInFlight(cacheKey, async () => {
+    const response = await callWithFallback<
+      { userId: string; maxResults: number },
+      {
+        tickets: Array<{
+          id: string;
+          category: SupportCategory;
+          subject: string;
+          message: string;
+          status: "pending" | "resolved";
+          response?: string;
+          createdAtMs: number;
+        }>;
+      }
+    >(
+      FETCH_USER_SUPPORT_CALLABLE,
+      { userId: cleanUserId, maxResults: safeLimit },
+      async () => {
+        let rows: Array<Record<string, unknown>> = [];
+        try {
+          const q = query(
+            collection(db, "support_requests"),
+            where("userId", "==", cleanUserId),
+            orderBy("createdAt", "desc"),
+            limit(safeLimit)
+          );
+          const snap = await getDocs(q);
+          rows = snap.docs.map((row) => ({
+            id: row.id,
+            ...(row.data() as Record<string, unknown>),
+          }));
+        } catch (error: unknown) {
+          if (!isIndexRequiredError(error)) {
+            throw error;
+          }
 
-  try {
-    const q = query(
-      collection(db, "support_requests"),
-      where("userId", "==", cleanUserId),
-      orderBy("createdAt", "desc"),
-      limit(safeLimit)
+          const fallbackQuery = query(
+            collection(db, "support_requests"),
+            where("userId", "==", cleanUserId),
+            limit(safeLimit)
+          );
+          const snap = await getDocs(fallbackQuery);
+          rows = snap.docs.map((row) => ({
+            id: row.id,
+            ...(row.data() as Record<string, unknown>),
+          }));
+        }
+
+        const tickets = rows
+          .map((row) => {
+            const createdAtMs = toMillis(row.createdAt);
+            return {
+              id: asString(row.id),
+              category: normalizeSupportCategory(row.category),
+              subject: asString(row.subject, "Sem assunto"),
+              message: asString(row.message),
+              status: (
+                asString(row.status).toLowerCase() === "resolved"
+                  ? "resolved"
+                  : "pending"
+              ) as "resolved" | "pending",
+              response: asString(row.response) || undefined,
+              createdAtMs,
+            };
+          })
+          .sort((left, right) => right.createdAtMs - left.createdAtMs);
+
+        return { tickets };
+      }
     );
-    const snap = await getDocs(q);
-    tickets = snap.docs.map((row) => {
-      const data = row.data() as Record<string, unknown>;
-      const createdAtMs = toMillis(data.createdAt);
-      return {
-        id: row.id,
-        category: normalizeSupportCategory(data.category),
-        subject: asString(data.subject, "Sem assunto"),
-        message: asString(data.message),
-        status: asString(data.status).toLowerCase() === "resolved" ? "resolved" : "pending",
-        response: asString(data.response) || undefined,
-        createdAtMs,
-        createdAtLabel: createdAtMs
-          ? new Date(createdAtMs).toLocaleString("pt-BR")
+
+    const tickets = response.tickets
+      .map((ticket) => ({
+        id: ticket.id,
+        category: normalizeSupportCategory(ticket.category),
+        subject: asString(ticket.subject, "Sem assunto"),
+        message: asString(ticket.message),
+        status: (
+          ticket.status === "resolved" ? "resolved" : "pending"
+        ) as SupportTicketRecord["status"],
+        response: asString(ticket.response) || undefined,
+        createdAtMs: asNumber(ticket.createdAtMs, 0),
+        createdAtLabel: ticket.createdAtMs
+          ? new Date(ticket.createdAtMs).toLocaleString("pt-BR")
           : "Data desconhecida",
-      };
-    });
-  } catch (error: unknown) {
-    if (!isIndexRequiredError(error)) {
-      throw error;
-    }
-
-    const fallbackQuery = query(
-      collection(db, "support_requests"),
-      where("userId", "==", cleanUserId),
-      limit(safeLimit)
-    );
-    const snap = await getDocs(fallbackQuery);
-    tickets = snap.docs
-      .map((row) => {
-        const data = row.data() as Record<string, unknown>;
-        const createdAtMs = toMillis(data.createdAt);
-        return {
-          id: row.id,
-          category: normalizeSupportCategory(data.category),
-          subject: asString(data.subject, "Sem assunto"),
-          message: asString(data.message),
-          status:
-            asString(data.status).toLowerCase() === "resolved"
-              ? "resolved"
-              : "pending",
-          response: asString(data.response) || undefined,
-          createdAtMs,
-          createdAtLabel: createdAtMs
-            ? new Date(createdAtMs).toLocaleString("pt-BR")
-            : "Data desconhecida",
-        } satisfies SupportTicketRecord;
-      })
+      }))
       .sort((left, right) => right.createdAtMs - left.createdAtMs);
-  }
 
-  setCachedValue(userSupportCache, cacheKey, tickets);
-  return tickets;
+    setCachedValue(userSupportCache, cacheKey, tickets);
+    return tickets;
+  });
 }

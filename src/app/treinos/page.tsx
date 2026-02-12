@@ -116,7 +116,7 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
 
         const loadRsvps = async () => {
             try {
-                const rows = await fetchTreinoRsvps(treino.id, { maxResults: 180, forceRefresh: true });
+                const rows = await fetchTreinoRsvps(treino.id, { maxResults: 180, forceRefresh: false });
                 if (!mounted) return;
                 applyRsvps(rows as RsvpData[]);
             } catch (error: unknown) {
@@ -336,7 +336,7 @@ export default function TreinosPage() {
           startDate: startOfMonth,
           endDate: endOfMonth,
           maxResults: 220,
-          forceRefresh: true,
+          forceRefresh: false,
         });
         setTreinosDoMes(lista as TreinoData[]);
       } catch (error: unknown) {

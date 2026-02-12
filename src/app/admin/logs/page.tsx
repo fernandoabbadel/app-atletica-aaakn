@@ -78,7 +78,7 @@ export default function AdminLogsPage() {
     try {
       const result = await fetchAdminActivityLogsPage({
         pageSize: PAGE_SIZE,
-        forceRefresh: true,
+        forceRefresh: false,
       });
       setLogs(result.logs);
       setCursor(result.nextCursor);

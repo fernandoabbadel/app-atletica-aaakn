@@ -1,7 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -9,7 +8,6 @@ import {
   orderBy,
   query,
   startAfter,
-  updateDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
@@ -36,7 +34,14 @@ const ADMIN_USERS_STATUS_CALLABLE = "adminUsersSetStatus";
 const ADMIN_USERS_DELETE_CALLABLE = "adminUsersDelete";
 
 const usersListCache = new Map<string, CacheEntry<AdminUserListItem[]>>();
+const userProfileCache = new Map<string, CacheEntry<AdminUserProfileRecord | null>>();
 const userDossierCache = new Map<string, CacheEntry<AdminUserDossier | null>>();
+const usersPageInflight = new Map<string, Promise<AdminUsersPageResult>>();
+const userProfileInflight = new Map<
+  string,
+  Promise<AdminUserProfileRecord | null>
+>();
+const userDossierInflight = new Map<string, Promise<AdminUserDossier | null>>();
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -82,20 +87,6 @@ const setCachedValue = <T>(
   cache.set(key, { cachedAt: Date.now(), value });
 };
 
-const shouldFallbackToClientWrites = (error: unknown): boolean => {
-  const code = getFirebaseErrorCode(error)?.toLowerCase();
-  if (!code) return true;
-
-  return (
-    code.includes("functions/not-found") ||
-    code.includes("functions/unavailable") ||
-    code.includes("functions/internal") ||
-    code.includes("functions/deadline-exceeded") ||
-    code.includes("functions/cancelled") ||
-    code.includes("functions/unknown")
-  );
-};
-
 const isIndexRequiredError = (error: unknown): boolean => {
   const code = getFirebaseErrorCode(error)?.toLowerCase();
   if (code?.includes("failed-precondition")) return true;
@@ -107,21 +98,13 @@ const isIndexRequiredError = (error: unknown): boolean => {
   return false;
 };
 
-async function callWithFallback<TReq, TRes>(
+async function callCallable<TReq, TRes>(
   callableName: string,
-  payload: TReq,
-  fallbackFn: () => Promise<TRes>
+  payload: TReq
 ): Promise<TRes> {
-  try {
-    const callable = httpsCallable<TReq, TRes>(functions, callableName);
-    const response = await callable(payload);
-    return response.data;
-  } catch (error: unknown) {
-    if (shouldFallbackToClientWrites(error)) {
-      return fallbackFn();
-    }
-    throw error;
-  }
+  const callable = httpsCallable<TReq, TRes>(functions, callableName);
+  const response = await callable(payload);
+  return response.data;
 }
 
 const toMillis = (value: unknown): number => {
@@ -149,7 +132,11 @@ const sortRowsByFieldDesc = <T extends Record<string, unknown>>(
 
 const clearAdminUsersCache = (): void => {
   usersListCache.clear();
+  userProfileCache.clear();
   userDossierCache.clear();
+  usersPageInflight.clear();
+  userProfileInflight.clear();
+  userDossierInflight.clear();
 };
 
 export interface AdminUserListItem {
@@ -180,7 +167,7 @@ export interface AdminUserProfileRecord {
   matricula?: string;
   turma?: string;
   telefone?: string;
-  status: "ativo" | "bloqueado";
+  status: "ativo" | "inadimplente" | "pendente" | "bloqueado";
   level?: number;
   xp?: number;
   sharkCoins?: number;
@@ -280,7 +267,11 @@ const normalizeAdminUserProfile = (
 
   const statusRaw = asString(data.status, "ativo");
   const status: AdminUserProfileRecord["status"] =
-    statusRaw === "bloqueado" ? "bloqueado" : "ativo";
+    statusRaw === "inadimplente" ||
+    statusRaw === "pendente" ||
+    statusRaw === "bloqueado"
+      ? statusRaw
+      : "ativo";
 
   const role = asString(data.role) || undefined;
   const foto = asString(data.foto) || undefined;
@@ -411,33 +402,46 @@ export async function fetchAdminUsersPage(options?: {
   const pageSize = boundedLimit(options?.pageSize ?? 20, MAX_USERS_RESULTS);
   const cursorId = options?.cursorId?.trim() || "";
   const forceRefresh = options?.forceRefresh ?? false;
+  const inflightKey = `${pageSize}:${cursorId || "first"}`;
 
   if (forceRefresh) {
     clearAdminUsersCache();
+  } else {
+    const cachedPromise = usersPageInflight.get(inflightKey);
+    if (cachedPromise) return cachedPromise;
   }
 
-  const constraints: QueryConstraint[] = [
-    orderBy("nome", "asc"),
-    limit(pageSize + 1),
-  ];
+  const requestPromise = (async () => {
+    const constraints: QueryConstraint[] = [
+      orderBy("nome", "asc"),
+      limit(pageSize + 1),
+    ];
 
-  if (cursorId) {
-    const cursorSnap = await getDoc(doc(db, "users", cursorId));
-    if (cursorSnap.exists()) {
-      constraints.splice(1, 0, startAfter(cursorSnap));
+    if (cursorId) {
+      const cursorSnap = await getDoc(doc(db, "users", cursorId));
+      if (cursorSnap.exists()) {
+        constraints.splice(1, 0, startAfter(cursorSnap));
+      }
     }
+
+    const snap = await getDocs(query(collection(db, "users"), ...constraints));
+    const pageDocs = snap.docs.slice(0, pageSize);
+    const users = pageDocs
+      .map((row) => normalizeAdminUserListItem(row.id, row.data()))
+      .filter((row): row is AdminUserListItem => row !== null);
+
+    const hasMore = snap.docs.length > pageSize;
+    const nextCursor = users.length > 0 ? users[users.length - 1].id : null;
+
+    return { users, nextCursor, hasMore };
+  })();
+
+  usersPageInflight.set(inflightKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    usersPageInflight.delete(inflightKey);
   }
-
-  const snap = await getDocs(query(collection(db, "users"), ...constraints));
-  const pageDocs = snap.docs.slice(0, pageSize);
-  const users = pageDocs
-    .map((row) => normalizeAdminUserListItem(row.id, row.data()))
-    .filter((row): row is AdminUserListItem => row !== null);
-
-  const hasMore = snap.docs.length > pageSize;
-  const nextCursor = users.length > 0 ? users[users.length - 1].id : null;
-
-  return { users, nextCursor, hasMore };
 }
 
 export async function updateAdminUser(payload: {
@@ -462,20 +466,9 @@ export async function updateAdminUser(payload: {
     tier: payload.plano,
   };
 
-  await callWithFallback<typeof requestPayload, { ok: boolean }>(
+  await callCallable<typeof requestPayload, { ok: boolean }>(
     ADMIN_USERS_UPDATE_CALLABLE,
-    requestPayload,
-    async () => {
-      await updateDoc(doc(db, "users", userId), {
-        nome: requestPayload.nome,
-        telefone: requestPayload.telefone,
-        matricula: requestPayload.matricula,
-        turma: requestPayload.turma,
-        status: requestPayload.status,
-        tier: requestPayload.tier,
-      });
-      return { ok: true };
-    }
+    requestPayload
   );
 
   clearAdminUsersCache();
@@ -489,13 +482,9 @@ export async function setAdminUserStatus(payload: {
   if (!userId) return;
 
   const requestPayload = { userId, status: payload.status };
-  await callWithFallback<typeof requestPayload, { ok: boolean }>(
+  await callCallable<typeof requestPayload, { ok: boolean }>(
     ADMIN_USERS_STATUS_CALLABLE,
-    requestPayload,
-    async () => {
-      await updateDoc(doc(db, "users", userId), { status: payload.status });
-      return { ok: true };
-    }
+    requestPayload
   );
 
   clearAdminUsersCache();
@@ -505,16 +494,53 @@ export async function deleteAdminUser(userIdRaw: string): Promise<void> {
   const userId = userIdRaw.trim();
   if (!userId) return;
 
-  await callWithFallback<{ userId: string }, { ok: boolean }>(
+  await callCallable<{ userId: string }, { ok: boolean }>(
     ADMIN_USERS_DELETE_CALLABLE,
-    { userId },
-    async () => {
-      await deleteDoc(doc(db, "users", userId));
-      return { ok: true };
-    }
+    { userId }
   );
 
   clearAdminUsersCache();
+}
+
+export async function fetchAdminUserProfile(
+  userIdRaw: string,
+  options?: { forceRefresh?: boolean }
+): Promise<AdminUserProfileRecord | null> {
+  const userId = userIdRaw.trim();
+  if (!userId) return null;
+
+  const forceRefresh = options?.forceRefresh ?? false;
+  if (!forceRefresh) {
+    const cacheEntry = userProfileCache.get(userId);
+    if (cacheEntry) {
+      if (Date.now() - cacheEntry.cachedAt <= READ_CACHE_TTL_MS) {
+        return cacheEntry.value;
+      }
+      userProfileCache.delete(userId);
+    }
+
+    const pending = userProfileInflight.get(userId);
+    if (pending) return pending;
+  }
+
+  const requestPromise = (async () => {
+    const userSnap = await getDoc(doc(db, "users", userId));
+    if (!userSnap.exists()) {
+      setCachedValue(userProfileCache, userId, null);
+      return null;
+    }
+
+    const profile = normalizeAdminUserProfile(userSnap.id, userSnap.data());
+    setCachedValue(userProfileCache, userId, profile);
+    return profile;
+  })();
+
+  userProfileInflight.set(userId, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    userProfileInflight.delete(userId);
+  }
 }
 
 export async function fetchAdminUserDossier(
@@ -526,94 +552,119 @@ export async function fetchAdminUserDossier(
 
   const forceRefresh = options?.forceRefresh ?? false;
   if (!forceRefresh) {
-    const cached = getCachedValue(userDossierCache, userId);
-    if (cached) return cached;
+    const cacheEntry = userDossierCache.get(userId);
+    if (cacheEntry) {
+      if (Date.now() - cacheEntry.cachedAt <= READ_CACHE_TTL_MS) {
+        return cacheEntry.value;
+      }
+      userDossierCache.delete(userId);
+    }
+
+    const pending = userDossierInflight.get(userId);
+    if (pending) return pending;
   }
 
-  const userSnap = await getDoc(doc(db, "users", userId));
-  if (!userSnap.exists()) {
-    userDossierCache.set(userId, { cachedAt: Date.now(), value: null });
-    return null;
+  const requestPromise = (async () => {
+    const userSnap = await getDoc(doc(db, "users", userId));
+    if (!userSnap.exists()) {
+      setCachedValue(userDossierCache, userId, null);
+      return null;
+    }
+
+    const userData = normalizeAdminUserProfile(userSnap.id, userSnap.data());
+    if (!userData) {
+      setCachedValue(userDossierCache, userId, null);
+      return null;
+    }
+
+    const [postsRows, ordersRows, achievementsRows, matchesRows, gymRows] =
+      await Promise.all([
+        fetchCollectionWithFallback(
+          "posts",
+          [
+            where("userId", "==", userId),
+            orderBy("createdAt", "desc"),
+            limit(MAX_POST_RESULTS),
+          ],
+          [where("userId", "==", userId), limit(MAX_POST_RESULTS)]
+        ),
+        fetchCollectionWithFallback(
+          "store_orders",
+          [
+            where("userId", "==", userId),
+            orderBy("createdAt", "desc"),
+            limit(MAX_ORDER_RESULTS),
+          ],
+          [where("userId", "==", userId), limit(MAX_ORDER_RESULTS)]
+        ),
+        fetchCollectionWithFallback(
+          "achievements_logs",
+          [
+            where("userId", "==", userId),
+            orderBy("timestamp", "desc"),
+            limit(MAX_ACHIEVEMENT_RESULTS),
+          ],
+          [where("userId", "==", userId), limit(MAX_ACHIEVEMENT_RESULTS)]
+        ),
+        fetchCollectionWithFallback(
+          "arena_matches",
+          [
+            where("userId", "==", userId),
+            orderBy("date", "desc"),
+            limit(MAX_MATCH_RESULTS),
+          ],
+          [where("userId", "==", userId), limit(MAX_MATCH_RESULTS)]
+        ),
+        fetchCollectionWithFallback(
+          "gym_logs",
+          [
+            where("userId", "==", userId),
+            orderBy("date", "desc"),
+            limit(MAX_GYM_RESULTS),
+          ],
+          [where("userId", "==", userId), limit(MAX_GYM_RESULTS)]
+        ),
+      ]);
+
+    const posts = postsRows
+      .map((row) => normalizePost(asString(row.id), row))
+      .filter((row): row is AdminUserPostRecord => row !== null);
+
+    const orders = sortRowsByFieldDesc(ordersRows, "createdAt")
+      .map((row) => normalizeOrder(asString(row.id), row))
+      .filter((row): row is AdminUserOrderRecord => row !== null);
+
+    const achievements = sortRowsByFieldDesc(achievementsRows, "timestamp")
+      .map((row) => normalizeAchievement(asString(row.id), row))
+      .filter((row): row is AdminUserAchievementRecord => row !== null);
+
+    const matches = sortRowsByFieldDesc(matchesRows, "date")
+      .map((row) => normalizeMatch(asString(row.id), row))
+      .filter((row): row is AdminUserMatchRecord => row !== null);
+
+    const gymLogs = sortRowsByFieldDesc(gymRows, "date")
+      .map((row) => normalizeGymLog(asString(row.id), row))
+      .filter((row): row is AdminUserGymRecord => row !== null);
+
+    const dossier: AdminUserDossier = {
+      user: userData,
+      posts,
+      orders,
+      achievements,
+      matches,
+      gymLogs,
+    };
+
+    setCachedValue(userDossierCache, userId, dossier);
+    return dossier;
+  })();
+
+  userDossierInflight.set(userId, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    userDossierInflight.delete(userId);
   }
-
-  const userData = normalizeAdminUserProfile(userSnap.id, userSnap.data());
-  if (!userData) {
-    userDossierCache.set(userId, { cachedAt: Date.now(), value: null });
-    return null;
-  }
-
-  const [postsRows, ordersRows, achievementsRows, matchesRows, gymRows] =
-    await Promise.all([
-      fetchCollectionWithFallback(
-        "posts",
-        [
-          where("userId", "==", userId),
-          orderBy("createdAt", "desc"),
-          limit(MAX_POST_RESULTS),
-        ],
-        [where("userId", "==", userId), limit(MAX_POST_RESULTS)]
-      ),
-      fetchCollectionWithFallback(
-        "store_orders",
-        [
-          where("userId", "==", userId),
-          orderBy("createdAt", "desc"),
-          limit(MAX_ORDER_RESULTS),
-        ],
-        [where("userId", "==", userId), limit(MAX_ORDER_RESULTS)]
-      ),
-      fetchCollectionWithFallback(
-        "achievements_logs",
-        [
-          where("userId", "==", userId),
-          orderBy("timestamp", "desc"),
-          limit(MAX_ACHIEVEMENT_RESULTS),
-        ],
-        [where("userId", "==", userId), limit(MAX_ACHIEVEMENT_RESULTS)]
-      ),
-      fetchCollectionWithFallback(
-        "arena_matches",
-        [where("userId", "==", userId), orderBy("date", "desc"), limit(MAX_MATCH_RESULTS)],
-        [where("userId", "==", userId), limit(MAX_MATCH_RESULTS)]
-      ),
-      fetchCollectionWithFallback(
-        "gym_logs",
-        [where("userId", "==", userId), orderBy("date", "desc"), limit(MAX_GYM_RESULTS)],
-        [where("userId", "==", userId), limit(MAX_GYM_RESULTS)]
-      ),
-    ]);
-
-  const posts = postsRows
-    .map((row) => normalizePost(asString(row.id), row))
-    .filter((row): row is AdminUserPostRecord => row !== null);
-
-  const orders = sortRowsByFieldDesc(ordersRows, "createdAt")
-    .map((row) => normalizeOrder(asString(row.id), row))
-    .filter((row): row is AdminUserOrderRecord => row !== null);
-
-  const achievements = sortRowsByFieldDesc(achievementsRows, "timestamp")
-    .map((row) => normalizeAchievement(asString(row.id), row))
-    .filter((row): row is AdminUserAchievementRecord => row !== null);
-
-  const matches = sortRowsByFieldDesc(matchesRows, "date")
-    .map((row) => normalizeMatch(asString(row.id), row))
-    .filter((row): row is AdminUserMatchRecord => row !== null);
-
-  const gymLogs = sortRowsByFieldDesc(gymRows, "date")
-    .map((row) => normalizeGymLog(asString(row.id), row))
-    .filter((row): row is AdminUserGymRecord => row !== null);
-
-  const dossier: AdminUserDossier = {
-    user: userData,
-    posts,
-    orders,
-    achievements,
-    matches,
-    gymLogs,
-  };
-
-  setCachedValue(userDossierCache, userId, dossier);
-  return dossier;
 }
 
 export function clearAdminUsersCaches(): void {

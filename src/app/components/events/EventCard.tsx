@@ -166,7 +166,7 @@ export function EventCard({ evento }: EventCardProps) {
         eventId: evento.id,
         userId: user.uid,
         previewLimit: 4,
-        forceRefresh: true,
+        forceRefresh: false,
       });
 
       setUserRsvp(refreshedState.userRsvp);

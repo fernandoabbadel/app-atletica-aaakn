@@ -244,7 +244,7 @@ export default function AdminPlanosPage() {
       setIsSaving(true);
       try {
           await seedDefaultPlans(INITIAL_PLANOS);
-          const updatedPlanos = await fetchPlanCatalog({ maxResults: 50, forceRefresh: true });
+          const updatedPlanos = await fetchPlanCatalog({ maxResults: 50, forceRefresh: false });
           setPlanos(updatedPlanos as Plano[]);
           addToast("Planos resetados!", "success");
       } catch (error: unknown) {

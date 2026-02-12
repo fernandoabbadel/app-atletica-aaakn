@@ -257,6 +257,7 @@ export default function BottomNavbar() {
   
   const sidebarItemsGeneral: NavItemProps[] = [
       { id: 'loja', label: 'Lojinha', icon: <ShoppingBag size={18} />, path: '/loja' },
+      { id: 'eventos_menu', label: 'Eventos', icon: <Calendar size={18} />, path: '/eventos' },
       { id: 'carteira_side', label: 'Carteirinha', icon: <CreditCard size={18} />, path: '/carteirinha' },
       { id: 'parceiros', label: 'Parceiros', icon: <Handshake size={18} />, path: '/parceiros' },
       { id: 'comunidade', label: 'Comunidade', icon: <MessageCircle size={18} />, path: '/comunidade' },

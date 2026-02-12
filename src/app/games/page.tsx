@@ -184,7 +184,7 @@ export default function SharkLegendsPage() {
         try {
             const usersRows = await fetchArenaUsers({
                 maxResults: 120,
-                forceRefresh: true,
+                forceRefresh: false,
             });
 
             const allUsers: GameUser[] = usersRows.map((u) => {

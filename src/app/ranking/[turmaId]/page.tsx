@@ -35,7 +35,7 @@ export default function TurmaRankingPage({
               const data = (await fetchTurmaRankingUsers({
                   turma: turmaReal,
                   maxResults: 50,
-                  forceRefresh: true,
+                  forceRefresh: false,
               })).map((entry) => ({
                   id: entry.id,
                   nome: entry.nome || "Anonimo",

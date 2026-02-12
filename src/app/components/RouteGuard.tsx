@@ -75,7 +75,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       }
 
       try {
-        const liveRules = await fetchPermissionMatrix({ forceRefresh: true });
+        const liveRules = await fetchPermissionMatrix({ forceRefresh: false });
         if (!isMounted) return;
 
         const resolvedRules = liveRules ?? {};
