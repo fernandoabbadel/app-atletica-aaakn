@@ -14,9 +14,11 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
+  type QueryConstraint,
 } from "firebase/firestore";
 
 import { db, functions } from "./firebase";
@@ -55,6 +57,8 @@ const treinosByMonthCache = new Map<string, CacheEntry<TreinoRecord[]>>();
 const treinoByIdCache = new Map<string, CacheEntry<TreinoRecord | null>>();
 const treinoRsvpsCache = new Map<string, CacheEntry<TreinoRsvpRecord[]>>();
 const treinoChamadaCache = new Map<string, CacheEntry<TreinoChamadaRecord[]>>();
+const treinoRsvpsPageCache = new Map<string, CacheEntry<TreinoParticipantsPage<TreinoRsvpRecord>>>();
+const treinoChamadaPageCache = new Map<string, CacheEntry<TreinoParticipantsPage<TreinoChamadaRecord>>>();
 const userDirectoryCache = new Map<string, CacheEntry<TreinoUserDirectoryItem[]>>();
 let modalidadesCache: CacheEntry<string[]> | null = null;
 let modalidadesInFlight: Promise<string[]> | null = null;
@@ -190,6 +194,21 @@ const clearTreinoReadCaches = (): void => {
   treinoByIdCache.clear();
   treinoRsvpsCache.clear();
   treinoChamadaCache.clear();
+  treinoRsvpsPageCache.clear();
+  treinoChamadaPageCache.clear();
+};
+
+const clearTreinoParticipantsPageCaches = (treinoId: string): void => {
+  treinoRsvpsPageCache.forEach((_, key) => {
+    if (key.startsWith(`${treinoId}:`)) {
+      treinoRsvpsPageCache.delete(key);
+    }
+  });
+  treinoChamadaPageCache.forEach((_, key) => {
+    if (key.startsWith(`${treinoId}:`)) {
+      treinoChamadaPageCache.delete(key);
+    }
+  });
 };
 
 const parseDateValue = (value: string): number => {
@@ -431,6 +450,12 @@ export interface TreinoDashboardMetrics {
   listaVergonha: TreinoGhostItem[];
 }
 
+export interface TreinoParticipantsPage<T> {
+  rows: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export async function fetchTreinoSettings(options?: {
   forceRefresh?: boolean;
 }): Promise<string[]> {
@@ -630,6 +655,52 @@ export async function fetchTreinoRsvps(
   return rows;
 }
 
+export async function fetchTreinoRsvpsPage(
+  treinoId: string,
+  options?: {
+    pageSize?: number;
+    cursorId?: string | null;
+    forceRefresh?: boolean;
+  }
+): Promise<TreinoParticipantsPage<TreinoRsvpRecord>> {
+  const cleanTreinoId = treinoId.trim();
+  if (!cleanTreinoId) return { rows: [], nextCursor: null, hasMore: false };
+
+  const pageSize = boundedLimit(options?.pageSize ?? 10, MAX_RSVP_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = `${cleanTreinoId}:${pageSize}:${cursorId || "first"}`;
+
+  if (!forceRefresh) {
+    const cached = getMapCachedValue(treinoRsvpsPageCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const constraints: QueryConstraint[] = [limit(pageSize + 1)];
+  if (cursorId) {
+    const cursorSnap = await getDoc(doc(db, "treinos", cleanTreinoId, "rsvps", cursorId));
+    if (cursorSnap.exists()) {
+      constraints.splice(0, 0, startAfter(cursorSnap));
+    }
+  }
+
+  const snap = await getDocs(
+    query(collection(db, "treinos", cleanTreinoId, "rsvps"), ...constraints)
+  );
+  const docs = snap.docs.slice(0, pageSize);
+  const rows = docs
+    .map((entry) => normalizeRsvp(entry.data()))
+    .filter((entry): entry is TreinoRsvpRecord => entry !== null);
+
+  const result: TreinoParticipantsPage<TreinoRsvpRecord> = {
+    rows,
+    hasMore: snap.docs.length > pageSize,
+    nextCursor: docs.length ? docs[docs.length - 1].id : null,
+  };
+  setMapCachedValue(treinoRsvpsPageCache, cacheKey, result);
+  return result;
+}
+
 export async function fetchTreinoChamada(
   treinoId: string,
   options?: { maxResults?: number; forceRefresh?: boolean }
@@ -654,6 +725,52 @@ export async function fetchTreinoChamada(
 
   setMapCachedValue(treinoChamadaCache, cacheKey, rows);
   return rows;
+}
+
+export async function fetchTreinoChamadaPage(
+  treinoId: string,
+  options?: {
+    pageSize?: number;
+    cursorId?: string | null;
+    forceRefresh?: boolean;
+  }
+): Promise<TreinoParticipantsPage<TreinoChamadaRecord>> {
+  const cleanTreinoId = treinoId.trim();
+  if (!cleanTreinoId) return { rows: [], nextCursor: null, hasMore: false };
+
+  const pageSize = boundedLimit(options?.pageSize ?? 10, MAX_CHAMADA_RESULTS);
+  const cursorId = options?.cursorId?.trim() || "";
+  const forceRefresh = options?.forceRefresh ?? false;
+  const cacheKey = `${cleanTreinoId}:${pageSize}:${cursorId || "first"}`;
+
+  if (!forceRefresh) {
+    const cached = getMapCachedValue(treinoChamadaPageCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const constraints: QueryConstraint[] = [limit(pageSize + 1)];
+  if (cursorId) {
+    const cursorSnap = await getDoc(doc(db, "treinos", cleanTreinoId, "chamada", cursorId));
+    if (cursorSnap.exists()) {
+      constraints.splice(0, 0, startAfter(cursorSnap));
+    }
+  }
+
+  const snap = await getDocs(
+    query(collection(db, "treinos", cleanTreinoId, "chamada"), ...constraints)
+  );
+  const docs = snap.docs.slice(0, pageSize);
+  const rows = docs
+    .map((entry) => normalizeChamada(entry.id, entry.data()))
+    .filter((entry): entry is TreinoChamadaRecord => entry !== null);
+
+  const result: TreinoParticipantsPage<TreinoChamadaRecord> = {
+    rows,
+    hasMore: snap.docs.length > pageSize,
+    nextCursor: docs.length ? docs[docs.length - 1].id : null,
+  };
+  setMapCachedValue(treinoChamadaPageCache, cacheKey, result);
+  return result;
 }
 
 export async function fetchUserDirectory(options?: {
@@ -982,6 +1099,7 @@ export async function setTreinoRsvp(payload: {
       treinoRsvpsCache.delete(key);
     }
   });
+  clearTreinoParticipantsPageCaches(treinoId);
   treinoByIdCache.delete(treinoId);
   treinosAdminCache.clear();
   treinosByMonthCache.clear();
@@ -1032,6 +1150,7 @@ export async function upsertChamadaPresence(payload: {
       treinoChamadaCache.delete(key);
     }
   });
+  clearTreinoParticipantsPageCaches(treinoId);
 }
 
 export async function updateChamadaStatus(payload: {
@@ -1065,6 +1184,7 @@ export async function updateChamadaStatus(payload: {
       treinoChamadaCache.delete(key);
     }
   });
+  clearTreinoParticipantsPageCaches(treinoId);
 }
 
 export async function deleteChamadaEntry(payload: {
@@ -1090,6 +1210,7 @@ export async function deleteChamadaEntry(payload: {
       treinoChamadaCache.delete(key);
     }
   });
+  clearTreinoParticipantsPageCaches(treinoId);
 }
 
 export async function addUserToChamada(payload: {

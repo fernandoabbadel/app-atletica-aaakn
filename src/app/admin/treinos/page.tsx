@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { 
   ArrowLeft, Plus, Edit, Trash2, 
   Dumbbell, Image as ImageIcon, CheckCircle, X, 
-  AlertTriangle, ChevronDown, ChevronUp, Save, 
+  AlertTriangle, ChevronDown, Save, 
   Trophy, Users, Search, Download, Ban, LayoutDashboard, List, Loader2, Filter, ArrowUpDown, CalendarRange, User, Crown, UserCheck, ExternalLink
 } from "lucide-react";
 import Link from "next/link";
@@ -583,7 +583,9 @@ export default function AdminTreinosPage() {
                                                 <td className="p-4 text-center"><button onClick={() => handleToggleStatusTreino(treino)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${treino.status === 'ativo' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>{treino.status}</button></td>
                                                 <td className="p-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        <button onClick={() => setExpandedRow(expanded ? null : treino.id)} className={`p-2 rounded-lg transition ${expanded ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`} title="Expandir Chamada">{expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                                                        <Link href={`/admin/treinos/lista/${treino.id}`} className="p-2 rounded-lg transition bg-zinc-800 text-zinc-400 hover:text-white" title="Abrir lista de presenca">
+                                                            <ChevronDown size={16}/>
+                                                        </Link>
                                                         <button onClick={() => handleOpenEdit(treino)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"><Edit size={16}/></button>
                                                         <button onClick={() => handleDeleteTreino(treino.id)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500"><Trash2 size={16}/></button>
                                                     </div>

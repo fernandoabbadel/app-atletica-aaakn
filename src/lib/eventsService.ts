@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  startAfter,
   updateDoc,
   where,
   type QueryConstraint,
@@ -43,6 +44,8 @@ const CALLABLE_UPDATE_POLL = "eventsAdminUpdatePoll";
 const feedCache = new Map<string, CacheEntry<Row[]>>();
 const detailsCache = new Map<string, CacheEntry<EventDetailsBundle>>();
 const adminParticipantsCache = new Map<string, CacheEntry<{ rsvps: Row[]; vendas: Row[] }>>();
+const adminRsvpsPageCache = new Map<string, CacheEntry<AdminEventParticipantsPage>>();
+const adminSalesPageCache = new Map<string, CacheEntry<AdminEventParticipantsPage>>();
 const adminPollsCache = new Map<string, CacheEntry<Row[]>>();
 const financeiroCache = new Map<string, CacheEntry<Row | null>>();
 
@@ -59,6 +62,25 @@ const boundedLimit = (requested: number, maxAllowed: number): number => {
   if (requested < 1) return 1;
   if (requested > maxAllowed) return maxAllowed;
   return Math.floor(requested);
+};
+
+const toMillis = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  const asTimestamp = asObj(value);
+  const maybeToDate = asTimestamp?.toDate;
+  if (typeof maybeToDate === "function") {
+    const parsed = maybeToDate.call(value) as Date;
+    if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+      return parsed.getTime();
+    }
+  }
+  return 0;
 };
 
 const getCache = <T>(cache: Map<string, CacheEntry<T>>, key: string): T | null => {
@@ -153,6 +175,8 @@ const invalidateEventCaches = (eventId?: string): void => {
   if (!cleanId) {
     detailsCache.clear();
     adminParticipantsCache.clear();
+    adminRsvpsPageCache.clear();
+    adminSalesPageCache.clear();
     adminPollsCache.clear();
     return;
   }
@@ -162,6 +186,12 @@ const invalidateEventCaches = (eventId?: string): void => {
   });
   adminParticipantsCache.forEach((_, key) => {
     if (key.startsWith(`${cleanId}:`)) adminParticipantsCache.delete(key);
+  });
+  adminRsvpsPageCache.forEach((_, key) => {
+    if (key.startsWith(`${cleanId}:`)) adminRsvpsPageCache.delete(key);
+  });
+  adminSalesPageCache.forEach((_, key) => {
+    if (key.startsWith(`${cleanId}:`)) adminSalesPageCache.delete(key);
   });
   adminPollsCache.forEach((_, key) => {
     if (key.startsWith(`${cleanId}:`)) adminPollsCache.delete(key);
@@ -272,6 +302,107 @@ export async function fetchAdminEventParticipants(options: {
 
   const result = { rsvps, vendas };
   setCache(adminParticipantsCache, cacheKey, result);
+  return result;
+}
+
+export interface AdminEventParticipantsPage {
+  rows: Row[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export async function fetchAdminEventRsvpsPage(options: {
+  eventId: string;
+  pageSize?: number;
+  cursorId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<AdminEventParticipantsPage> {
+  const eventId = options.eventId.trim();
+  if (!eventId) return { rows: [], nextCursor: null, hasMore: false };
+
+  const pageSize = boundedLimit(options.pageSize ?? 10, MAX_RSVPS);
+  const cursorId = options.cursorId?.trim() || "";
+  const forceRefresh = options.forceRefresh ?? false;
+  const cacheKey = `${eventId}:${pageSize}:${cursorId || "first"}`;
+
+  if (!forceRefresh) {
+    const cached = getCache(adminRsvpsPageCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const constraints: QueryConstraint[] = [limit(pageSize + 1)];
+  if (cursorId) {
+    const cursorSnap = await getDoc(doc(db, "eventos", eventId, "rsvps", cursorId));
+    if (cursorSnap.exists()) {
+      constraints.splice(0, 0, startAfter(cursorSnap));
+    }
+  }
+
+  const snap = await getDocs(query(collection(db, "eventos", eventId, "rsvps"), ...constraints));
+  const docs = snap.docs.slice(0, pageSize);
+  const rows = docs.map((entry) => ({ id: entry.id, ...(entry.data() as Row) }));
+  const result: AdminEventParticipantsPage = {
+    rows,
+    hasMore: snap.docs.length > pageSize,
+    nextCursor: rows.length ? asStr(rows[rows.length - 1].id) : null,
+  };
+  setCache(adminRsvpsPageCache, cacheKey, result);
+  return result;
+}
+
+export async function fetchAdminEventSalesPage(options: {
+  eventId: string;
+  pageSize?: number;
+  cursorId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<AdminEventParticipantsPage> {
+  const eventId = options.eventId.trim();
+  if (!eventId) return { rows: [], nextCursor: null, hasMore: false };
+
+  const pageSize = boundedLimit(options.pageSize ?? 10, MAX_TICKETS);
+  const cursorId = options.cursorId?.trim() || "";
+  const forceRefresh = options.forceRefresh ?? false;
+  const cacheKey = `${eventId}:${pageSize}:${cursorId || "first"}`;
+
+  if (!forceRefresh) {
+    const cached = getCache(adminSalesPageCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const cursorSnap = cursorId
+    ? await getDoc(doc(db, "solicitacoes_ingressos", cursorId))
+    : null;
+
+  const buildConstraints = (ordered: boolean): QueryConstraint[] => {
+    const constraints: QueryConstraint[] = [where("eventoId", "==", eventId)];
+    if (ordered) constraints.push(orderBy("dataSolicitacao", "desc"));
+    if (cursorSnap?.exists()) constraints.push(startAfter(cursorSnap));
+    constraints.push(limit(pageSize + 1));
+    return constraints;
+  };
+
+  let rows: Row[] = [];
+  try {
+    const snap = await getDocs(query(collection(db, "solicitacoes_ingressos"), ...buildConstraints(true)));
+    rows = snap.docs.map((entry): Row => ({ id: entry.id, ...(entry.data() as Row) }));
+  } catch (error: unknown) {
+    if (!isIndexRequired(error)) throw error;
+    const snap = await getDocs(query(collection(db, "solicitacoes_ingressos"), ...buildConstraints(false)));
+    rows = snap.docs
+      .map((entry): Row => ({ id: entry.id, ...(entry.data() as Row) }))
+      .sort(
+        (left, right) =>
+          toMillis(right["dataSolicitacao"]) - toMillis(left["dataSolicitacao"])
+      );
+  }
+
+  const pageRows = rows.slice(0, pageSize);
+  const result: AdminEventParticipantsPage = {
+    rows: pageRows,
+    hasMore: rows.length > pageSize,
+    nextCursor: pageRows.length ? asStr(pageRows[pageRows.length - 1].id) : null,
+  };
+  setCache(adminSalesPageCache, cacheKey, result);
   return result;
 }
 
@@ -654,6 +785,8 @@ export function clearEventsCaches(): void {
   feedCache.clear();
   detailsCache.clear();
   adminParticipantsCache.clear();
+  adminRsvpsPageCache.clear();
+  adminSalesPageCache.clear();
   adminPollsCache.clear();
   financeiroCache.clear();
 }
