@@ -17,6 +17,7 @@ import {
 } from "@/lib/carteirinhaService";
 import { QRCodeSVG } from "qrcode.react";
 import SharkLoader from "@/app/components/SharkLoader";
+import { getTurmaImage } from "@/constants/turmaImages";
 
 // --- TIPAGEM ---
 interface StyleConfig {
@@ -99,8 +100,7 @@ export default function CarteirinhaPage() {
   if (!user) return null;
 
   // --- LÓGICA DE FUNDO (BACKGROUND) ---
-  const numTurma = user.turma ? user.turma.replace(/\D/g, "") : "1";
-  const bgPadrao = `/turma${numTurma}.jpeg`;
+  const bgPadrao = getTurmaImage(user.turma);
   const bgFinal = config?.backgrounds?.[user.turma || ""] || bgPadrao;
   const validadeTexto = config?.validade || "DEZ/2026";
 
@@ -146,13 +146,14 @@ export default function CarteirinhaPage() {
           {/* === CAMADA DE FUNDO === */}
           <div className="absolute inset-0 z-0 bg-zinc-900">
              <div className="absolute inset-0 bg-zinc-900" />
-             <Image
-                src={bgFinal}
-                alt="Background Turma"
-                fill
-                className="object-cover opacity-60 mix-blend-overlay brightness-75 scale-105"
-                unoptimized // Permite URLs externas/base64 sem config no next.config.js
-             />
+              <Image
+                 src={bgFinal}
+                 alt="Background Turma"
+                 fill
+                 className="object-cover opacity-60 mix-blend-overlay brightness-75 scale-105"
+                 unoptimized // Permite URLs externas/base64 sem config no next.config.js
+                 priority
+              />
              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/80"></div>
              <div className="absolute inset-0 opacity-[0.07] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
           </div>

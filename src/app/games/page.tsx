@@ -669,7 +669,7 @@ export default function SharkLegendsPage() {
         {/* === TELA DE COMBATE === */}
         {battleState !== "idle" && (
             <div className="fixed inset-0 z-[9999] bg-black flex flex-col animate-in fade-in duration-300">
-                <div className="flex-1 relative bg-cover bg-center" style={{ backgroundImage: `url('/battle-forest.png')` }}>
+                <div className="flex-1 relative bg-cover bg-center" style={{ backgroundImage: `url('/battle-forest.webp')` }}>
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
                     <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-emerald-900/20 to-black z-0 mix-blend-overlay"></div>
 

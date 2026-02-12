@@ -5,6 +5,7 @@ import { ArrowLeft, Users, User, Crown, Loader2 } from "lucide-react"; // 🦈 R
 import Link from "next/link";
 import Image from "next/image"; // 🦈 Importando Image do Next.js
 import { fetchGlobalRankingUsers } from "../../lib/rankingService";
+import { getTurmaImage } from "../../constants/turmaImages";
 
 // Interface para o Usuário vindo do Firebase
 interface RankingUser {
@@ -59,7 +60,7 @@ export default function RankingPage() {
                     nome: `${turmaKey}`,
                     pontos: 0,
                     membros: 0,
-                    logo: `/turma${turmaKey.replace(/\D/g, "")}.jpeg`
+                    logo: getTurmaImage(turmaKey)
                 };
             }
             turmasMap[turmaKey].pontos += user.xp;
@@ -187,6 +188,7 @@ export default function RankingPage() {
                             width={96}
                             height={96}
                             unoptimized
+                            priority
                             className="rounded-full border-4 border-yellow-500 object-cover shadow-[0_0_40px_rgba(234,179,8,0.4)] cursor-pointer hover:scale-105 transition bg-zinc-800"
                             onError={(e) => (e.currentTarget.src = getFallbackImage())}
                         />

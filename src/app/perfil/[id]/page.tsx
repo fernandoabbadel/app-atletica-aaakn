@@ -20,6 +20,7 @@ import {
   toggleFollowProfile
 } from "../../../lib/profileService";
 import Link from "next/link";
+import { getTurmaImage } from "../../../constants/turmaImages";
 
 // --- TIPAGEM ---
 
@@ -367,7 +368,7 @@ export default function PerfilPublicoPage() {
   const showAge = isOwnProfile || profile.idadePublica;
   const showWhatsapp = isOwnProfile || profile.whatsappPublico;
   const showRelacionamento = isOwnProfile || profile.relacionamentoPublico;
-  const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
+  const turmaImage = getTurmaImage(profile.turma);
   const badgeProps = { nome: profile.plano, cor: profile.plano_cor, iconName: profile.plano_icon };
 
   return (
@@ -382,6 +383,7 @@ export default function PerfilPublicoPage() {
                 alt="Capa da Turma"
                 fill
                 className="object-cover opacity-60 blur-[2px]"
+                priority
             />
             <button onClick={() => router.back()} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
         </div>

@@ -40,7 +40,7 @@ const TURMAS_DATA: Record<string, { nome: string, logo: string, capa: string }> 
   "T5": { nome: "Turma V - Pinguim", logo: "/turma5.jpeg", capa: "/capa_t5.jpg" },
   "T6": { nome: "Turma VI - Lagosta", logo: "/turma6.jpeg", capa: "/capa_t6.jpg" },
   "T7": { nome: "Turma VII - Urso Polar", logo: "/turma7.jpeg", capa: "/capa_t7.jpg" },
-  "T8": { nome: "Turma VIII - Calouros", logo: "/turma8.jpeg", capa: "/capa_t8.jpg" },
+  "T8": { nome: "Turma VIII - Calouros", logo: "/turma8.jpg", capa: "/capa_t8.jpg" },
 };
 
 const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
@@ -451,4 +451,3 @@ export default function AlbumPage() {
     </div>
   );
 }
-

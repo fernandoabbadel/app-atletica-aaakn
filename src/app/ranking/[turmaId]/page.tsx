@@ -6,6 +6,7 @@ import Link from "next/link";
 // 🦈 1. Importar o componente Image
 import Image from "next/image";
 import { fetchTurmaRankingUsers } from "../../../lib/rankingService";
+import { getTurmaImage } from "../../../constants/turmaImages";
 
 interface User {
   id: string;
@@ -91,11 +92,12 @@ export default function TurmaRankingPage({
             <div className="w-20 h-20 mx-auto bg-white rounded-full p-1 mb-3 relative overflow-hidden">
               {/* 🦈 2. Substituição por Image Otimizada (Local) */}
               <Image
-                src={`/turma${turmaReal.replace(/\D/g, "")}.jpeg`}
+                src={getTurmaImage(turmaReal)}
                 alt={`Brasão da Turma ${turmaReal}`}
                 width={80}
                 height={80}
                 className="rounded-full object-cover"
+                priority
                 onError={(e) => (e.currentTarget.srcset = "/logo.png")} // Fallback simples
               />
             </div>

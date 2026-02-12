@@ -22,6 +22,7 @@ import {
     type DashboardProduct,
     type DashboardTurmaStat,
 } from '../../lib/dashboardService';
+import { getTurmaImage } from "../../constants/turmaImages";
 
 // --- INTERFACES ESTRITAS ---
 
@@ -180,7 +181,7 @@ const ProductCard = ({ prod, userId, onToggleLike, turmaStats }: { prod: Produto
                                 <div key={i} className="flex items-center bg-zinc-800/50 rounded-full pr-2 border border-zinc-700/50 p-0.5">
                                     <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-600 bg-black relative">
                                           <Image 
-                                              src={`/turma${st.turma}.jpeg`} 
+                                              src={getTurmaImage(`T${st.turma}`)} 
                                               alt={`T${st.turma}`}
                                               fill
                                               className="object-cover"
@@ -394,11 +395,12 @@ export default function DashboardPage() {
       {/* 1. CARTEIRINHA */}
       <Link href="/carteirinha" className="relative h-40 w-full overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 active:scale-95 transition group shadow-2xl block">
           <Image 
-            src={`/turma${userData?.turma?.replace('T','') || '1'}.jpeg`} 
+            src={getTurmaImage(userData?.turma)} 
             alt="Carteira BG"
             fill
             className="object-cover opacity-40 group-hover:opacity-50 transition transform group-hover:scale-105 duration-700" 
             unoptimized
+            priority
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent p-6 flex flex-col justify-center">
               <div className="flex items-center gap-2 mb-2">

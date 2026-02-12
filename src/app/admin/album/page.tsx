@@ -55,7 +55,7 @@ const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
 const TURMA_LOGOS: Record<string, string> = {
   "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
   "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-  "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
+  "T7": "/turma7.jpeg", "T8": "/turma8.jpg"
 };
 
 export default function AdminAlbumPage() {

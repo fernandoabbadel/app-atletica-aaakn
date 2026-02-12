@@ -23,6 +23,7 @@ import {
 import { validateImageFile } from "../../lib/upload";
 import Link from "next/link";
 import Image from "next/image";
+import { getTurmaImage } from "../../constants/turmaImages";
 
 // ============================================================================
 // 🦈 1. INTERFACES & TIPAGEM (ID 906)
@@ -399,7 +400,7 @@ export default function MeuPerfilPage() {
   const isWhatsappPrivate = profile.whatsappPublico === false;
   const isAgePrivate = profile.idadePublica === false;
   const isRelationPrivate = profile.relacionamentoPublico === false;
-  const turmaImage = `/turma${profile.turma?.replace('T','') || '1'}.jpeg`;
+  const turmaImage = getTurmaImage(profile.turma);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
@@ -414,6 +415,7 @@ export default function MeuPerfilPage() {
                 className="object-cover opacity-60 blur-[2px] group-hover:blur-0 transition duration-700"
                 unoptimized
                 sizes="100vw"
+                priority
             />
             <button onClick={() => router.push('/dashboard')} className="absolute top-6 left-6 z-20 p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white hover:text-black transition"><ArrowLeft size={20}/></button>
             <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'capa')} />

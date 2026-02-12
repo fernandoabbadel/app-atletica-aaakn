@@ -47,7 +47,7 @@ interface BannerProps {
 const TURMA_IMAGENS: Record<string, string> = {
     "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
     "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpeg"
+    "T7": "/turma7.jpeg", "T8": "/turma8.jpg"
 };
 
 const PLAN_COLORS: Record<string, string> = {

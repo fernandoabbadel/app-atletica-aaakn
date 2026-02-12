@@ -24,8 +24,8 @@ const TURMAS = [
   { id: "T5", nome: "Turma V - Pinguim", img: "/turma5.jpeg" }, 
   { id: "T6", nome: "Turma VI - Lagosta", img: "/turma6.jpeg" },
   { id: "T7", nome: "Turma VII - Urso Polar", img: "/turma7.jpeg" },
-  { id: "T8", nome: "Turma VIII - Calouro", img: "/turma8.jpeg" },
-  { id: "T9", nome: "Turma IX", img: "/turma9.jpeg" },
+  { id: "T8", nome: "Turma VIII - Calouro", img: "/turma8.jpg" },
+  { id: "T9", nome: "Turma IX", img: "/turma9.jpg" },
 ];
 
 const STATUS_RELACIONAMENTO = ["Solteiro(a)", "Namorando", "Casado(a)", "Enrolado(a)", "No QG da Atlética 🦈"];
