@@ -1,453 +1,78 @@
-"use client";
+﻿"use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { 
-  ArrowLeft, QrCode, Camera, MapPin, 
-  Instagram, Lock, CheckCircle2, Heart, X, Sparkles, PawPrint
-} from "lucide-react"; 
+import Image from "next/image";
 import Link from "next/link";
-import Image from "next/image"; // Importando Image
-import { useAuth } from "../../context/AuthContext";
-import { useToast } from "../../context/ToastContext";
-import { fetchAlbumCollectedIds, fetchUsersByTurma, registerAlbumCapture } from "../../lib/albumService";
-import { QRCodeSVG } from "qrcode.react";
-import { Html5Qrcode } from "html5-qrcode";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { getTurmaImage } from "../../constants/turmaImages";
 
-// Interfaces para tipagem forte (Fim do any)
-interface UserData {
-    id: string;
-    nome: string;
-    turma: string;
-    foto?: string;
-    apelido?: string;
-    dataNascimento?: string;
-    idadePublica?: boolean;
-    esportes?: string[];
-    pets?: string;
-    cidadeOrigem?: string;
-    relacionamentoPublico?: boolean;
-    statusRelacionamento?: string;
-    bio?: string;
-    instagram?: string;
-}
+const TURMAS = [
+  { id: "T1", slug: "t1", nome: "Turma I", mascote: "Jacare" },
+  { id: "T2", slug: "t2", nome: "Turma II", mascote: "Cavalo Marinho" },
+  { id: "T3", slug: "t3", nome: "Turma III", mascote: "Tartaruga" },
+  { id: "T4", slug: "t4", nome: "Turma IV", mascote: "Baleia" },
+  { id: "T5", slug: "t5", nome: "Turma V", mascote: "Pinguim" },
+  { id: "T6", slug: "t6", nome: "Turma VI", mascote: "Lagosta" },
+  { id: "T7", slug: "t7", nome: "Turma VII", mascote: "Urso Polar" },
+  { id: "T8", slug: "t8", nome: "Turma VIII", mascote: "Calouros" },
+] as const;
 
-// Configuração Visual das Turmas
-const TURMAS_DATA: Record<string, { nome: string, logo: string, capa: string }> = {
-  "T1": { nome: "Turma I - Jacaré", logo: "/turma1.jpeg", capa: "/capa_t1.jpg" },
-  "T2": { nome: "Turma II - Cavalo Marinho", logo: "/turma2.jpeg", capa: "/capa_t2.jpg" },
-  "T3": { nome: "Turma III - Tartaruga", logo: "/turma3.jpeg", capa: "/capa_t3.jpg" },
-  "T4": { nome: "Turma IV - Baleia", logo: "/turma4.jpeg", capa: "/capa_t4.jpg" },
-  "T5": { nome: "Turma V - Pinguim", logo: "/turma5.jpeg", capa: "/capa_t5.jpg" },
-  "T6": { nome: "Turma VI - Lagosta", logo: "/turma6.jpeg", capa: "/capa_t6.jpg" },
-  "T7": { nome: "Turma VII - Urso Polar", logo: "/turma7.jpeg", capa: "/capa_t7.jpg" },
-  "T8": { nome: "Turma VIII - Calouros", logo: "/turma8.jpg", capa: "/capa_t8.jpg" },
-};
-
-const LISTA_TURMAS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
-
-export default function AlbumPage() {
-  const { user } = useAuth();
-  const { addToast } = useToast();
-  const userUid = user?.uid;
-  
-  const [activeTab, setActiveTab] = useState("T8");
-  const [usersByTurma, setUsersByTurma] = useState<Record<string, UserData[]>>({});
-  const [meuAlbum, setMeuAlbum] = useState<string[]>([]);
-  const [showMyQr, setShowMyQr] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
-  const [loadingAlbum, setLoadingAlbum] = useState(true);
-  const [loadingTurma, setLoadingTurma] = useState(false);
-  const [processingScan, setProcessingScan] = useState(false);
-  
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const processingScanRef = useRef(false);
-  const usuarios = useMemo(() => usersByTurma[activeTab] ?? [], [usersByTurma, activeTab]);
-
-  // Helper: Cálculo de Idade
-  const calcularIdade = (dataNasc?: string) => {
-    if (!dataNasc) return "??";
-    const hoje = new Date();
-    const nasc = new Date(dataNasc);
-    let idade = hoje.getFullYear() - nasc.getFullYear();
-    const m = hoje.getMonth() - nasc.getMonth();
-    if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
-    return idade;
-  };
-
-  // 1. Carregar Dados essenciais (snapshot único)
-  useEffect(() => {
-    if (!userUid) {
-      setMeuAlbum([]);
-      setUsersByTurma({});
-      setLoadingAlbum(false);
-      return;
-    }
-
-    let mounted = true;
-    setLoadingAlbum(true);
-    setUsersByTurma({});
-
-    const loadAlbum = async () => {
-      try {
-        const collectedIds = await fetchAlbumCollectedIds(userUid);
-        if (!mounted) return;
-        setMeuAlbum(collectedIds);
-      } catch (error: unknown) {
-        console.error(error);
-        if (mounted) addToast("Erro ao carregar seu álbum.", "error");
-      } finally {
-        if (mounted) setLoadingAlbum(false);
-      }
-    };
-
-    loadAlbum();
-    return () => {
-      mounted = false;
-    };
-  }, [userUid, addToast]);
-
-  useEffect(() => {
-    if (!userUid) return;
-    if (Object.prototype.hasOwnProperty.call(usersByTurma, activeTab)) return;
-
-    let mounted = true;
-    setLoadingTurma(true);
-
-    const loadTurma = async () => {
-      try {
-        const turmaUsers = await fetchUsersByTurma(activeTab);
-        if (!mounted) return;
-        setUsersByTurma((prev) => ({ ...prev, [activeTab]: turmaUsers }));
-      } catch (error: unknown) {
-        console.error(error);
-        if (mounted) {
-          addToast("Erro ao carregar turma selecionada.", "error");
-          setUsersByTurma((prev) => ({ ...prev, [activeTab]: [] }));
-        }
-      } finally {
-        if (mounted) setLoadingTurma(false);
-      }
-    };
-
-    loadTurma();
-    return () => {
-      mounted = false;
-    };
-  }, [activeTab, userUid, addToast, usersByTurma]);
-
-  // 2. Logica de Colar (Cloud Function com fallback seguro)
-  const handleFoundUser = useCallback(async (rawTargetId: string) => {
-    if (!user || processingScanRef.current) return;
-
-    const targetId = rawTargetId.trim();
-    if (!targetId) return;
-
-    processingScanRef.current = true;
-    setProcessingScan(true);
-
-    try {
-      if (scannerRef.current?.isScanning) {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-        setShowScanner(false);
-      }
-
-      if (targetId === user.uid) {
-        addToast("Tentando se escanear?", "info");
-        return;
-      }
-
-      if (meuAlbum.includes(targetId)) {
-        addToast("Figurinha repetida!", "info");
-        return;
-      }
-
-      const result = await registerAlbumCapture({
-        collector: {
-          uid: user.uid,
-          nome: user.nome || "Tubarao",
-          turma: user.turma,
-          foto: user.foto,
-        },
-        targetId,
-      });
-
-      if (result.status === "invalid-target") {
-        addToast("Codigo invalido ou usuario nao encontrado!", "error");
-        return;
-      }
-
-      if (result.status === "duplicate") {
-        addToast("Figurinha repetida!", "info");
-        return;
-      }
-
-      setMeuAlbum((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
-      addToast(`CAPTURA! ${result.targetName || "Integrante"} adicionado!`, "success");
-    } catch (error: unknown) {
-      console.error(error);
-      addToast("Erro ao colar no banco de dados.", "error");
-    } finally {
-      processingScanRef.current = false;
-      setProcessingScan(false);
-    }
-  }, [user, meuAlbum, addToast]);
-
-  // 3. Scanner PRO
-  useEffect(() => {
-    if (showScanner && !scannerRef.current) {
-        const startScanner = async () => {
-            try {
-                const html5QrCode = new Html5Qrcode("reader");
-                scannerRef.current = html5QrCode;
-                await html5QrCode.start(
-                    { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
-                    (decodedText) => { handleFoundUser(decodedText); },
-                    () => { } // Error callback vazio intencional
-                );
-            } catch (err) {
-                console.error(err);
-                addToast("Erro ao abrir câmera.", "error");
-                setShowScanner(false);
-            }
-        };
-        startScanner();
-    }
-    return () => {
-        if (scannerRef.current?.isScanning) {
-            scannerRef.current.stop().then(() => {
-                scannerRef.current?.clear();
-                scannerRef.current = null;
-            }).catch(console.error);
-        }
-    };
-  }, [showScanner, handleFoundUser, addToast]); // Dependencias do scanner
-
-  // 4. Contadores
-  const statsTurma = useMemo(() => {
-    const totalCadastrados = usuarios.length;
-    const totalEuPeguei = usuarios.filter((u) => meuAlbum.includes(u.id)).length;
-    return { pegos: totalEuPeguei, total: totalCadastrados };
-  }, [usuarios, meuAlbum]);
-
-  const usersFiltered = useMemo(() => {
-    return usuarios;
-  }, [usuarios]);
-
-  const hasActiveTurmaLoaded = Object.prototype.hasOwnProperty.call(usersByTurma, activeTab);
-  const loading = loadingAlbum || loadingTurma || !hasActiveTurmaLoaded;
-
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-black animate-pulse">CARREGANDO...</div>;
-
+export default function AlbumTurmasPage() {
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-32">
-      
-      {/* HEADER */}
-      <header className="p-6 sticky top-0 z-50 bg-[#050505]/95 backdrop-blur-md border-b border-white/5 flex justify-between items-center">
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-24">
+      <header className="sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 px-6 py-5">
         <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 bg-zinc-900 rounded-full"><ArrowLeft size={20}/></Link>
-          <h1 className="text-xl font-black uppercase italic">Caça aos Bixos</h1>
-        </div>
-        <div className="flex gap-2">
-            <button onClick={() => setShowMyQr(true)} className="bg-white text-black p-3 rounded-2xl shadow-lg active:scale-95 transition"><QrCode size={20} /></button>
-            <button disabled={processingScan} onClick={() => setShowScanner(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-emerald-500/20 shadow-lg active:scale-95 transition disabled:opacity-60 disabled:cursor-not-allowed"><Camera size={20} /></button>
+          <Link
+            href="/dashboard"
+            className="p-2 rounded-full border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 transition"
+          >
+            <ArrowLeft size={18} className="text-zinc-300" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tight">Album da Galera</h1>
+            <p className="text-[11px] text-zinc-500 font-bold">
+              Escolha a turma para abrir somente o que voce precisa
+            </p>
+          </div>
         </div>
       </header>
 
-      {/* SELETOR */}
-      <div className="flex overflow-x-auto gap-4 p-6 bg-zinc-950/50 sticky top-[81px] z-40 backdrop-blur-sm border-b border-white/5 custom-scrollbar">
-        {LISTA_TURMAS.map(t => {
-          const isT8 = t === "T8";
-          return (
-            <button key={t} onClick={() => setActiveTab(t)} className="flex flex-col items-center gap-2 shrink-0 group">
-              <div className={`
-                w-14 h-14 rounded-full border-2 transition-all relative overflow-hidden
-                ${isT8 
-                    ? 'border-yellow-400 border-dashed animate-pulse shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10' 
-                    : activeTab === t 
-                        ? 'border-emerald-500 scale-110 shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
-                        : 'border-zinc-800 grayscale opacity-60'
-                }
-                ${activeTab === t && isT8 ? 'scale-125 bg-yellow-400/10' : ''}
-              `}>
-                 <Image 
-                    src={TURMAS_DATA[t]?.logo} 
-                    alt={t} 
-                    fill 
-                    className="object-cover" 
-                    unoptimized 
-                 />
+      <main className="px-6 py-6 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {TURMAS.map((turma, index) => (
+            <Link
+              key={turma.id}
+              href={`/album/${turma.slug}`}
+              className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-emerald-500/40 transition"
+            >
+              <div className="relative h-44 w-full">
+                <Image
+                  src={getTurmaImage(turma.id)}
+                  alt={turma.nome}
+                  fill
+                  priority={index < 2}
+                  className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition duration-500"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                  unoptimized
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
               </div>
-              <span className={`text-[10px] font-black uppercase 
-                ${isT8 
-                    ? 'text-yellow-400 animate-pulse' 
-                    : activeTab === t ? 'text-emerald-500' : 'text-zinc-500'}
-              `}>{t}</span>
-            </button>
-          )
-        })}
-      </div>
 
-      {/* CAPA */}
-      <div className="relative h-56 w-full mb-8 overflow-hidden group">
-          <Image 
-            src={TURMAS_DATA[activeTab]?.capa} 
-            fill 
-            className="object-cover opacity-60" 
-            alt="Capa Turma"
-            unoptimized
-            onError={(e) => { 
-                const target = e.target as HTMLImageElement;
-                target.src = "https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80" 
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent"></div>
-          <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end z-10">
-              <div>
-                <h2 className="text-4xl font-black uppercase italic tracking-tighter leading-none">{TURMAS_DATA[activeTab]?.nome}</h2>
-                <div className="flex items-center gap-2 mt-2">
-                    <Sparkles size={14} className="text-emerald-500"/>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Álbum Oficial</span>
-                </div>
-              </div>
-              <div className="bg-gradient-to-br from-amber-300 via-yellow-500 to-amber-600 p-[1px] rounded-2xl shadow-[0_0_20px_rgba(234,179,8,0.2)]">
-                  <div className="bg-black/90 backdrop-blur-md px-4 py-2 rounded-2xl flex flex-col items-center">
-                      <span className="text-[9px] font-black text-yellow-500 uppercase tracking-tighter">Capturados</span>
-                      <div className="text-xl font-black text-white italic leading-none mt-1">
-                          {statsTurma.pegos}<span className="text-yellow-500/50 mx-1">/</span>{statsTurma.total}
-                      </div>
+              <div className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">{turma.id}</p>
+                    <h2 className="text-sm font-black uppercase">{turma.nome}</h2>
+                    <p className="text-xs text-zinc-400 mt-1">{turma.mascote}</p>
                   </div>
-              </div>
-          </div>
-      </div>
-
-      {/* GRID */}
-      <main className="p-4 grid grid-cols-1 gap-6 max-w-3xl mx-auto">
-        {usersFiltered.map((u) => {
-          const isColada = meuAlbum.includes(u.id);
-          
-          return (
-            <div key={u.id} className={`relative rounded-[2.5rem] border transition-all duration-500 overflow-hidden ${isColada ? 'bg-zinc-900/80 border-emerald-500/40 shadow-2xl' : 'bg-zinc-950 border-white/5 grayscale brightness-50 opacity-40'}`}>
-              <div className="p-6 flex items-center gap-6">
-                <div className={`relative shrink-0 w-24 h-24 rounded-full border-4 transition-all duration-700 overflow-hidden ${isColada ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)] scale-105' : 'border-zinc-800'}`}>
-                   <Image 
-                        src={u.foto || "https://github.com/shadcn.png"} 
-                        alt={u.nome}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                   />
-                   {isColada && <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1.5 rounded-full shadow-lg z-10"><CheckCircle2 size={14} fill="white"/></div>}
-                </div>
-                
-                {/* --- BLOCO DE INFO --- */}
-                <div className="flex-1 min-w-0">
-                  <h3 className={`text-xl font-black uppercase italic leading-none truncate ${isColada ? 'text-white' : 'text-zinc-700'}`}>{u.apelido || u.nome}</h3>
-                  
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="text-[9px] font-black bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 uppercase">{u.turma}</span>
-                    
-                    {isColada && (
-                        <>
-                            {/* IDADE */}
-                            <span className="text-[9px] font-black bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-500 uppercase">{u.idadePublica === false ? "??" : calcularIdade(u.dataNascimento)} ANOS</span>
-                            
-                            {/* ESPORTES */}
-                            {u.esportes && u.esportes.length > 0 && (
-                                <div className="flex gap-1 bg-blue-500/10 px-2 py-0.5 rounded">
-                                    {u.esportes.slice(0, 3).map((esp: string) => {
-                                        const icons: Record<string, string> = {
-                                            "futebol": "⚽", "futsal": "👟", "volei": "🏐", "basquete": "🏀",
-                                            "handball": "🤾", "rugby": "🏉", "baseball": "⚾", "futevolei": "🦶",
-                                            "beach_tennis": "🏖️", "tenis": "🎾", "frescobol": "🏓", "taco": "🏏",
-                                            "peteca": "🏸", "surf": "🏄", "natacao": "🏊", "canoagem": "🛶",
-                                            "skate": "🛹", "dog_walking": "🐕", "truco": "🃏", "sinuca": "🎱"
-                                        };
-                                        return <span key={esp} title={esp}>{icons[esp] || "🏆"}</span>
-                                    })}
-                                    {u.esportes.length > 3 && <span className="text-[8px] text-blue-400 self-center font-bold">+{u.esportes.length - 3}</span>}
-                                </div>
-                            )}
-
-                            {/* PETS */}
-                            {u.pets && u.pets !== "nenhum" && (
-                                <span className="text-[9px] font-black bg-orange-500/10 px-2 py-0.5 rounded text-orange-500 uppercase flex items-center gap-1">
-                                    <PawPrint size={10}/>
-                                    {u.pets === "cachorro" && "DOG"}
-                                    {u.pets === "gato" && "CAT"}
-                                    {u.pets === "ambos" && "ZOO"}
-                                </span>
-                            )}
-
-                            {/* CIDADE */}
-                            <span className="text-[9px] font-black bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-500 uppercase flex items-center gap-1"><MapPin size={8}/> {u.cidadeOrigem || "?"}</span>
-                            
-                            {/* RELACIONAMENTO */}
-                            {u.relacionamentoPublico && u.statusRelacionamento && (
-                                <span className="text-[9px] font-black bg-pink-500/10 px-2 py-0.5 rounded text-pink-500 uppercase flex items-center gap-1">
-                                    <Heart size={8} fill={u.statusRelacionamento !== 'Solteiro(a)' ? 'currentColor' : 'none'}/> {u.statusRelacionamento}
-                                </span>
-                            )}
-                        </>
-                    )}
+                  <div className="w-9 h-9 rounded-full border border-zinc-700 bg-zinc-950 flex items-center justify-center text-zinc-300 group-hover:text-emerald-400 group-hover:border-emerald-500/40 transition">
+                    <ChevronRight size={16} />
                   </div>
-                  
-                  {isColada ? (
-                    <div className="mt-3">
-                        {/* Correcao de aspas aqui */}
-                        <p className="text-zinc-400 text-[11px] line-clamp-2 font-medium italic">&quot;{u.bio || '...'}&quot;</p>
-                        {u.instagram && (
-                            <a href={`https://instagram.com/${u.instagram.replace('@','')}`} target="_blank" className="inline-flex items-center gap-1.5 mt-2 text-pink-500 text-[10px] font-black uppercase hover:underline">
-                                <Instagram size={12}/> @{u.instagram.replace('@','')}
-                            </a>
-                        )}
-                    </div>
-                  ) : (<div className="flex items-center gap-2 mt-4 text-zinc-800"><Lock size={12}/> <span className="text-[10px] font-black uppercase tracking-widest">Bloqueado</span></div>)}
                 </div>
-                {/* --- FIM DO BLOCO --- */}
-
               </div>
-            </div>
-          );
-        })}
-        {usersFiltered.length === 0 && <div className="text-center text-zinc-600 font-bold uppercase py-10">Ninguém dessa turma ainda.</div>}
+            </Link>
+          ))}
+        </div>
       </main>
-
-      {/* MODAL SCANNER */}
-      {showScanner && (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-300">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-green-400 to-emerald-500 z-50 animate-pulse"></div>
-              <div className="flex-1 relative flex items-center justify-center bg-black">
-                  <div id="reader" className="w-full h-full max-w-lg overflow-hidden"></div>
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                      <div className="w-64 h-64 border-4 border-emerald-500/50 rounded-3xl relative"></div>
-                  </div>
-                  <button onClick={() => setShowScanner(false)} className="absolute top-6 right-6 bg-black/50 text-white p-3 rounded-full backdrop-blur-md z-50 border border-white/10"><X size={24}/></button>
-              </div>
-          </div>
-      )}
-
-      {/* MODAL MEU QR */}
-      {showMyQr && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-6" onClick={() => setShowMyQr(false)}>
-              <div className="bg-zinc-900 w-full max-w-sm rounded-[3rem] p-8 border border-emerald-500/30 text-center relative shadow-[0_0_50px_rgba(16,185,129,0.2)]" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setShowMyQr(false)} className="absolute top-6 right-6 text-zinc-500"><X size={24}/></button>
-                  <div className="w-24 h-24 rounded-full border-4 border-emerald-500 mx-auto mb-4 overflow-hidden shadow-xl relative">
-                    <Image 
-                        src={user?.foto || "https://github.com/shadcn.png"} 
-                        fill 
-                        className="object-cover" 
-                        alt="Meu Avatar"
-                        unoptimized
-                    />
-                  </div>
-                  <h2 className="text-2xl font-black uppercase italic mb-1 text-white">Meu Shark Code</h2>
-                  <div className="bg-white p-4 rounded-[2rem] inline-block my-6 shadow-inner"><QRCodeSVG value={user?.uid || ""} size={220} /></div>
-                  <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-500/10 py-2 rounded-xl border border-emerald-500/20">ID: {user?.uid}</p>
-              </div>
-          </div>
-      )}
     </div>
   );
 }

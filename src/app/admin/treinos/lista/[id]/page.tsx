@@ -31,6 +31,7 @@ import {
   upsertChamadaPresence,
   updateChamadaStatus,
 } from "@/lib/treinosService";
+import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 
 const PAGE_SIZE = 10;
 
@@ -110,7 +111,7 @@ export default function AdminTreinoListaPage() {
       setHasMoreChamada(chamadaPage.hasMore);
       setHasMoreRsvp(rsvpPage.hasMore);
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao carregar lista de presenca.", "error");
     } finally {
       setLoading(false);
@@ -147,7 +148,7 @@ export default function AdminTreinoListaPage() {
       setChamadaCursor(page.nextCursor);
       setHasMoreChamada(page.hasMore);
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao carregar mais chamada.", "error");
     } finally {
       setLoadingMoreChamada(false);
@@ -167,7 +168,7 @@ export default function AdminTreinoListaPage() {
       setRsvpCursor(page.nextCursor);
       setHasMoreRsvp(page.hasMore);
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao carregar mais inscritos.", "error");
     } finally {
       setLoadingMoreRsvp(false);
@@ -192,7 +193,7 @@ export default function AdminTreinoListaPage() {
         )
       );
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao atualizar presenca.", "error");
     } finally {
       setUpdatingId(null);
@@ -210,7 +211,7 @@ export default function AdminTreinoListaPage() {
       await deleteChamadaEntry({ treinoId, chamadaId: row.id });
       setChamadaRows((prev) => prev.filter((entry) => entry.id !== row.id));
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao remover aluno.", "error");
     } finally {
       setDeletingId(null);
@@ -246,7 +247,7 @@ export default function AdminTreinoListaPage() {
         ])
       );
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao confirmar inscrito.", "error");
     } finally {
       setUpdatingId(null);
@@ -261,7 +262,7 @@ export default function AdminTreinoListaPage() {
       const users = await fetchUserDirectory({ maxResults: 80, forceRefresh: false });
       setUserPool(users);
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao carregar base de usuarios.", "error");
     } finally {
       setLoadingUsers(false);
@@ -289,7 +290,7 @@ export default function AdminTreinoListaPage() {
       );
       setSearchUser("");
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao adicionar aluno.", "error");
     } finally {
       setUpdatingId(null);
@@ -571,3 +572,4 @@ export default function AdminTreinoListaPage() {
     </div>
   );
 }
+

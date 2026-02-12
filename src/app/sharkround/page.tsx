@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from 'react';
 import { 
   Dice5, MapPin, Building2, AlertTriangle, XCircle, Lock, 
   TrendingUp, DollarSign, ArrowLeft, HelpCircle, 
-  Wrench, Trophy, Heart, ChevronLeft, ChevronRight, Loader2
+  Wrench, Trophy, Heart, ChevronLeft, ChevronRight, Loader2, BarChart3
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -53,12 +53,20 @@ interface Socio { uid: string; nome: string; nivel: NivelConstrucao; }
 interface CasaTabuleiro { index: number; tipo: TipoCasa; titulo: string; sigla?: string; descricao?: string; cor: string; donoId?: string; socios?: Socio[]; nivel?: NivelConstrucao; backgroundImage?: string; ligaId?: string; } 
 interface RankingItem { id: string; nome: string; foto: string; tubas: number; }
 
+interface SharkroundStats {
+  clinicas: number;
+  acertos: number;
+  erros: number;
+}
+
+const SHARKROUND_STATS_STORAGE_KEY = "sharkround_local_stats_v1";
+
 export default function SharkRoundPage() {
   const { addToast } = useToast(); 
   const { user, loading } = useAuth(); 
   const router = useRouter();
 
-  // Configuração (Constantes agora, já que os setters não eram usados)
+  // ConfiguraÃ§Ã£o (Constantes agora, jÃ¡ que os setters nÃ£o eram usados)
   const boardSide = 11;
   const boardSizeTotal = 40;
 
@@ -86,13 +94,18 @@ export default function SharkRoundPage() {
   const [modalRanking, setModalRanking] = useState(false);
   const [rankingData, setRankingData] = useState<RankingItem[]>([]);
   const [semanaRanking, setSemanaRanking] = useState(0); 
+  const [gameStats, setGameStats] = useState<SharkroundStats>({
+    clinicas: 0,
+    acertos: 0,
+    erros: 0,
+  });
   
   const [isDebugMode, setIsDebugMode] = useState(false);
 
-  // --- 1. INICIALIZAÇÃO ---
+  // --- 1. INICIALIZAÃ‡ÃƒO ---
   useEffect(() => {
     const initGame = async () => {
-        // Carregar Ligas da coleção CORRETA (ligas_config)
+        // Carregar Ligas da coleÃ§Ã£o CORRETA (ligas_config)
         const ligasLoaded: LigaConfig[] = []; 
         const ligasMap: Record<string, LigaConfig> = {};
 
@@ -111,7 +124,7 @@ export default function SharkRoundPage() {
         setLigasAtivasMap(ligasMap); 
 
         // Fallback tipado
-        const ligasPool = ligasLoaded.length > 0 ? ligasLoaded : [{id: 'demo', nome: "Liga Genérica", sigla: "LIGA", logoBase64: undefined, perguntas: [], ativa: true} as LigaConfig];
+        const ligasPool = ligasLoaded.length > 0 ? ligasLoaded : [{id: 'demo', nome: "Liga GenÃ©rica", sigla: "LIGA", logoBase64: undefined, perguntas: [], ativa: true} as LigaConfig];
         
         // Monta Tabuleiro
         const novoTab: CasaTabuleiro[] = [];
@@ -120,16 +133,16 @@ export default function SharkRoundPage() {
 
         for (let i = 0; i < boardSizeTotal; i++) {
             let tipo: TipoCasa = 'LIGA';
-            let titulo = "", sigla = "", cor = 'bg-zinc-800', desc = "Domine esta área!", bg = undefined;
+            let titulo = "", sigla = "", cor = 'bg-zinc-800', desc = "Domine esta Ã¡rea!", bg = undefined;
             let currentLigaId: string | undefined = undefined;
 
-            if (i === 0) { tipo = 'INICIO'; titulo = "Partida"; sigla="START"; cor = 'bg-emerald-600'; desc="Início"; }
-            else if (i === 10) { tipo = 'PRISAO'; titulo = "DP Anatomia"; sigla="DP"; cor = 'bg-zinc-900'; desc="Reprovou? Peça ajuda!"; }
+            if (i === 0) { tipo = 'INICIO'; titulo = "Partida"; sigla="START"; cor = 'bg-emerald-600'; desc="InÃ­cio"; }
+            else if (i === 10) { tipo = 'PRISAO'; titulo = "DP Anatomia"; sigla="DP"; cor = 'bg-zinc-900'; desc="Reprovou? PeÃ§a ajuda!"; }
             else if (i === 20) { tipo = 'SORTE'; titulo = "Intermed"; sigla="FESTA"; cor = 'bg-yellow-600'; desc="Sorte ou Azar?"; }
-            else if (i === 30) { tipo = 'AZAR'; titulo = "Sem Café"; sigla="ZOMBIE"; cor = 'bg-red-700'; desc="Volte 3 casas"; }
+            else if (i === 30) { tipo = 'AZAR'; titulo = "Sem CafÃ©"; sigla="ZOMBIE"; cor = 'bg-red-700'; desc="Volte 3 casas"; }
             else if ([5, 15, 25, 35].includes(i)) {
                 tipo = Math.random() > 0.5 ? 'SORTE' : 'AZAR';
-                titulo = tipo === 'SORTE' ? "Carimbo!" : "Plantão";
+                titulo = tipo === 'SORTE' ? "Carimbo!" : "PlantÃ£o";
                 sigla = tipo === 'SORTE' ? "SORT" : "AZAR";
                 cor = tipo === 'SORTE' ? 'bg-cyan-600' : 'bg-orange-700';
             } else {
@@ -174,6 +187,38 @@ export default function SharkRoundPage() {
     }
   }, [user, loading, boardSizeTotal]);
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(
+        `${SHARKROUND_STATS_STORAGE_KEY}:${user.uid}`
+      );
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<SharkroundStats>;
+      setGameStats({
+        clinicas:
+          typeof parsed.clinicas === "number" ? Math.max(0, parsed.clinicas) : 0,
+        acertos:
+          typeof parsed.acertos === "number" ? Math.max(0, parsed.acertos) : 0,
+        erros: typeof parsed.erros === "number" ? Math.max(0, parsed.erros) : 0,
+      });
+    } catch {
+      setGameStats({ clinicas: 0, acertos: 0, erros: 0 });
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (typeof window === "undefined") return;
+
+    window.localStorage.setItem(
+      `${SHARKROUND_STATS_STORAGE_KEY}:${user.uid}`,
+      JSON.stringify(gameStats)
+    );
+  }, [gameStats, user?.uid]);
+
   const fetchRanking = async () => {
       try {
           const ranking = await fetchSharkroundTubasRanking({
@@ -189,16 +234,16 @@ export default function SharkRoundPage() {
       } catch (error: unknown) { console.error(error); }
   };
 
-  // --- MECÂNICA ---
+  // --- MECÃ‚NICA ---
   const jogarDado = async () => {
-    if (jogador.jogadasRestantes <= 0) return addToast("Sem fichas! Volte amanhã! 🌙", "error");
+    if (jogador.jogadasRestantes <= 0) return addToast("Sem jogadas de dado hoje. Volte amanha.", "error");
     
     if (jogador.preso) {
         if (jogador.coracoes >= 5) {
             setJogador(p => ({...p, preso: false, coracoes: 0}));
-            addToast("Você conseguiu 5 corações! Está livre!", "success");
+            addToast("VocÃª conseguiu 5 coraÃ§Ãµes! EstÃ¡ livre!", "success");
         } else {
-            return setModalEvento({ titulo: "Preso na DP", msg: `Você tem ${jogador.coracoes}/5 ❤️. Pague 50 Tubas ou espere ajuda.`, tipo: 'error', isJail: true });
+            return setModalEvento({ titulo: "Preso na DP", msg: `Voce tem ${jogador.coracoes}/5 coracoes. Pague 50 moedas ou espere ajuda.`, tipo: 'error', isJail: true });
         }
         return;
     }
@@ -242,7 +287,7 @@ export default function SharkRoundPage() {
         const bonusQuestoes = jogador.questoesAcertadasCiclo * 10;
         const total = 50 + bonusPredios + bonusQuestoes;
 
-        addToast(`Volta Completa! +${total} Tubas 🤑`, "success"); 
+        addToast(`Volta completa! +${total} moedas`, "success"); 
         setJogador(p => ({...p, tubas: p.tubas + total, questoesAcertadasCiclo: 0})); 
         
         // --- LOG CORRIGIDO (5 Argumentos) ---
@@ -251,7 +296,7 @@ export default function SharkRoundPage() {
             user?.nome || 'Visitante',
             'GAME_CYCLE', 
             'SharkRound', 
-            `Ganhou ${total} tubas no ciclo.`
+            `Ganhou ${total} moedas no ciclo.`
         );
     }
 
@@ -262,17 +307,17 @@ export default function SharkRoundPage() {
   const analisarCasa = (index: number) => {
     const casa = tabuleiro[index];
 
-    // Cobrança de Aluguel
+    // CobranÃ§a de Aluguel
     if (casa.donoId && casa.donoId !== jogador.id) { 
         const aluguel = 5; 
         const quemRecebe = casa.socios?.[0]?.nome || "Dono"; 
-        addToast(`Pagou ${aluguel} Tubas para ${quemRecebe}!`, "info"); 
+        addToast(`Pagou ${aluguel} moedas para ${quemRecebe}.`, "info"); 
         setJogador(p => ({...p, tubas: Math.max(0, p.tubas - aluguel)})); 
     }
 
     if (casa.tipo === 'PRISAO') { 
         setJogador(p => ({ ...p, preso: true, coracoes: 0 })); 
-        addToast("Vish! Caiu na DP! 🚨", "error"); 
+        addToast("Vish! Caiu na DP! ðŸš¨", "error"); 
     } 
     else if (casa.tipo === 'SORTE') { 
         const bonus = Math.floor(Math.random() * 3) + 1; 
@@ -280,7 +325,7 @@ export default function SharkRoundPage() {
     } 
     else if (casa.tipo === 'AZAR') { 
         const penalty = Math.floor(Math.random() * 3) + 1; 
-        setModalEvento({ titulo: "Sem Café!", msg: `Volte ${penalty} casas.`, tipo: 'error', move: -penalty }); 
+        setModalEvento({ titulo: "Sem CafÃ©!", msg: `Volte ${penalty} casas.`, tipo: 'error', move: -penalty }); 
     }
     else if (casa.tipo === 'LIGA') { 
         if (casa.ligaId && ligasAtivasMap[casa.ligaId]) {
@@ -290,14 +335,14 @@ export default function SharkRoundPage() {
                 setModalPergunta({ pergunta: randomQ, ligaNome: liga.nome });
             } else {
                  setModalPergunta({ 
-                   pergunta: { id: 'fallback', texto: `Pergunta genérica sobre ${liga.nome}...`, alternativas: ['A','B','C','D'], respostaCorreta: 0 },
+                   pergunta: { id: 'fallback', texto: `Pergunta genÃ©rica sobre ${liga.nome}...`, alternativas: ['A','B','C','D'], respostaCorreta: 0 },
                    ligaNome: liga.nome 
                  });
             }
         } else {
              setModalPergunta({ 
-                pergunta: { id: 'fallback', texto: "Pergunta Bônus: Qual a cor do céu?", alternativas: ['Azul','Verde','Roxo','Preto'], respostaCorreta: 0 },
-                ligaNome: "Bônus"
+                pergunta: { id: 'fallback', texto: "Pergunta BÃ´nus: Qual a cor do cÃ©u?", alternativas: ['Azul','Verde','Roxo','Preto'], respostaCorreta: 0 },
+                ligaNome: "BÃ´nus"
              });
         }
     }
@@ -307,7 +352,8 @@ export default function SharkRoundPage() {
     if (!modalPergunta) return;
     
     if (idx === modalPergunta.pergunta.respostaCorreta) {
-      addToast("Resposta Certa! 🦈✅", "success");
+      addToast("Resposta certa!", "success");
+      setGameStats((prev) => ({ ...prev, acertos: prev.acertos + 1 }));
       const novoTab = [...tabuleiro];
       const casa = novoTab[jogador.posicao];
       
@@ -317,13 +363,17 @@ export default function SharkRoundPage() {
           casa.socios = [{ uid: jogador.id, nome: jogador.nome, nivel: 'TERRENO' }];
           addToast(`Conquistou o Terreno!`, "success"); 
       } else if (casa.donoId === jogador.id) { 
-          if (casa.nivel === 'TERRENO') casa.nivel = 'CLINICA_GERAL';
+          if (casa.nivel === 'TERRENO') {
+            casa.nivel = 'CLINICA_GERAL';
+            setGameStats((prev) => ({ ...prev, clinicas: prev.clinicas + 1 }));
+          }
           else if (casa.nivel === 'CLINICA_GERAL') casa.nivel = 'HOSPITAL_UNIVERSITARIO';
-          addToast("Evoluiu construção!", "success");
+          addToast("Evoluiu construÃ§Ã£o!", "success");
       }
       setTabuleiro(novoTab);
       setJogador(p => ({...p, questoesAcertadasCiclo: p.questoesAcertadasCiclo + 1}));
     } else { 
+        setGameStats((prev) => ({ ...prev, erros: prev.erros + 1 }));
         addToast("Errou! Perdeu a vez e 1 rodada.", "error"); 
         setJogador(p => ({...p, rodadasPreso: 1})); 
     }
@@ -333,7 +383,7 @@ export default function SharkRoundPage() {
   const darCoracao = (targetId: string) => {
       setOutrosJogadores(prev => prev.map(p => {
           if (p.id === targetId && p.coracoes < 5) {
-              addToast(`Você ajudou ${p.nome}! +5 Tubas`, "success");
+              addToast(`Voce ajudou ${p.nome}! +5 moedas`, "success");
               setJogador(j => ({...j, tubas: j.tubas + 5})); 
               return { ...p, coracoes: p.coracoes + 1 };
           }
@@ -355,24 +405,38 @@ export default function SharkRoundPage() {
       
       {/* HEADER */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 p-4 flex justify-between items-center shadow-lg">
-         <div className="flex items-center gap-3"><Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition"><ArrowLeft size={24}/></Link><div><h1 className="font-black text-lg italic uppercase text-white">SharkRound</h1><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">O Jogo da Atlética</p></div></div>
-         <div className="flex gap-3">
-             <button onClick={() => setModalRanking(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-yellow-500 hover:bg-zinc-700 transition"><Trophy size={18}/></button>
-             <button onClick={() => setModalRegras(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-blue-400 hover:bg-zinc-700 transition"><HelpCircle size={18}/></button>
-             <div className="flex flex-col items-end"><span className="text-zinc-500 text-[9px] font-bold uppercase">Tubas</span><span className="text-blue-400 flex items-center gap-1 font-black"><DollarSign size={12}/> {jogador.tubas}</span></div>
+         <div className="flex items-center gap-3"><Link href="/dashboard" className="p-2 -ml-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition"><ArrowLeft size={24}/></Link><div><h1 className="font-black text-lg italic uppercase text-white">SharkRound</h1><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">O Jogo da AtlÃ©tica</p></div></div>
+         <div className="flex gap-3 items-center">
+              <Link href="/sharkround/ranking" className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-emerald-400 hover:bg-zinc-700 transition">
+                <Trophy size={18}/>
+              </Link>
+              <Link href="/sharkround/estatisticas" className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-cyan-400 hover:bg-zinc-700 transition">
+                <BarChart3 size={18}/>
+              </Link>
+              <button onClick={() => setModalRanking(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-yellow-500 hover:bg-zinc-700 transition"><Trophy size={18}/></button>
+              <button onClick={() => setModalRegras(true)} className="p-2 bg-zinc-800 rounded-full border border-zinc-700 text-blue-400 hover:bg-zinc-700 transition"><HelpCircle size={18}/></button>
+             <div className="flex flex-col items-end">
+                <span className="text-zinc-500 text-[9px] font-bold uppercase">Moedas</span>
+                <span className="text-blue-400 flex items-center gap-1 font-black"><DollarSign size={12}/> {jogador.tubas}</span>
+                <span className="text-[9px] font-bold text-zinc-500 uppercase">Dado: {jogador.jogadasRestantes}/5</span>
+             </div>
          </div>
       </header>
 
       {/* DADO */}
-      <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50">
+      <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
           <button onClick={jogarDado} disabled={dadoRolando || jogador.jogadasRestantes === 0} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black shadow-[0_0_30px_rgba(16,185,129,0.3)] border-b-8 transition-all active:scale-95 active:border-b-0 active:translate-y-2 ${dadoRolando ? 'bg-zinc-800 border-zinc-600 text-zinc-500' : 'bg-white border-zinc-300 text-black'}`}>
               {dadoRolando ? <Dice5 size={32} className="animate-spin"/> : valorDado}
           </button>
+          <div className="bg-black/70 border border-zinc-700 rounded-xl px-3 py-1 text-center">
+            <p className="text-[10px] uppercase font-black tracking-widest text-zinc-300">Dado</p>
+            <p className="text-[10px] text-zinc-500 font-bold">5 jogadas por dia - faltam {jogador.jogadasRestantes}</p>
+          </div>
       </div>
 
       {/* DEBUG */}
       <div className="fixed top-24 right-4 z-50"><button onClick={() => setIsDebugMode(!isDebugMode)} className="text-[9px] text-zinc-600 uppercase font-bold hover:text-white"><Wrench size={14}/></button></div>
-      {isDebugMode && <div className="fixed top-32 right-4 z-50 bg-zinc-900 p-2 rounded border border-zinc-800"><button onClick={() => setJogador(p=>({...p, tubas: p.tubas+100}))} className="text-xs">+100 Tubas</button></div>}
+      {isDebugMode && <div className="fixed top-32 right-4 z-50 bg-zinc-900 p-2 rounded border border-zinc-800"><button onClick={() => setJogador(p=>({...p, tubas: p.tubas+100}))} className="text-xs">+100 moedas</button></div>}
 
       {/* TABULEIRO */}
       <div className="pt-40 pb-32 px-2 flex justify-center items-center min-h-screen">
@@ -397,7 +461,7 @@ export default function SharkRoundPage() {
                           <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-0.5">
                               <div className="text-white drop-shadow-md transform scale-75 md:scale-100">{casa.tipo === 'PRISAO' ? <Lock size={14}/> : casa.tipo === 'SORTE' ? <TrendingUp size={14}/> : casa.tipo === 'AZAR' ? <AlertTriangle size={14}/> : casa.tipo === 'INICIO' ? <MapPin size={14}/> : null}</div>
                               {casa.tipo === 'LIGA' && <span className="text-[7px] font-black text-white/90 drop-shadow-md leading-tight">{casa.sigla}</span>}
-                              {casa.nivel && <div className="absolute top-0.5 right-0.5 text-yellow-300 drop-shadow-md bg-black/50 rounded-full p-0.5">{casa.nivel === 'TERRENO' && <span className="text-[6px]">🚩</span>}{casa.nivel !== 'TERRENO' && <Building2 size={8}/>}</div>}
+                              {casa.nivel && <div className="absolute top-0.5 right-0.5 text-yellow-300 drop-shadow-md bg-black/50 rounded-full p-0.5">{casa.nivel === 'TERRENO' && <span className="text-[6px]">ðŸš©</span>}{casa.nivel !== 'TERRENO' && <Building2 size={8}/>}</div>}
                           </div>
 
                           {isHere && <div className="absolute inset-0 flex items-center justify-center z-30"><div className="w-6 h-6 rounded-full border-[2px] border-white shadow-xl overflow-hidden bg-black relative animate-bounce-slow"><Image src={jogador.avatar} alt="Me" fill className="object-cover" unoptimized/></div></div>}
@@ -423,7 +487,7 @@ export default function SharkRoundPage() {
                   <button onClick={() => setModalDetalhes(null)} className="absolute top-3 right-3 text-zinc-500 hover:text-white"><XCircle size={20}/></button>
                   <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${modalDetalhes.cor} shadow-lg`}>{modalDetalhes.tipo === 'PRISAO' ? <Lock size={32} className="text-white"/> : <MapPin size={32} className="text-white"/>}</div>
                   <h3 className="text-xl font-black text-white uppercase">{modalDetalhes.titulo}</h3>
-                  <p className="text-zinc-400 text-sm mt-2">{modalDetalhes.descricao || "Território da Liga"}</p>
+                  <p className="text-zinc-400 text-sm mt-2">{modalDetalhes.descricao || "TerritÃ³rio da Liga"}</p>
                   
                   {modalDetalhes.socios && modalDetalhes.socios.length > 0 && (
                       <div className="mt-4 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-left">
@@ -448,14 +512,14 @@ export default function SharkRoundPage() {
                                   </div>
                               </div>
                           ))}
-                          <p className="text-[9px] text-zinc-500 italic mt-2">* Clique no botão verde para dar 1 coração e ganhar 5 Tubas!</p>
+                          <p className="text-[9px] text-zinc-500 italic mt-2">* Clique no botao verde para dar 1 coracao e ganhar 5 moedas.</p>
                       </div>
                   )}
               </div>
           </div>
       )}
 
-      {/* EVENTO / PRISÃO */}
+      {/* EVENTO / PRISÃƒO */}
       {modalEvento && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in">
             <div className="bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl">
@@ -464,11 +528,11 @@ export default function SharkRoundPage() {
                 {modalEvento.isJail ? (
                     <div className="flex flex-col gap-3">
                         <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                            <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Seus Corações ({jogador.coracoes}/5)</p>
+                            <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Seus CoraÃ§Ãµes ({jogador.coracoes}/5)</p>
                             <div className="flex justify-center gap-2 mb-3">{[1,2,3,4,5].map(i => (<Heart key={i} size={20} className={`${i <= jogador.coracoes ? 'fill-red-500 text-red-500' : 'text-zinc-700'}`}/>))}</div>
                             <p className="text-xs text-zinc-600">Espere ajuda dos amigos...</p>
                         </div>
-                        <button onClick={() => { if(jogador.tubas>=50){setJogador(p=>({...p, tubas:p.tubas-50, preso:false, coracoes:0})); setModalEvento(null);} else {addToast("Sem grana!", "error")} }} className="w-full bg-zinc-800 text-zinc-400 hover:text-white py-3 rounded-xl font-bold uppercase text-xs border border-zinc-700">Pagar Fiança (50 Tubas)</button>
+                        <button onClick={() => { if(jogador.tubas>=50){setJogador(p=>({...p, tubas:p.tubas-50, preso:false, coracoes:0})); setModalEvento(null);} else {addToast("Sem moedas!", "error")} }} className="w-full bg-zinc-800 text-zinc-400 hover:text-white py-3 rounded-xl font-bold uppercase text-xs border border-zinc-700">Pagar fianca (50 moedas)</button>
                     </div>
                 ) : (
                     <button onClick={() => modalEvento.move ? moverJogador(modalEvento.move) : setModalEvento(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl uppercase text-xs shadow-lg">Continuar</button>
@@ -533,11 +597,14 @@ export default function SharkRoundPage() {
                 <button onClick={() => setModalRegras(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><XCircle/></button>
                 <h3 className="text-xl font-black text-white mb-6 flex items-center gap-2"><HelpCircle className="text-emerald-500"/> Regras do Jogo</h3>
                 <ul className="space-y-4 text-sm text-zinc-400 text-left">
-                    <li><strong className="text-emerald-500">Objetivo:</strong> Dominar as Ligas e juntar Tubas.</li>
-                    <li><strong className="text-emerald-500">Evolução:</strong> Terreno &rarr; Clínica &rarr; Hospital &rarr; Ministério.</li>
-                    <li><strong className="text-emerald-500">Ciclo:</strong> +50 Tubas + Bônus por prédios construídos.</li>
-                    <li><strong className="text-red-500">Prisão:</strong> Saia com 50 Tubas ou 5 Corações.</li>
-                    <li><strong>Aluguel:</strong> O pagamento segue a fila de quem construiu primeiro.</li>
+                    <li><strong className="text-emerald-500">Objetivo:</strong> Dominar as Ligas e juntar moedas.</li>
+                    <li><strong className="text-emerald-500">Evolucao:</strong> Terreno &rarr; Clinica &rarr; Hospital &rarr; Ministerio.</li>
+                    <li><strong className="text-emerald-500">Ciclo:</strong> +50 moedas + bonus por construcoes.</li>
+                    <li><strong className="text-red-500">Prisao:</strong> Saia com 50 moedas ou 5 coracoes.</li>
+                    <li><strong className="text-emerald-500">Dado:</strong> cada atleta tem 5 jogadas por dia.</li>
+                    <li><strong className="text-emerald-500">Perguntas:</strong> acertou conquista/evolui casa; errou perde 1 rodada.</li>
+                    <li><strong className="text-emerald-500">DP Anatomia:</strong> valor para se salvar: 50 moedas.</li>
+                    <li><strong>Aluguel:</strong> o pagamento segue a fila de quem construiu primeiro.</li>
                 </ul>
                 <button onClick={() => setModalRegras(false)} className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl uppercase text-xs">Entendi</button>
             </div>
@@ -546,3 +613,5 @@ export default function SharkRoundPage() {
     </div>
   );
 }
+
+

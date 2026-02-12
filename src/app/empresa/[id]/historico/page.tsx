@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, QrCode, Ticket } from "lucide-react";
 
 import {
+  fetchAdminPartnerScansPage,
   fetchPartnerById,
-  fetchPartnerScans,
 } from "../../../../lib/partnersService";
 
 interface PartnerData {
@@ -31,62 +31,79 @@ export default function EmpresaHistoricoPage() {
   const params = useParams();
   const empresaId = String(params.id || "").trim();
 
-  const [loading, setLoading] = useState(true);
+  const [loadingHeader, setLoadingHeader] = useState(true);
+  const [loadingPage, setLoadingPage] = useState(false);
   const [partner, setPartner] = useState<PartnerData | null>(null);
-  const [rows, setRows] = useState<ScanRow[]>([]);
+  const [pages, setPages] = useState<Record<number, ScanRow[]>>({});
+  const [nextCursorByPage, setNextCursorByPage] = useState<Record<number, string | null>>({ 0: null });
+  const [hasMoreByPage, setHasMoreByPage] = useState<Record<number, boolean>>({});
   const [page, setPage] = useState(1);
+
+  const loadPage = useCallback(async (targetPage: number) => {
+    if (!empresaId || targetPage < 1) return;
+    if (pages[targetPage]) return;
+
+    const cursorId = nextCursorByPage[targetPage - 1];
+    if (targetPage > 1 && !cursorId) return;
+
+    setLoadingPage(true);
+    try {
+      const result = await fetchAdminPartnerScansPage({
+        partnerId: empresaId,
+        pageSize: PAGE_SIZE,
+        cursorId: cursorId || null,
+        forceRefresh: targetPage === 1,
+      });
+
+      setPages((prev) => ({ ...prev, [targetPage]: result.scans as ScanRow[] }));
+      setNextCursorByPage((prev) => ({ ...prev, [targetPage]: result.nextCursor }));
+      setHasMoreByPage((prev) => ({ ...prev, [targetPage]: result.hasMore }));
+    } finally {
+      setLoadingPage(false);
+    }
+  }, [empresaId, nextCursorByPage, pages]);
 
   useEffect(() => {
     let mounted = true;
 
-    const loadData = async () => {
+    const loadPartner = async () => {
       if (!empresaId) {
-        if (mounted) setLoading(false);
+        if (mounted) setLoadingHeader(false);
         return;
       }
 
       try {
-        const [partnerData, scans] = await Promise.all([
-          fetchPartnerById(empresaId, { forceRefresh: false }),
-          fetchPartnerScans({
-            partnerId: empresaId,
-            maxResults: 200,
-            forceRefresh: false,
-          }),
-        ]);
-
+        const partnerData = await fetchPartnerById(empresaId, { forceRefresh: false });
         if (!mounted) return;
-
-        setPartner(
-          partnerData
-            ? { id: partnerData.id, nome: partnerData.nome }
-            : null
-        );
-        setRows(scans as ScanRow[]);
+        setPartner(partnerData ? { id: partnerData.id, nome: partnerData.nome } : null);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setLoadingHeader(false);
       }
     };
 
-    void loadData();
-
+    void loadPartner();
     return () => {
       mounted = false;
     };
   }, [empresaId]);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pagedRows = useMemo(() => {
-    const start = (safePage - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [rows, safePage]);
+  useEffect(() => {
+    if (!empresaId) return;
+    void loadPage(page);
+  }, [empresaId, page, loadPage]);
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+    if (!empresaId) return;
+    setPages({});
+    setNextCursorByPage({ 0: null });
+    setHasMoreByPage({});
+    setPage(1);
+  }, [empresaId]);
+
+  const rows = useMemo(() => pages[page] || [], [pages, page]);
+  const hasNext = Boolean(hasMoreByPage[page]);
+  const hasPrev = page > 1;
+  const isLoading = loadingHeader || (loadingPage && rows.length === 0);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
@@ -115,7 +132,7 @@ export default function EmpresaHistoricoPage() {
       </header>
 
       <main className="p-6 max-w-6xl mx-auto">
-        {loading ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-16 text-zinc-400 gap-2">
             <Loader2 size={18} className="animate-spin" /> Carregando...
           </div>
@@ -131,7 +148,7 @@ export default function EmpresaHistoricoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 text-sm text-zinc-300">
-                {pagedRows.map((row) => (
+                {rows.map((row) => (
                   <tr key={row.id} className="hover:bg-zinc-800/30 transition">
                     <td className="p-4">
                       <div>{row.data}</div>
@@ -149,7 +166,7 @@ export default function EmpresaHistoricoPage() {
                     </td>
                   </tr>
                 ))}
-                {pagedRows.length === 0 && (
+                {rows.length === 0 && (
                   <tr>
                     <td colSpan={4} className="p-10 text-center text-zinc-500 text-xs">
                       <div className="flex items-center justify-center gap-2">
@@ -165,8 +182,8 @@ export default function EmpresaHistoricoPage() {
 
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            disabled={safePage <= 1}
+            onClick={() => setPage((prev) => (prev > 1 ? prev - 1 : prev))}
+            disabled={!hasPrev}
             className="px-3 py-2 rounded-lg text-xs font-bold uppercase border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800"
           >
             <span className="flex items-center gap-1">
@@ -174,11 +191,14 @@ export default function EmpresaHistoricoPage() {
             </span>
           </button>
           <span className="text-xs font-bold text-zinc-400 px-2">
-            Pagina {safePage} de {totalPages}
+            Pagina {page}
           </span>
           <button
-            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-            disabled={safePage >= totalPages}
+            onClick={() => {
+              if (!hasNext) return;
+              setPage((prev) => prev + 1);
+            }}
+            disabled={!hasNext}
             className="px-3 py-2 rounded-lg text-xs font-bold uppercase border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800"
           >
             <span className="flex items-center gap-1">

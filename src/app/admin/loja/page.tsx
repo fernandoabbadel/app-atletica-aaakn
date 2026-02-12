@@ -1,555 +1,70 @@
 ﻿"use client";
 
-import React, { useCallback, useState, useMemo, useRef, useEffect } from "react";
-import {
-  ArrowLeft, Plus, Trash2, Edit, Tag, ShoppingBag,
-  Package, UploadCloud, X, PieChart,
-  MessageSquare, Star, CheckCircle, ExternalLink, XCircle
-} from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
-import { useToast } from "../../../context/ToastContext";
-import { useAuth } from "../../../context/AuthContext";
-import { MAX_UPLOAD_IMAGE_MB, uploadImage } from "../../../lib/upload";
-import {
-  approveStoreOrder,
-  createStoreCategory,
-  deleteStoreProduct,
-  fetchAdminStoreBundle,
-  setStoreOrderStatus,
-  setStoreReviewStatus,
-  upsertStoreProduct,
-} from "../../../lib/storeService";
-import {
-  Timestamp,
-} from "firebase/firestore";
+import { ArrowLeft, MessageSquare, Package, ShoppingBag } from "lucide-react";
 
-// --- TIPAGEM ---
-interface Variante {
-  id: string; tamanho: string; cor: string; estoque: number;
-}
+const menuItems = [
+  {
+    href: "/admin/loja/produtos",
+    title: "Produtos",
+    description: "Catalogo admin com leitura dedicada",
+    icon: Package,
+    color: "text-blue-400 border-blue-500/30 bg-blue-500/10",
+  },
+  {
+    href: "/admin/loja/pedidos-pendentes",
+    title: "Pedidos Pendentes",
+    description: "Aprovacao separada para evitar bundle pesado",
+    icon: ShoppingBag,
+    color: "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
+  },
+  {
+    href: "/admin/loja/review",
+    title: "Reviews",
+    description: "Fila de avaliacoes moderada por pagina",
+    icon: MessageSquare,
+    color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+  },
+] as const;
 
-interface ProdutoAdmin {
-  id: string; nome: string; preco: number; precoAntigo?: number;
-  categoria: string; img: string; vendidos: number; cliques: number;
-  variantes: Variante[]; lote: string; descricao: string;
-  caracteristicas: string[]; estoque?: number;
-  tagLabel?: string; tagColor?: string; tagEffect?: "pulse" | "shine" | "none";
-}
-
-interface Pedido {
-    id: string;
-    userId: string; userName: string; productId: string; productName: string;
-    price: number; status: 'pendente' | 'approved' | 'rejected';
-    createdAt?: Timestamp | null; approvedBy?: string;
-}
-
-interface Review {
-    id: string; productId: string; userId: string; userName: string;
-    rating: number; comment: string; approved: boolean; createdAt?: Timestamp | null;
-    status: 'pending' | 'approved' | 'rejected';
-}
-
-// Interface para Categorias do Firestore
-interface CategoriaData {
-    id: string;
-    nome: string;
-}
-
-const DEFAULT_CATEGORIES = ["Vestuário", "Acessórios", "Kits", "Ingressos"];
-const MAX_PRODUCT_IMAGE_BYTES = MAX_UPLOAD_IMAGE_MB * 1024 * 1024;
-const MAX_PRODUCT_NAME_CHARS = 90;
-const MAX_PRODUCT_DESC_CHARS = 1500;
-const MAX_PRODUCT_FEATURES_CHARS = 600;
-const MAX_PRODUCT_TAG_CHARS = 24;
-
-export default function AdminLojaPage() {
-  const { addToast } = useToast();
-  const { user } = useAuth(); // Admin Logado
-
-  // Estados
-  const [produtos, setProdutos] = useState<ProdutoAdmin[]>([]);
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [categorias, setCategorias] = useState<CategoriaData[]>([]);
-  
-  const [activeTab, setActiveTab] = useState<"dashboard" | "produtos" | "pedidos" | "reviews">("dashboard");
-  const [showModalProduto, setShowModalProduto] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Form Produto
-  const [formData, setFormData] = useState<Partial<ProdutoAdmin>>({});
-  const [featuresInput, setFeaturesInput] = useState("");
-  const [variantesTemp, setVariantesTemp] = useState<Variante[]>([]);
-  const [novaVariante, setNovaVariante] = useState({ tamanho: "", cor: "", estoque: 0 });
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Categorias
-  const [showModalCategoria, setShowModalCategoria] = useState(false);
-  const [categoriaNome, setCategoriaNome] = useState("");
-  const [savingCategoria, setSavingCategoria] = useState(false);
-  const tabs = [
-    { id: 'dashboard', label: 'Visão Geral', icon: PieChart },
-    { id: 'produtos', label: 'Produtos', icon: Package },
-    { id: 'pedidos', label: 'Pedidos Pendentes', icon: ShoppingBag },
-    { id: 'reviews', label: 'Avaliações', icon: MessageSquare },
-  ] as const;
-
-    const loadStoreData = useCallback(async (forceRefresh = true) => {
-      try {
-          const bundle = await fetchAdminStoreBundle({
-              productsLimit: 500,
-              categoriesLimit: 300,
-              ordersLimit: 1200,
-              reviewsLimit: 900,
-              forceRefresh,
-          });
-
-          setProdutos(bundle.produtos as unknown as ProdutoAdmin[]);
-          setCategorias(bundle.categorias as unknown as CategoriaData[]);
-
-          const ordersList = (bundle.pedidos as unknown as Pedido[]).sort(
-              (left, right) =>
-                  ((right.createdAt as Timestamp | undefined)?.seconds || 0) -
-                  ((left.createdAt as Timestamp | undefined)?.seconds || 0)
-          );
-          setPedidos(ordersList);
-
-          const reviewsList = (bundle.reviews as unknown as Review[]).sort(
-              (left, right) =>
-                  ((right.createdAt as Timestamp | undefined)?.seconds || 0) -
-                  ((left.createdAt as Timestamp | undefined)?.seconds || 0)
-          );
-          setReviews(reviewsList);
-      } catch (error: unknown) {
-          console.error(error);
-          addToast("Erro ao carregar loja admin.", "error");
-      }
-  }, [addToast]);
-
-  useEffect(() => {
-      void loadStoreData(true);
-  }, [loadStoreData]);
-
-  // --- ACTIONS ---
-
-    const handleAprovarPedido = async (pedido: Pedido) => {
-      if(!confirm(`Confirmar pagamento de ${pedido.userName}?`)) return;
-      
-      try {
-          await approveStoreOrder({
-              orderId: pedido.id,
-              userId: pedido.userId,
-              userName: pedido.userName,
-              productName: pedido.productName,
-              price: pedido.price || 0,
-              approvedBy: user?.uid || "admin",
-          });
-
-          addToast("Pedido aprovado e pontos creditados!", "success");
-          await loadStoreData(true);
-      } catch (error: unknown) {
-          console.error(error);
-          addToast("Erro ao aprovar pedido.", "error");
-      }
-  };
-
-    const handleReviewAction = async (reviewId: string, action: 'approved' | 'rejected') => {
-      try {
-          await setStoreReviewStatus({
-              reviewId,
-              status: action,
-          });
-          addToast(`Review ${action === 'approved' ? 'aprovada' : 'rejeitada'}.`, "info");
-          await loadStoreData(true);
-      } catch (error: unknown) {
-          console.error(error);
-          addToast("Erro.", "error");
-      }
-  };
-
-  // --- HELPER FUNCS ---
-  const allCategories = useMemo(() => {
-    const map = new Map<string, string>();
-    DEFAULT_CATEGORIES.forEach((c) => map.set(c.toLowerCase(), c));
-    categorias.forEach((c) => map.set(c.nome.toLowerCase(), c.nome));
-    return Array.from(map.values());
-  }, [categorias]);
-
-  // Handlers de Produto
-    const handleSaveProduto = async () => {
-      if (saving) return;
-
-      const nome = String(formData.nome || "").trim().slice(0, MAX_PRODUCT_NAME_CHARS);
-      const categoria = String(formData.categoria || "").trim();
-      const descricao = String(formData.descricao || "").trim().slice(0, MAX_PRODUCT_DESC_CHARS);
-      const img = String(formData.img || "").trim();
-      const preco = Number(formData.preco || 0);
-      const precoAntigoRaw = Number(formData.precoAntigo || 0);
-      const lote = String(formData.lote || "").trim().slice(0, 60);
-      const tagLabel = String(formData.tagLabel || "").trim().slice(0, MAX_PRODUCT_TAG_CHARS);
-      const tagColor = String(formData.tagColor || "").trim();
-      const tagEffect = (formData.tagEffect || "none") as "pulse" | "shine" | "none";
-
-      if (!nome || !categoria || !descricao || !img || !Number.isFinite(preco) || preco <= 0) {
-          addToast("Preencha nome, categoria, descricao, imagem e preco valido.", "error");
-          return;
-      }
-
-      const caracteristicas = featuresInput
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-          .slice(0, 20);
-
-      const variantes = variantesTemp.map((item) => ({
-          ...item,
-          tamanho: String(item.tamanho || "").trim().slice(0, 20),
-          cor: String(item.cor || "").trim().slice(0, 30),
-          estoque: Math.max(0, Number(item.estoque || 0)),
-      }));
-
-      setSaving(true);
-      try {
-          const payload = { 
-              ...formData,
-              nome,
-              categoria,
-              descricao,
-              img,
-              preco,
-              ...(precoAntigoRaw > preco ? { precoAntigo: precoAntigoRaw } : {}),
-              ...(lote ? { lote } : {}),
-              ...(tagLabel ? { tagLabel } : {}),
-              ...(tagColor ? { tagColor } : {}),
-              ...(tagEffect ? { tagEffect } : {}),
-              variantes,
-              caracteristicas,
-              estoque: variantes.reduce((acc, item) => acc + Number(item.estoque), 0),
-              updatedAt: new Date().toISOString() 
-          };
-          await upsertStoreProduct({
-              productId: isEditing ? formData.id : undefined,
-              data: payload,
-          });
-          setShowModalProduto(false);
-          addToast("Salvo com sucesso!", "success");
-          await loadStoreData(true);
-      } catch (error: unknown) {
-          console.error(error);
-          addToast("Erro ao salvar.", "error");
-      }
-      setSaving(false);
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if(file) {
-          if (!file.type.startsWith("image/")) {
-              addToast("Selecione um arquivo de imagem valido.", "error");
-              return;
-          }
-          if (file.size > MAX_PRODUCT_IMAGE_BYTES) {
-              addToast("Imagem muito grande. Limite: 5MB.", "error");
-              return;
-          }
-          setUploading(true);
-          const { url, error } = await uploadImage(file, "produtos");
-          if (error) {
-              addToast(error, "error");
-          }
-          if (url) {
-              setFormData((prev) => ({ ...prev, img: url }));
-          }
-          setUploading(false);
-      }
-  };
-
-  const handleAddVariante = () => {
-      if(!novaVariante.tamanho || !novaVariante.cor) return;
-      setVariantesTemp([...variantesTemp, { id: `sku-${Date.now()}`, ...novaVariante }]);
-      setNovaVariante({ tamanho: "", cor: "", estoque: 0 });
-  };
-
-  // --- GESTÃO CATEGORIAS ---
-    const handleCreateCategoria = async () => {
-      if(!categoriaNome) return;
-      setSavingCategoria(true);
-      try {
-          await createStoreCategory(categoriaNome);
-          setCategoriaNome("");
-          addToast("Categoria criada!", "success");
-          await loadStoreData(true);
-      } catch (error: unknown) {
-          console.error(error);
-          addToast("Erro.", "error");
-      }
-      finally { setSavingCategoria(false); }
-  };
-
-  const stats = useMemo(() => {
-    const totalEstoque = produtos.reduce((acc, p) => acc + (p.variantes?.reduce((a,v) => a + Number(v.estoque),0) || 0), 0);
-    const valorEstoque = produtos.reduce((acc, p) => acc + ((p.variantes?.reduce((a,v) => a + Number(v.estoque),0) || 0) * Number(p.preco)), 0);
-    const vendasTotal = produtos.reduce((acc, p) => acc + (p.vendidos || 0), 0);
-    return { totalEstoque, valorEstoque, vendasTotal };
-  }, [produtos]);
-
+export default function AdminLojaMenuPage() {
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans pb-32">
-      <header className="p-6 sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
+    <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
+      <header className="sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 px-6 py-5">
         <div className="flex items-center gap-3">
-          <Link href="/admin" className="bg-zinc-900 p-2 rounded-full hover:bg-zinc-800 transition"><ArrowLeft size={20} className="text-zinc-400" /></Link>
-          <h1 className="text-lg font-black text-white uppercase tracking-tighter">Gestão da Loja</h1>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowModalCategoria(true)} className="bg-zinc-800 border border-zinc-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-zinc-700 transition"><Tag size={16} /> Categoria</button>
-          <button onClick={() => { setFormData({ nome: "", descricao: "", categoria: allCategories[0] || DEFAULT_CATEGORIES[0], preco: 0, img: "", lote: "", tagLabel: "", tagColor: "emerald", tagEffect: "none", variantes: [] }); setFeaturesInput(""); setVariantesTemp([]); setIsEditing(false); setShowModalProduto(true); }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg shadow-emerald-900/20 active:scale-95"><Plus size={16} /> Novo Produto</button>
+          <Link
+            href="/admin"
+            className="p-2 rounded-full border border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
+          >
+            <ArrowLeft size={18} className="text-zinc-300" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tight">Admin Loja</h1>
+            <p className="text-[11px] text-zinc-500 font-bold">Menu leve com modulos separados</p>
+          </div>
         </div>
       </header>
 
-      <main className="p-6 space-y-8">
-        <div className="flex border-b border-zinc-800 gap-4 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-3 text-sm font-bold border-b-2 transition capitalize flex items-center gap-2 ${activeTab === tab.id ? "border-emerald-500 text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
-              <tab.icon size={16} /> {tab.label}
-            </button>
-          ))}
+      <main className="px-6 py-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-600 transition"
+              >
+                <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${item.color}`}>
+                  <Icon size={18} />
+                </div>
+                <h2 className="mt-4 text-sm font-black uppercase">{item.title}</h2>
+                <p className="mt-2 text-xs text-zinc-400">{item.description}</p>
+              </Link>
+            );
+          })}
         </div>
-
-        {/* DASHBOARD TAB */}
-        {activeTab === "dashboard" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in">
-                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Total Vendas</p><p className="text-3xl font-black text-emerald-400 mt-2">R$ {pedidos.filter(p=>p.status==='approved').reduce((a,b)=>a+(b.price || 0),0).toLocaleString('pt-BR')}</p></div>
-                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Pedidos Pendentes</p><p className="text-3xl font-black text-yellow-500 mt-2">{pedidos.filter(p=>p.status==='pendente').length}</p></div>
-                <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800"><p className="text-xs text-zinc-500 font-bold uppercase">Valor em Gôndola</p><p className="text-3xl font-black text-blue-400 mt-2">R$ {stats.valorEstoque.toLocaleString('pt-BR')}</p></div>
-            </div>
-        )}
-
-        {/* PRODUTOS TAB */}
-        {activeTab === "produtos" && (
-          <div className="grid grid-cols-1 gap-3 animate-in fade-in">
-            {produtos.map((prod) => (
-                <div key={prod.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-zinc-700 transition">
-                  <div className="flex items-center gap-4">
-                    <div className="relative w-16 h-16 rounded-lg bg-black overflow-hidden border border-zinc-800"><Image src={prod.img} alt={prod.nome} fill className="object-cover" unoptimized/></div>
-                    <div>
-                      <h3 className="font-bold text-white text-sm">{prod.nome}</h3>
-                      <p className="text-emerald-400 font-bold text-sm mt-1">R$ {Number(prod.preco).toFixed(2)}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Link href={`/loja/${prod.id}`} target="_blank" className="p-2.5 bg-zinc-800 rounded-lg text-blue-400 hover:bg-zinc-700"><ExternalLink size={18}/></Link>
-                    <button onClick={() => { setFormData(prod); setFeaturesInput(prod.caracteristicas?.join(", ") || ""); setVariantesTemp(prod.variantes || []); setIsEditing(true); setShowModalProduto(true); }} className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700"><Edit size={18}/></button>
-                    <button onClick={async () => { if(confirm("Deletar?")) { await deleteStoreProduct(prod.id); await loadStoreData(true); } }} className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10"><Trash2 size={18}/></button>
-                  </div>
-                </div>
-            ))}
-          </div>
-        )}
-
-        {/* PEDIDOS TAB */}
-        {activeTab === "pedidos" && (
-            <div className="space-y-4 animate-in fade-in">
-                {pedidos.filter(o => o.status === 'pendente').map(order => (
-                    <div key={order.id} className="bg-zinc-900 border border-yellow-500/30 p-4 rounded-xl flex items-center justify-between">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-yellow-500/30">Pendente</span>
-                                <span className="text-zinc-500 text-xs font-mono">{order.id.substring(0,8)}</span>
-                            </div>
-                            <h4 className="font-bold text-white">{order.productName}</h4>
-                            <p className="text-xs text-zinc-400">Comprador: <Link href={`/admin/usuarios/${order.userId}`} className="text-blue-400 hover:underline">{order.userName}</Link></p>
-                            <p className="text-sm font-black text-emerald-400 mt-1">R$ {(order.price || 0).toFixed(2)}</p>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <button onClick={() => handleAprovarPedido(order)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-emerald-500 flex items-center gap-2 shadow-lg"><CheckCircle size={14}/> Aprovar Pagamento</button>
-                            <button onClick={async () => { await setStoreOrderStatus({ orderId: order.id, status: "rejected" }); await loadStoreData(true); }} className="bg-red-900/20 text-red-500 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-red-900/40 flex items-center gap-2"><XCircle size={14}/> Rejeitar</button>
-                        </div>
-                    </div>
-                ))}
-                
-                <h3 className="text-xs font-bold text-zinc-500 uppercase mt-8 mb-2">Histórico Recente</h3>
-                <div className="space-y-2 opacity-60">
-                    {pedidos.filter(o => o.status !== 'pendente').slice(0, 5).map(order => (
-                        <div key={order.id} className="flex justify-between items-center p-3 bg-zinc-950 rounded-lg border border-zinc-900">
-                            <div>
-                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded mr-2 ${order.status === 'approved' ? 'bg-emerald-900 text-emerald-500' : 'bg-red-900 text-red-500'}`}>{order.status}</span>
-                                <span className="text-xs text-zinc-400">{order.productName}</span>
-                            </div>
-                            {order.status === 'approved' && order.approvedBy && (
-                                <Link href={`/admin/usuarios/${order.approvedBy}`} className="text-[9px] text-zinc-600 hover:text-blue-500 flex items-center gap-1">
-                                    Aprovado por: Admin <ExternalLink size={8}/>
-                                </Link>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
-
-        {/* REVIEWS TAB */}
-        {activeTab === "reviews" && (
-            <div className="space-y-4 animate-in fade-in">
-                {reviews.map(rev => (
-                    <div key={rev.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex justify-between items-start">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="flex text-yellow-500">{[...Array(5)].map((_, i) => <Star key={i} size={10} className={i < rev.rating ? "fill-current" : "text-zinc-700"}/>)}</div>
-                                <span className="text-xs font-bold text-white">{rev.userName}</span>
-                            </div>
-                            <p className="text-zinc-400 text-sm italic">&quot;{rev.comment}&quot;</p>
-                            <Link href={`/loja/${rev.productId}`} target="_blank" className="text-[10px] text-zinc-500 hover:text-white mt-1 block">Ver produto relacionado</Link>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                             {rev.status === 'pending' || !rev.status ? (
-                                <>
-                                    <button onClick={() => handleReviewAction(rev.id, 'approved')} className="px-3 py-1.5 bg-emerald-900/30 text-emerald-500 rounded text-[10px] font-bold uppercase hover:bg-emerald-500 hover:text-black">Aprovar</button>
-                                    <button onClick={() => handleReviewAction(rev.id, 'rejected')} className="px-3 py-1.5 bg-red-900/30 text-red-500 rounded text-[10px] font-bold uppercase hover:bg-red-500 hover:text-white">Rejeitar</button>
-                                </>
-                             ) : (
-                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${rev.status === 'approved' ? 'text-emerald-500 bg-emerald-900/20' : 'text-red-500 bg-red-900/20'}`}>{rev.status}</span>
-                             )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        )}
-
       </main>
-
-      {/* MODAL PRODUTO (Simplificado visualmente para caber) */}
-      {showModalProduto && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-zinc-950 w-full max-w-3xl rounded-2xl border border-zinc-800 p-6 space-y-6 my-10 shadow-2xl relative animate-in zoom-in-95">
-             <div className="flex justify-between border-b border-zinc-800 pb-4"><h2 className="font-bold text-white text-xl">Produto</h2><button onClick={() => setShowModalProduto(false)}><X size={24} className="text-zinc-500"/></button></div>
-             
-             <div className="grid grid-cols-2 gap-6">
-                 <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-zinc-700 rounded-xl h-40 flex items-center justify-center cursor-pointer hover:border-emerald-500 relative overflow-hidden">
-                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
-                     {uploading ? <span className="text-xs animate-pulse text-emerald-500">Enviando...</span> : formData.img ? <Image src={formData.img} alt="Preview" fill className="object-contain" unoptimized/> : <div className="text-center"><UploadCloud size={32}/><span className="text-xs uppercase font-bold">Foto</span></div>}
-                 </div>
-                 <div className="space-y-3">
-                     <input type="text" placeholder="Nome" maxLength={MAX_PRODUCT_NAME_CHARS} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.nome || ""} onChange={e => setFormData({...formData, nome: e.target.value})}/>
-                     <p className="text-[10px] text-zinc-500">Maximo: {MAX_PRODUCT_NAME_CHARS} caracteres</p>
-                     <div className="flex gap-2">
-                         <input type="number" min={0} step="0.01" placeholder="Preco" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white" value={formData.preco || ""} onChange={e => setFormData({...formData, preco: Number(e.target.value)})}/>
-                         <select className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-400" value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value})}>
-                             {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                         </select>
-                     </div>
-                 </div>
-             </div>
-
-             <p className="text-[10px] text-zinc-500">Upload de imagem: maximo {MAX_UPLOAD_IMAGE_MB}MB (JPG/PNG/WebP).</p>
-
-             <div className="space-y-3">
-                 <textarea
-                     rows={4}
-                     maxLength={MAX_PRODUCT_DESC_CHARS}
-                     placeholder="Descricao do produto"
-                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white resize-none"
-                     value={formData.descricao || ""}
-                     onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                 />
-                 <p className="text-[10px] text-zinc-500">
-                     Descricao: {(formData.descricao || "").length}/{MAX_PRODUCT_DESC_CHARS}
-                 </p>
-                 <input
-                     type="text"
-                     maxLength={MAX_PRODUCT_FEATURES_CHARS}
-                     placeholder="Caracteristicas (separar por virgula)"
-                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
-                     value={featuresInput}
-                     onChange={(e) => setFeaturesInput(e.target.value)}
-                 />
-                 <p className="text-[10px] text-zinc-500">
-                     Caracteristicas: {featuresInput.length}/{MAX_PRODUCT_FEATURES_CHARS}
-                 </p>
-             </div>
-
-             <div className="grid grid-cols-2 gap-3">
-                 <input
-                     type="text"
-                     placeholder="Lote"
-                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
-                     value={formData.lote || ""}
-                     onChange={(e) => setFormData({ ...formData, lote: e.target.value })}
-                 />
-                 <input
-                     type="number"
-                     min={0}
-                     step="0.01"
-                     placeholder="Preco antigo (opcional)"
-                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
-                     value={formData.precoAntigo || ""}
-                     onChange={(e) => setFormData({ ...formData, precoAntigo: Number(e.target.value) })}
-                 />
-             </div>
-
-             <div className="grid grid-cols-3 gap-3">
-                 <input
-                     type="text"
-                     maxLength={MAX_PRODUCT_TAG_CHARS}
-                     placeholder="Tag"
-                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white"
-                     value={formData.tagLabel || ""}
-                     onChange={(e) => setFormData({ ...formData, tagLabel: e.target.value })}
-                 />
-                 <select
-                     className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-300"
-                     value={formData.tagColor || "emerald"}
-                     onChange={(e) => setFormData({ ...formData, tagColor: e.target.value })}
-                 >
-                     <option value="emerald">Verde</option>
-                     <option value="red">Vermelho</option>
-                     <option value="orange">Laranja</option>
-                     <option value="purple">Roxo</option>
-                     <option value="blue">Azul</option>
-                 </select>
-                 <select
-                     className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-300"
-                     value={formData.tagEffect || "none"}
-                     onChange={(e) => setFormData({ ...formData, tagEffect: e.target.value as "pulse" | "shine" | "none" })}
-                 >
-                     <option value="none">Sem efeito</option>
-                     <option value="pulse">Pulse</option>
-                     <option value="shine">Shine</option>
-                 </select>
-             </div>
-
-             <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800">
-                 <div className="flex justify-between items-center mb-3 text-[10px] font-bold uppercase text-zinc-500"><span>Variantes</span></div>
-                 <div className="flex gap-2 mb-3">
-                   <input type="text" placeholder="Tam" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white uppercase" value={novaVariante.tamanho} onChange={(e) => setNovaVariante({ ...novaVariante, tamanho: e.target.value })} />
-                   <input type="text" placeholder="Cor" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.cor} onChange={(e) => setNovaVariante({ ...novaVariante, cor: e.target.value })} />
-                   <input type="number" placeholder="Qtd" className="w-16 bg-black border border-zinc-700 rounded p-2 text-xs text-white" value={novaVariante.estoque || ""} onChange={(e) => setNovaVariante({ ...novaVariante, estoque: Number(e.target.value) })} />
-                   <button onClick={handleAddVariante} className="bg-emerald-600 px-3 rounded text-white font-bold hover:bg-emerald-500"><Plus size={16} /></button>
-                 </div>
-                 <div className="space-y-1 max-h-24 overflow-y-auto">{variantesTemp.map((v) => (<div key={v.id} className="flex justify-between text-xs bg-black p-2 rounded border border-zinc-800"><span>{v.tamanho} - {v.cor}</span><span className="text-emerald-400 font-bold">{v.estoque} un</span></div>))}</div>
-             </div>
-
-             <button onClick={handleSaveProduto} disabled={saving} className="w-full py-4 bg-emerald-600 rounded-xl font-black uppercase text-sm hover:bg-emerald-500 transition">{saving ? "Salvando..." : "Salvar Produto"}</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CATEGORIA (MANTIDO) */}
-      {showModalCategoria && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4">
-            <div className="bg-zinc-950 p-6 rounded-xl border border-zinc-800 w-full max-w-sm">
-                <h3 className="text-white font-bold mb-4">Categorias</h3>
-                <div className="flex gap-2 mb-4">
-                    <input type="text" className="flex-1 bg-black border border-zinc-700 rounded p-2 text-white" value={categoriaNome} onChange={e => setCategoriaNome(e.target.value)}/>
-                    <button onClick={handleCreateCategoria} disabled={savingCategoria} className="bg-emerald-600 px-4 rounded text-white font-bold">{savingCategoria ? "..." : "Add"}</button>
-                </div>
-                <button onClick={() => setShowModalCategoria(false)} className="w-full text-zinc-500 text-xs">Fechar</button>
-            </div>
-        </div>
-      )}
     </div>
   );
 }
-
-

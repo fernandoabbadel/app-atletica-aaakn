@@ -11,6 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../../../context/ToastContext";
 import { uploadImage } from "../../../lib/upload";
+import { isFirebasePermissionError } from "../../../lib/firebaseErrors";
 import {
     addUserToChamada,
     createRecurringTreinos,
@@ -150,7 +151,9 @@ export default function AdminTreinosPage() {
           const lista = await fetchTreinosAdminList({ maxResults: 220, forceRefresh });
           setTreinos(lista);
       } catch (error: unknown) {
-          console.error(error);
+          if (!isFirebasePermissionError(error)) {
+            console.error(error);
+          }
           addToast("Erro ao carregar treinos.", "error");
       }
   }, [addToast]);
@@ -160,7 +163,9 @@ export default function AdminTreinosPage() {
           const users = await fetchUserDirectory({ maxResults: 420, forceRefresh });
           setAllUsers(users);
       } catch (error: unknown) {
-          console.error(error);
+          if (!isFirebasePermissionError(error)) {
+            console.error(error);
+          }
           addToast("Erro ao carregar usuarios.", "error");
       }
   }, [addToast]);
@@ -182,7 +187,9 @@ export default function AdminTreinosPage() {
               setModalidades(mods);
               setNovoTreino(prev => ({...prev, modalidade: mods[0] || "Futsal"}));
           } catch (error: unknown) {
-              console.error(error);
+              if (!isFirebasePermissionError(error)) {
+                console.error(error);
+              }
               setModalidades(["Futsal", "Volei"]); 
               setNovoTreino(prev => ({...prev, modalidade: "Futsal"}));
           }
@@ -208,7 +215,9 @@ export default function AdminTreinosPage() {
           try {
               await loadExpandedData(expandedRow, true);
           } catch (error: unknown) {
-              console.error(error);
+              if (!isFirebasePermissionError(error)) {
+                console.error(error);
+              }
               addToast("Erro ao carregar chamada.", "error");
           }
       };

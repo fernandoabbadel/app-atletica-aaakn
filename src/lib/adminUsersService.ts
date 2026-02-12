@@ -1,6 +1,7 @@
 import { httpsCallable } from "firebase/functions";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -8,6 +9,7 @@ import {
   orderBy,
   query,
   startAfter,
+  updateDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
@@ -105,6 +107,47 @@ async function callCallable<TReq, TRes>(
   const callable = httpsCallable<TReq, TRes>(functions, callableName);
   const response = await callable(payload);
   return response.data;
+}
+
+const shouldFallbackToClientWrites = (error: unknown): boolean => {
+  const code = getFirebaseErrorCode(error)?.toLowerCase();
+  if (!code) return true;
+
+  return (
+    code.includes("functions/not-found") ||
+    code.includes("functions/unavailable") ||
+    code.includes("functions/internal") ||
+    code.includes("functions/deadline-exceeded") ||
+    code.includes("functions/cancelled") ||
+    code.includes("functions/unknown")
+  );
+};
+
+const shouldUseCallable = (): boolean => {
+  if (typeof window === "undefined") return true;
+  if (process.env.NEXT_PUBLIC_FORCE_CALLABLES === "true") return true;
+
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1";
+};
+
+async function callCallableWithFallback<TReq, TRes>(
+  callableName: string,
+  payload: TReq,
+  fallbackFn: () => Promise<TRes>
+): Promise<TRes> {
+  if (!shouldUseCallable()) {
+    return fallbackFn();
+  }
+
+  try {
+    return await callCallable<TReq, TRes>(callableName, payload);
+  } catch (error: unknown) {
+    if (shouldFallbackToClientWrites(error)) {
+      return fallbackFn();
+    }
+    throw error;
+  }
 }
 
 const toMillis = (value: unknown): number => {
@@ -466,9 +509,20 @@ export async function updateAdminUser(payload: {
     tier: payload.plano,
   };
 
-  await callCallable<typeof requestPayload, { ok: boolean }>(
+  await callCallableWithFallback<typeof requestPayload, { ok: boolean }>(
     ADMIN_USERS_UPDATE_CALLABLE,
-    requestPayload
+    requestPayload,
+    async () => {
+      await updateDoc(doc(db, "users", userId), {
+        nome: requestPayload.nome,
+        telefone: requestPayload.telefone,
+        matricula: requestPayload.matricula,
+        turma: requestPayload.turma,
+        status: requestPayload.status,
+        tier: requestPayload.tier,
+      });
+      return { ok: true };
+    }
   );
 
   clearAdminUsersCache();
@@ -482,9 +536,13 @@ export async function setAdminUserStatus(payload: {
   if (!userId) return;
 
   const requestPayload = { userId, status: payload.status };
-  await callCallable<typeof requestPayload, { ok: boolean }>(
+  await callCallableWithFallback<typeof requestPayload, { ok: boolean }>(
     ADMIN_USERS_STATUS_CALLABLE,
-    requestPayload
+    requestPayload,
+    async () => {
+      await updateDoc(doc(db, "users", userId), { status: requestPayload.status });
+      return { ok: true };
+    }
   );
 
   clearAdminUsersCache();
@@ -494,9 +552,13 @@ export async function deleteAdminUser(userIdRaw: string): Promise<void> {
   const userId = userIdRaw.trim();
   if (!userId) return;
 
-  await callCallable<{ userId: string }, { ok: boolean }>(
+  await callCallableWithFallback<{ userId: string }, { ok: boolean }>(
     ADMIN_USERS_DELETE_CALLABLE,
-    { userId }
+    { userId },
+    async () => {
+      await deleteDoc(doc(db, "users", userId));
+      return { ok: true };
+    }
   );
 
   clearAdminUsersCache();

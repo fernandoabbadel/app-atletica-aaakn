@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/context/ToastContext";
+import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 import {
   deleteAdminUser,
   fetchAdminUsersPage,
@@ -89,7 +90,7 @@ export default function AdminUsuariosPage() {
         setHasMore(page.hasMore);
         setNextCursor(page.nextCursor);
       } catch (error: unknown) {
-        console.error(error);
+        if (!isFirebasePermissionError(error)) { console.error(error); }
         addToast("Erro ao carregar usuarios.", "error");
       } finally {
         if (reset) setLoading(false);
@@ -142,7 +143,7 @@ export default function AdminUsuariosPage() {
         "success"
       );
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao atualizar status.", "error");
     }
   };
@@ -158,7 +159,7 @@ export default function AdminUsuariosPage() {
       setRows((prev) => prev.filter((row) => row.id !== userId));
       addToast("Usuario removido.", "success");
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao remover usuario.", "error");
     }
   };
@@ -352,3 +353,4 @@ export default function AdminUsuariosPage() {
     </div>
   );
 }
+

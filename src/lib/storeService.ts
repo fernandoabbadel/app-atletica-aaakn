@@ -32,6 +32,7 @@ const MAX_CATEGORIES = 300;
 
 const CALLABLE_TOGGLE_LIKE = "storeToggleLike";
 const CALLABLE_CREATE_ORDER = "storeCreateOrder";
+const CALLABLE_CANCEL_ORDER = "storeCancelOrder";
 const CALLABLE_CREATE_REVIEW = "storeCreateReview";
 const CALLABLE_APPROVE_ORDER = "storeApproveOrder";
 const CALLABLE_SET_ORDER_STATUS = "storeSetOrderStatus";
@@ -330,6 +331,22 @@ export async function createStoreOrder(payload: {
 
   invalidateStoreCaches(payload.productId);
   return result;
+}
+
+export async function cancelStoreOrderRequest(orderIdRaw: string): Promise<void> {
+  const orderId = orderIdRaw.trim();
+  if (!orderId) return;
+
+  await callWithFallback<{ orderId: string }, { ok: boolean }>(
+    CALLABLE_CANCEL_ORDER,
+    { orderId },
+    async () => {
+      await deleteDoc(doc(db, "orders", orderId));
+      return { ok: true };
+    }
+  );
+
+  invalidateStoreCaches();
 }
 
 export async function createStoreReview(payload: {

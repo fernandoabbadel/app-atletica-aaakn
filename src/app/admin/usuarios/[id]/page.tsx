@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/context/ToastContext";
+import { isFirebasePermissionError } from "@/lib/firebaseErrors";
 import {
   deleteAdminUser,
   fetchAdminUserProfile,
@@ -95,7 +96,7 @@ export default function AdminUsuarioDetalhePage() {
       setProfile(result);
       setForm(toInitialForm(result));
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao carregar usuario.", "error");
     } finally {
       setLoading(false);
@@ -136,7 +137,7 @@ export default function AdminUsuarioDetalhePage() {
 
       addToast("Usuario atualizado.", "success");
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao salvar.", "error");
     } finally {
       setSaving(false);
@@ -161,7 +162,7 @@ export default function AdminUsuarioDetalhePage() {
         "success"
       );
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao alterar status.", "error");
     } finally {
       setChangingStatus(false);
@@ -182,7 +183,7 @@ export default function AdminUsuarioDetalhePage() {
       addToast("Usuario excluido.", "success");
       router.replace("/admin/usuarios");
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) { console.error(error); }
       addToast("Erro ao excluir usuario.", "error");
       setDeleting(false);
     }
@@ -378,3 +379,4 @@ export default function AdminUsuarioDetalhePage() {
     </div>
   );
 }
+

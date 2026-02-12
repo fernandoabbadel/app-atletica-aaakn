@@ -14,6 +14,7 @@ import Link from "next/link";
 
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
+import { isFirebasePermissionError } from "../../../lib/firebaseErrors";
 import {
   fetchUserSupportRequests,
   submitSupportRequest,
@@ -58,7 +59,9 @@ export default function SupportPage() {
         const tickets = await fetchUserSupportRequests(user.uid, 20);
         if (mounted) setHistory(tickets);
       } catch (error: unknown) {
-        console.error(error);
+        if (!isFirebasePermissionError(error)) {
+          console.error(error);
+        }
         if (mounted) setHistory([]);
       } finally {
         if (mounted) setLoadingHistory(false);
@@ -106,7 +109,9 @@ export default function SupportPage() {
       const refreshed = await fetchUserSupportRequests(user.uid, 20);
       setHistory(refreshed);
     } catch (error: unknown) {
-      console.error(error);
+      if (!isFirebasePermissionError(error)) {
+        console.error(error);
+      }
       addToast("Erro ao enviar chamado.", "error");
     } finally {
       setSending(false);

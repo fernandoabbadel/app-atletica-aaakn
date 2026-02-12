@@ -14,6 +14,7 @@ import Image from "next/image";
 import { markProfileComplete, uploadProfileImage } from "../../lib/profileService";
 import { validateImageFile } from "../../lib/upload";
 import { useToast } from "../../context/ToastContext"; 
+import { getTurmaImage } from "../../constants/turmaImages";
 
 // --- DADOS ---
 const TURMAS = [
@@ -518,11 +519,12 @@ export default function CadastroPage() {
                                     <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden relative">
                                         {/* 🦈 1. Correção: Uso do Image do Next.js */}
                                         <Image 
-                                            src={t.img} 
+                                            src={getTurmaImage(t.id)} 
                                             alt={t.nome} 
                                             fill 
                                             className="object-cover" 
                                             unoptimized
+                                            priority={t.id === "T1" || t.id === "T2"}
                                         />
                                     </div>
                                     <span className={`text-sm font-bold uppercase ${formData.turma === t.id ? "text-emerald-400" : "text-zinc-400"}`}>{t.nome}</span>

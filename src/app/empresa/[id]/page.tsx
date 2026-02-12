@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   QrCode, Ticket, Edit, Calendar, Store,
   Camera, LogOut, Loader2, X, FileText, ChevronRight
@@ -8,6 +8,7 @@ import {
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { Html5Qrcode } from "html5-qrcode";
 import { useToast } from "../../../context/ToastContext";
 import {
   createPartnerScan,
@@ -89,6 +90,7 @@ export default function EmpresaDashboard() {
   const [partner, setPartner] = useState<EmpresaData | null>(null);
   const [history, setHistory] = useState<ScanData[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   
   // Edição
   const [showEditModal, setShowEditModal] = useState(false);
@@ -97,6 +99,8 @@ export default function EmpresaDashboard() {
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingScanRef = useRef(false);
 
   // --- CARREGAR DADOS DO FIREBASE ---
   useEffect(() => {
@@ -132,13 +136,8 @@ export default function EmpresaDashboard() {
 
   // --- AÇÕES ---
 
-  const handleScan = async () => {
+  const registerScanFromPayload = useCallback(async (rawPayload: string) => {
       if (!partner) return;
-
-      const rawPayload = window.prompt(
-          "Cole o payload do QR (JSON com userId/usuario/cupom/valorEconomizado, ou apenas userId):"
-      );
-      if (!rawPayload?.trim()) return;
 
       let scanUserId = "";
       let scanUsuario = "";
@@ -164,34 +163,106 @@ export default function EmpresaDashboard() {
       }
 
       setScanning(true);
-      setTimeout(async () => {
+      try {
+          const scanResult = await createPartnerScan({
+              partnerId: empresaId,
+              partnerName: partner.nome,
+              usuario: scanUsuario,
+              userId: scanUserId,
+              cupom: scanCupom,
+              valorEconomizado: scanValor,
+              data: new Date().toLocaleDateString("pt-BR"),
+              hora: new Date().toLocaleTimeString("pt-BR"),
+          });
+
+          const nextTotal =
+            scanResult.totalScans > 0
+              ? scanResult.totalScans
+              : (partner.totalScans || 0) + 1;
+          setHistory((prev) => [scanResult.scan as ScanData, ...prev].slice(0, 10));
+          setPartner((prev) => prev ? ({ ...prev, totalScans: nextTotal }) : null);
+          addToast("Cupom validado com sucesso.", "success");
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao registrar scan.", "error");
+      } finally {
           setScanning(false);
+      }
+  }, [addToast, empresaId, partner]);
 
+  const handleManualScan = () => {
+      const rawPayload = window.prompt(
+          "Cole o payload do QR (JSON com userId/usuario/cupom/valorEconomizado, ou apenas userId):"
+      );
+      if (!rawPayload?.trim()) return;
+      void registerScanFromPayload(rawPayload.trim());
+  };
+
+  const closeScanner = useCallback(async () => {
+      if (scannerRef.current?.isScanning) {
           try {
-              const scanResult = await createPartnerScan({
-                  partnerId: empresaId,
-                  partnerName: partner.nome,
-                  usuario: scanUsuario,
-                  userId: scanUserId,
-                  cupom: scanCupom,
-                  valorEconomizado: scanValor,
-                  data: new Date().toLocaleDateString("pt-BR"),
-                  hora: new Date().toLocaleTimeString("pt-BR"),
-              });
+              await scannerRef.current.stop();
+          } catch {
+              // ignora stop race condition
+          }
+      }
 
-              const nextTotal =
-                scanResult.totalScans > 0
-                  ? scanResult.totalScans
-                  : (partner.totalScans || 0) + 1;
-              setHistory((prev) => [scanResult.scan as ScanData, ...prev].slice(0, 10));
-              setPartner((prev) => prev ? ({...prev, totalScans: nextTotal}) : null);
-              addToast("Cupom validado com sucesso.", "success");
+      if (scannerRef.current) {
+          scannerRef.current.clear();
+          scannerRef.current = null;
+      }
+
+      setShowScanner(false);
+  }, []);
+
+  const handleDecodedQr = useCallback(async (decodedText: string) => {
+      if (processingScanRef.current) return;
+      processingScanRef.current = true;
+      await closeScanner();
+      await registerScanFromPayload(decodedText);
+      processingScanRef.current = false;
+  }, [closeScanner, registerScanFromPayload]);
+
+  useEffect(() => {
+      if (!showScanner || scannerRef.current) return;
+
+      const startScanner = async () => {
+          try {
+              const scanner = new Html5Qrcode("partner-reader");
+              scannerRef.current = scanner;
+              await scanner.start(
+                  { facingMode: "environment" },
+                  { fps: 10, qrbox: { width: 260, height: 260 }, aspectRatio: 1 },
+                  (decodedText) => {
+                      void handleDecodedQr(decodedText);
+                  },
+                  () => {}
+              );
           } catch (error: unknown) {
               console.error(error);
-              addToast("Erro ao registrar scan.", "error");
+              addToast("Nao foi possivel abrir a camera.", "error");
+              setShowScanner(false);
           }
-      }, 600);
-  };
+      };
+
+      void startScanner();
+
+      return () => {
+          if (scannerRef.current?.isScanning) {
+              void scannerRef.current
+                  .stop()
+                  .then(() => {
+                      scannerRef.current?.clear();
+                      scannerRef.current = null;
+                  })
+                  .catch(() => {});
+          } else if (scannerRef.current) {
+              scannerRef.current.clear();
+              scannerRef.current = null;
+          }
+          processingScanRef.current = false;
+      };
+  }, [addToast, handleDecodedQr, showScanner]);
 
   const handleSaveProfile = async () => {
       try {
@@ -279,13 +350,23 @@ export default function EmpresaDashboard() {
                     </div>
                 </div>
 
-                <div onClick={handleScan} className="bg-gradient-to-b from-emerald-900/20 to-zinc-900 border border-emerald-500/30 rounded-3xl p-8 text-center cursor-pointer active:scale-95 transition shadow-lg relative overflow-hidden group">
+                <div onClick={() => setShowScanner(true)} className="bg-gradient-to-b from-emerald-900/20 to-zinc-900 border border-emerald-500/30 rounded-3xl p-8 text-center cursor-pointer active:scale-95 transition shadow-lg relative overflow-hidden group">
                     <div className="absolute inset-0 bg-emerald-500/10 blur-xl opacity-0 group-hover:opacity-100 transition duration-500"></div>
                     <div className={`w-32 h-32 mx-auto rounded-full bg-black border-4 flex items-center justify-center mb-4 transition duration-500 relative z-10 ${scanning ? 'border-emerald-500 animate-pulse shadow-[0_0_40px_rgba(16,185,129,0.4)]' : 'border-zinc-700 group-hover:border-emerald-500'}`}>
                         <Camera size={40} className={scanning ? 'text-emerald-500' : 'text-zinc-500 group-hover:text-emerald-500'}/>
                     </div>
                     <h3 className="text-xl font-black uppercase mb-1 relative z-10 text-white">{scanning ? "Lendo QR..." : "Ler QR Code"}</h3>
                     <p className="text-xs text-zinc-400 relative z-10">Validar desconto do aluno</p>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleManualScan();
+                      }}
+                      className="relative z-10 mt-4 text-[10px] uppercase font-bold text-emerald-400 hover:text-emerald-300"
+                    >
+                      Digitar codigo manualmente
+                    </button>
                 </div>
             </div>
 
@@ -353,6 +434,26 @@ export default function EmpresaDashboard() {
                     <button onClick={handleSaveProfile} className="px-6 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500">Salvar Alterações</button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {showScanner && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-300">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-green-400 to-emerald-500 z-50 animate-pulse" />
+          <div className="flex-1 relative flex items-center justify-center bg-black">
+            <div id="partner-reader" className="w-full h-full max-w-lg overflow-hidden" />
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-64 h-64 border-4 border-emerald-500/50 rounded-3xl relative" />
+            </div>
+            <button
+              onClick={() => {
+                void closeScanner();
+              }}
+              className="absolute top-6 right-6 bg-black/50 text-white p-3 rounded-full backdrop-blur-md z-50 border border-white/10"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
       )}
     </div>

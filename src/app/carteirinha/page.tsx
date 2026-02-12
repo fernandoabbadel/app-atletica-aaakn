@@ -165,7 +165,13 @@ export default function CarteirinhaPage() {
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-black/80 backdrop-blur rounded-lg flex items-center justify-center border border-white/10 shadow-lg relative overflow-hidden">
-                  <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-contain" unoptimized />
+                  <Image
+                    src="/logo.png"
+                    alt="Logo"
+                    width={32}
+                    height={32}
+                    className="w-8 h-8 object-contain"
+                  />
                 </div>
                 <div>
                   <h2 className="font-black text-white text-lg leading-none tracking-tight">AAAKN</h2>
@@ -286,7 +292,13 @@ export default function CarteirinhaPage() {
                   
                   <div className="mb-6 mt-2">
                       <div className="w-12 h-12 bg-black rounded-xl mx-auto flex items-center justify-center mb-3 relative overflow-hidden">
-                        <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-contain" unoptimized />
+                        <Image
+                          src="/logo.png"
+                          alt="Logo"
+                          width={28}
+                          height={28}
+                          className="w-7 h-7 object-contain"
+                        />
                       </div>
                       <h3 className="text-black font-black text-xl uppercase tracking-tighter">Acesso Atleta</h3>
                       <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Aproxime do Leitor</p>

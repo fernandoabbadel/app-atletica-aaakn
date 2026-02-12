@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { isFirebasePermissionError } from "../../lib/firebaseErrors";
+import { getTurmaImage } from "../../constants/turmaImages";
 import {
   fetchBottomNavBannedAppealsCount,
   fetchBottomNavNotifications,
@@ -44,12 +45,6 @@ interface BannerProps {
 }
 
 // --- CONFIGURAÇÕES VISUAIS ---
-const TURMA_IMAGENS: Record<string, string> = {
-    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
-    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpg"
-};
-
 const PLAN_COLORS: Record<string, string> = {
     yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
     blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
@@ -185,11 +180,21 @@ export default function BottomNavbar() {
       }
 
       void loadNotifications(false);
-      const timer = window.setInterval(() => {
+      const refreshNotifications = () => {
+        if (document.visibilityState !== "visible") return;
         void loadNotifications(true);
-      }, 45_000);
+      };
 
-      return () => window.clearInterval(timer);
+      const handleWindowFocus = () => refreshNotifications();
+      const handleVisibilityChange = () => refreshNotifications();
+
+      window.addEventListener("focus", handleWindowFocus);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        window.removeEventListener("focus", handleWindowFocus);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
   }, [canLoadNotifications, loadNotifications]);
 
   useEffect(() => {
@@ -201,11 +206,21 @@ export default function BottomNavbar() {
       void loadBannedAppealsCount(false);
       if (!isAdmin) return;
 
-      const timer = window.setInterval(() => {
+      const refreshBanned = () => {
+        if (document.visibilityState !== "visible") return;
         void loadBannedAppealsCount(true);
-      }, 60_000);
+      };
 
-      return () => window.clearInterval(timer);
+      const handleWindowFocus = () => refreshBanned();
+      const handleVisibilityChange = () => refreshBanned();
+
+      window.addEventListener("focus", handleWindowFocus);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        window.removeEventListener("focus", handleWindowFocus);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
   }, [isAdmin, loadBannedAppealsCount]);
 
   const handleNotificationClick = async (notif: Notification) => {
@@ -281,7 +296,7 @@ export default function BottomNavbar() {
       { id: 'historico', label: 'Nossa História', icon: <Clock size={18} />, path: '/historico' },
   ];
 
-  const userTurmaImg = currentUser?.turma ? TURMA_IMAGENS[currentUser.turma] : null;
+  const userTurmaImg = currentUser?.turma ? getTurmaImage(currentUser.turma) : null;
 
   return (
     <>

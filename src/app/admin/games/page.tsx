@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  ArrowLeft, Search, X, Loader2
+  ArrowLeft, Search, X, Loader2, Clock3
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -56,6 +56,9 @@ export default function AdminGamesPage() {
        <header className="p-6 bg-zinc-900 border-b border-zinc-800 flex items-center gap-4">
           <Link href="/admin" className="p-2 bg-black rounded-full border border-zinc-700"><ArrowLeft size={20}/></Link>
           <h1 className="text-xl font-black uppercase text-emerald-500">Admin Arena</h1>
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-300">
+            <Clock3 size={12} /> Em breve
+          </span>
        </header>
 
        <main className="p-6">
