@@ -34,7 +34,8 @@ export type GuideCategory =
   | "academico"
   | "transporte"
   | "turismo"
-  | "emergencia";
+  | "emergencia"
+  | "grupos";
 
 const getCache = <T>(cache: Map<string, CacheEntry<T>>, key: string): T | null => {
   const cached = cache.get(key);
@@ -122,8 +123,28 @@ export async function fetchGuideData(options?: {
     : [[limit(maxResults)]];
 
   const rows = await queryRows("guia_data", attempts);
-  setCache(guideCache, cacheKey, rows);
-  return rows;
+  const sorted = [...rows].sort((left, right) => {
+    const leftOrder =
+      typeof left.ordem === "number" && Number.isFinite(left.ordem)
+        ? left.ordem
+        : Number.MAX_SAFE_INTEGER;
+    const rightOrder =
+      typeof right.ordem === "number" && Number.isFinite(right.ordem)
+        ? right.ordem
+        : Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+    const leftLabel =
+      (typeof left.titulo === "string" ? left.titulo : "") ||
+      (typeof left.nome === "string" ? left.nome : "");
+    const rightLabel =
+      (typeof right.titulo === "string" ? right.titulo : "") ||
+      (typeof right.nome === "string" ? right.nome : "");
+    return leftLabel.localeCompare(rightLabel, "pt-BR");
+  });
+
+  setCache(guideCache, cacheKey, sorted);
+  return sorted;
 }
 
 export async function seedGuideDefaults(items: Row[]): Promise<void> {

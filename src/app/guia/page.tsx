@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image"; // ðŸ¦ˆ ImportaÃ§Ã£o do Image
+import Image from "next/image";
 import {
   ArrowLeft,
   Bus,
@@ -10,15 +10,17 @@ import {
   Landmark,
   GraduationCap,
   BookOpen,
-  Loader2
+  Loader2,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
+
 import { fetchGuideData, type GuideCategory } from "../../lib/guiaService";
-// --- INTERFACES ---
-interface GuiaItem {
+
+type GuiaItem = {
   id: string;
   categoria: GuideCategory;
-  // Campos variÃ¡veis dependendo da categoria
+  ordem?: number;
   titulo?: string;
   url?: string;
   nome?: string;
@@ -28,39 +30,51 @@ interface GuiaItem {
   foto?: string;
   numero?: string;
   cor?: string;
-}
+};
 
-interface GuiaState {
+type GuiaState = {
   academico: GuiaItem[];
   transporte: GuiaItem[];
   turismo: GuiaItem[];
   emergencia: GuiaItem[];
-}
+  grupos: GuiaItem[];
+};
 
-interface CategoriaConfig {
+type CategoriaConfig = {
   label: string;
   icon: React.ReactNode;
   color: string;
-}
+};
 
-// DefiniÃ§Ã£o das Categorias para Mapeamento
-const CATEGORIAS_CONFIG: Record<string, CategoriaConfig> = {
-  academico: { label: "AcadÃªmico", icon: <GraduationCap size={18} />, color: "text-emerald-500" },
+const CATEGORIAS_CONFIG: Record<GuideCategory, CategoriaConfig> = {
+  academico: { label: "Academico", icon: <GraduationCap size={18} />, color: "text-emerald-500" },
   transporte: { label: "Transporte", icon: <Bus size={18} />, color: "text-orange-500" },
   turismo: { label: "Turismo", icon: <Landmark size={18} />, color: "text-blue-500" },
-  emergencia: { label: "EmergÃªncia", icon: <Phone size={18} />, color: "text-red-500" },
+  emergencia: { label: "Emergencia", icon: <Phone size={18} />, color: "text-red-500" },
+  grupos: { label: "Grupos", icon: <Users size={18} />, color: "text-cyan-400" },
 };
+
+const sortItems = (rows: GuiaItem[]): GuiaItem[] =>
+  [...rows].sort((left, right) => {
+    const leftOrder = typeof left.ordem === "number" ? left.ordem : Number.MAX_SAFE_INTEGER;
+    const rightOrder = typeof right.ordem === "number" ? right.ordem : Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+    const leftLabel = left.titulo || left.nome || "";
+    const rightLabel = right.titulo || right.nome || "";
+    return leftLabel.localeCompare(rightLabel, "pt-BR");
+  });
 
 export default function GuiaPage() {
   const [guiaData, setGuiaData] = useState<GuiaState>({
     academico: [],
     transporte: [],
     turismo: [],
-    emergencia: []
+    emergencia: [],
+    grupos: [],
   });
   const [loading, setLoading] = useState(true);
 
-    // 1. Buscar Dados
   useEffect(() => {
     let mounted = true;
 
@@ -71,25 +85,26 @@ export default function GuiaPage() {
           "transporte",
           "turismo",
           "emergencia",
+          "grupos",
         ];
+
         const rowsByCategory = await Promise.all(
           categories.map((category) =>
-            fetchGuideData({
-              category,
-              maxResults: 60,
-              forceRefresh: false,
-            })
+            fetchGuideData({ category, maxResults: 80, forceRefresh: false })
           )
         );
+
         if (!mounted) return;
-        const [academicoRows, transporteRows, turismoRows, emergenciaRows] =
+
+        const [academicoRows, transporteRows, turismoRows, emergenciaRows, gruposRows] =
           rowsByCategory;
 
         setGuiaData({
-          academico: academicoRows.map((raw) => raw as unknown as GuiaItem),
-          transporte: transporteRows.map((raw) => raw as unknown as GuiaItem),
-          turismo: turismoRows.map((raw) => raw as unknown as GuiaItem),
-          emergencia: emergenciaRows.map((raw) => raw as unknown as GuiaItem),
+          academico: sortItems(academicoRows.map((raw) => raw as unknown as GuiaItem)),
+          transporte: sortItems(transporteRows.map((raw) => raw as unknown as GuiaItem)),
+          turismo: sortItems(turismoRows.map((raw) => raw as unknown as GuiaItem)),
+          emergencia: sortItems(emergenciaRows.map((raw) => raw as unknown as GuiaItem)),
+          grupos: sortItems(gruposRows.map((raw) => raw as unknown as GuiaItem)),
         });
       } catch (error: unknown) {
         console.error(error);
@@ -109,7 +124,7 @@ export default function GuiaPage() {
     return (
       <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-emerald-500 gap-4">
         <Loader2 className="animate-spin" size={48} />
-        <p className="text-xs font-black uppercase tracking-widest animate-pulse">Carregando o Manual...</p>
+        <p className="text-xs font-black uppercase tracking-widest animate-pulse">Carregando guia...</p>
       </div>
     );
   }
@@ -129,8 +144,6 @@ export default function GuiaPage() {
       </header>
 
       <main className="p-4 space-y-8">
-        
-        {/* ACADÃŠMICO */}
         {guiaData.academico.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.academico.color}`}>
@@ -144,7 +157,19 @@ export default function GuiaPage() {
           </section>
         )}
 
-        {/* TRANSPORTE */}
+        {guiaData.grupos.length > 0 && (
+          <section>
+            <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.grupos.color}`}>
+              {CATEGORIAS_CONFIG.grupos.icon} {CATEGORIAS_CONFIG.grupos.label}
+            </h2>
+            <div className="grid gap-3 grid-cols-1">
+              {guiaData.grupos.map((item) => (
+                <LinkButton key={item.id} texto={item.titulo || "Grupo"} url={item.url || "#"} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {guiaData.transporte.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.transporte.color}`}>
@@ -156,7 +181,7 @@ export default function GuiaPage() {
                   <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
                     <span className="font-bold text-white">{item.nome}</span>
                     <span className="text-[10px] font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-500">
-                      HorÃ¡rios
+                      Horarios
                     </span>
                   </div>
                   <p className="text-xs text-zinc-300 font-mono bg-black/30 p-2 rounded border border-zinc-800">{item.horario}</p>
@@ -167,7 +192,6 @@ export default function GuiaPage() {
           </section>
         )}
 
-        {/* TURISMO */}
         {guiaData.turismo.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.turismo.color}`}>
@@ -175,18 +199,17 @@ export default function GuiaPage() {
             </h2>
             <div className="grid gap-3 grid-cols-2">
               {guiaData.turismo.map((item) => (
-                <CardTurismo 
-                    key={item.id} 
-                    nome={item.nome || "Local"} 
-                    desc={item.descricao || ""} 
-                    img={item.foto || ""} 
+                <CardTurismo
+                  key={item.id}
+                  nome={item.nome || "Local"}
+                  desc={item.descricao || ""}
+                  img={item.foto || ""}
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* EMERGÃŠNCIA */}
         {guiaData.emergencia.length > 0 && (
           <section>
             <h2 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${CATEGORIAS_CONFIG.emergencia.color}`}>
@@ -195,7 +218,7 @@ export default function GuiaPage() {
             <div className="grid gap-3 grid-cols-2">
               {guiaData.emergencia.map((item) => (
                 <div key={item.id} className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl text-center hover:bg-zinc-900 transition cursor-pointer">
-                  <span className={`block font-black text-2xl mb-1 ${item.cor === 'red' ? 'text-red-500' : 'text-zinc-400'}`}>
+                  <span className={`block font-black text-2xl mb-1 ${item.cor === "red" ? "text-red-500" : "text-zinc-400"}`}>
                     {item.numero}
                   </span>
                   <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
@@ -206,13 +229,11 @@ export default function GuiaPage() {
             </div>
           </section>
         )}
-
       </main>
     </div>
   );
 }
 
-// Componentes Auxiliares
 function LinkButton({ texto, url }: { texto: string; url: string }) {
   return (
     <a
@@ -240,7 +261,7 @@ function CardTurismo({ nome, desc, img }: { nome: string; desc: string; img: str
         onError={() => setSrc("https://via.placeholder.com/150?text=Sem+Foto")}
         unoptimized
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
       <div className="absolute bottom-3 left-3 right-3">
         <span className="block text-white font-bold text-sm mb-0.5 group-hover:text-emerald-400 transition">{nome}</span>
         <span className="block text-zinc-400 text-[10px] font-medium truncate">{desc}</span>

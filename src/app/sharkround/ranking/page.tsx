@@ -18,7 +18,7 @@ export default function SharkroundRankingPage() {
     let mounted = true;
     const load = async () => {
       try {
-        const ranking = await fetchSharkroundTubasRanking({ maxResults: 80, forceRefresh: true });
+        const ranking = await fetchSharkroundTubasRanking({ maxResults: 80, forceRefresh: false });
         if (!mounted) return;
         setRows(ranking);
       } finally {

@@ -27,6 +27,7 @@ import {
   fetchUsersByTurma,
   registerAlbumCapture,
 } from "../../../lib/albumService";
+import { getTurmaImage } from "../../../constants/turmaImages";
 
 type TurmaKey = "T1" | "T2" | "T3" | "T4" | "T5" | "T6" | "T7" | "T8";
 
@@ -48,14 +49,14 @@ interface UserData {
 }
 
 const TURMAS_DATA: Record<TurmaKey, { nome: string; logo: string; capa: string }> = {
-  T1: { nome: "Turma I - Jacare", logo: "/turma1.jpeg", capa: "/capa_t1.jpg" },
-  T2: { nome: "Turma II - Cavalo Marinho", logo: "/turma2.jpeg", capa: "/capa_t2.jpg" },
-  T3: { nome: "Turma III - Tartaruga", logo: "/turma3.jpeg", capa: "/capa_t3.jpg" },
-  T4: { nome: "Turma IV - Baleia", logo: "/turma4.jpeg", capa: "/capa_t4.jpg" },
-  T5: { nome: "Turma V - Pinguim", logo: "/turma5.jpeg", capa: "/capa_t5.jpg" },
-  T6: { nome: "Turma VI - Lagosta", logo: "/turma6.jpeg", capa: "/capa_t6.jpg" },
-  T7: { nome: "Turma VII - Urso Polar", logo: "/turma7.jpeg", capa: "/capa_t7.jpg" },
-  T8: { nome: "Turma VIII - Calouros", logo: "/turma8.jpg", capa: "/capa_t8.jpg" },
+  T1: { nome: "Turma I - Jacare", logo: getTurmaImage("T1"), capa: "/capa_t1.jpg" },
+  T2: { nome: "Turma II - Cavalo Marinho", logo: getTurmaImage("T2"), capa: "/capa_t2.jpg" },
+  T3: { nome: "Turma III - Tartaruga", logo: getTurmaImage("T3"), capa: "/capa_t3.jpg" },
+  T4: { nome: "Turma IV - Baleia", logo: getTurmaImage("T4"), capa: "/capa_t4.jpg" },
+  T5: { nome: "Turma V - Pinguim", logo: getTurmaImage("T5"), capa: "/capa_t5.jpg" },
+  T6: { nome: "Turma VI - Lagosta", logo: getTurmaImage("T6"), capa: "/capa_t6.jpg" },
+  T7: { nome: "Turma VII - Urso Polar", logo: getTurmaImage("T7"), capa: "/capa_t7.jpg" },
+  T8: { nome: "Turma VIII - Calouros", logo: getTurmaImage("T8"), capa: "/capa_t8.jpg" },
 };
 
 const parseTurmaSlug = (slug: string | undefined): TurmaKey => {
@@ -106,7 +107,10 @@ export default function AlbumTurmaPage() {
 
     const loadAlbum = async () => {
       try {
-        const collectedIds = await fetchAlbumCollectedIds(userUid);
+        const collectedIds = await fetchAlbumCollectedIds(userUid, {
+          turma,
+          maxResults: 240,
+        });
         if (!mounted) return;
         setMeuAlbum(collectedIds);
       } catch {
@@ -120,7 +124,7 @@ export default function AlbumTurmaPage() {
     return () => {
       mounted = false;
     };
-  }, [userUid, addToast]);
+  }, [userUid, turma, addToast]);
 
   useEffect(() => {
     let mounted = true;

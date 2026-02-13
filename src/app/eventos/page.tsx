@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { toggleEventLike } from "../../lib/eventCardService";
 import { fetchEventsFeed } from "../../lib/eventsService";
+import { getTurmaImage } from "../../constants/turmaImages";
 // --- INTERFACES ---
 interface Evento {
   id: string;
@@ -39,14 +40,6 @@ interface Evento {
   topTurmas?: string[];
   interessados?: string[]; // Array de UIDs para controle
 }
-
-// --- CONFIGURACAO DE IMAGENS ---
-const TURMA_IMAGENS: Record<string, string> = {
-    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
-    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpg",
-    "Geral": "https://github.com/shadcn.png" 
-};
 
 // --- HELPER: PARSER DE DATA ---
 const parseEventDate = (dateStr: string, timeStr: string = "00:00") => {
@@ -102,7 +95,10 @@ function EventClassRanking({ event }: { event: Evento }) {
   const totalConfirmados = event.stats?.confirmados || 0;
   const rankingTurmas = (event.topTurmas || [])
     .slice(0, 3)
-    .map((turma) => ({ turma, img: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"] }));
+    .map((turma) => ({
+      turma,
+      img: getTurmaImage(turma, "https://github.com/shadcn.png"),
+    }));
 
   if (totalConfirmados === 0)
     return (

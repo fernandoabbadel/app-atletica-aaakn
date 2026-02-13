@@ -181,9 +181,25 @@ export async function fetchUsersByTurma(
   return users;
 }
 
-export async function fetchAlbumCollectedIds(userId: string): Promise<string[]> {
+export async function fetchAlbumCollectedIds(
+  userId: string,
+  options?: { turma?: string; maxResults?: number }
+): Promise<string[]> {
   if (!userId) return [];
-  const snap = await getDocs(collection(db, "users", userId, "albumColado"));
+
+  const turma = options?.turma?.trim();
+  const maxResults = boundedLimit(
+    options?.maxResults ?? MAX_USERS_PER_CLASS * 2,
+    MAX_USERS_PER_CLASS * 2
+  );
+
+  const baseRef = collection(db, "users", userId, "albumColado");
+  const constraints = [
+    ...(turma ? [where("turma", "==", turma)] : []),
+    limit(maxResults),
+  ];
+
+  const snap = await getDocs(query(baseRef, ...constraints));
   return snap.docs.map((row) => row.id);
 }
 

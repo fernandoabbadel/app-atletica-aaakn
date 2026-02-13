@@ -12,6 +12,7 @@ import {
 } from "../../lib/treinosService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { getTurmaImage } from "../../constants/turmaImages";
 
 // --- INTERFACES (FIM DOS ANY) ---
 interface TreinoData {
@@ -49,12 +50,6 @@ const FERIADOS = [
     "2026-10-28", "2026-11-02", "2026-11-15", "2026-11-20",
     "2026-12-25"
 ];
-
-// Mapa de Imagens das Turmas
-const TURMA_IMAGENS: Record<string, string> = {
-    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
-    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-};
 
 // Helpers
 const formatDateString = (date: Date) => {
@@ -106,7 +101,11 @@ function TreinoCard({ treino }: { treino: TreinoData }) {
         const ranking = Object.entries(counts)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3)
-            .map(([turma, count]) => ({ turma, count, img: TURMA_IMAGENS[turma] }));
+            .map(([turma, count]) => ({
+                turma,
+                count,
+                img: getTurmaImage(turma, "https://github.com/shadcn.png"),
+            }));
 
         setStats({ confirmados: goingRows.length, avatares, turmas: ranking });
     }, [user]);

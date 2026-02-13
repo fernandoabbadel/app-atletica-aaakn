@@ -55,6 +55,22 @@ export interface AdminReportRecord {
   reporterId?: string;
 }
 
+export type AdminModerationCategory = "comunidade" | "gym";
+
+export interface AdminModerationRecord {
+  id: string;
+  categoria: AdminModerationCategory;
+  autor: string;
+  mensagem: string;
+  status: "pendente" | "resolvida";
+  data: string;
+  createdAtMs: number;
+  reporterId?: string;
+  targetId?: string;
+  targetType?: string;
+  motivo?: string;
+}
+
 export type SupportCategory =
   | "geral"
   | "financeiro"
@@ -289,6 +305,82 @@ const buildSupportRecord = (id: string, raw: unknown): AdminReportRecord | null 
   };
 };
 
+const normalizeModerationStatus = (value: unknown): "pendente" | "resolvida" => {
+  const status = asString(value).toLowerCase();
+  if (status === "resolved" || status === "resolvida") return "resolvida";
+  return "pendente";
+};
+
+const buildCommunityModerationRecord = (
+  id: string,
+  raw: unknown
+): AdminModerationRecord | null => {
+  const obj = asObject(raw);
+  if (!obj) return null;
+
+  const createdAtMs = toMillis(obj.timestamp ?? obj.createdAt);
+  const motivo = asString(obj.reason).trim();
+  const conteudo = asString(obj.content).trim();
+  const mensagem = [motivo, conteudo].filter(Boolean).join(" - ").slice(0, 5_000);
+
+  return {
+    id,
+    categoria: "comunidade",
+    autor: asString(obj.reporterName, "Usuario"),
+    mensagem: mensagem || "Conteudo denunciado na comunidade.",
+    status: normalizeModerationStatus(obj.status),
+    data: createdAtMs ? new Date(createdAtMs).toLocaleString("pt-BR") : "Data desconhecida",
+    createdAtMs,
+    reporterId: asString(obj.reporterId) || undefined,
+    targetId: asString(obj.targetId) || undefined,
+    targetType: asString(obj.targetType) || undefined,
+    motivo: motivo || undefined,
+  };
+};
+
+const isGymRelatedSupport = (raw: Record<string, unknown>): boolean => {
+  const category = normalizeSupportCategory(raw.category);
+  if (category !== "denuncia") return false;
+
+  const moduleHint = asString(raw.module).toLowerCase();
+  if (moduleHint.includes("gym") || moduleHint.includes("treino")) return true;
+
+  const joined = `${asString(raw.subject)} ${asString(raw.message)}`.toLowerCase();
+  return (
+    joined.includes("gym") ||
+    joined.includes("academia") ||
+    joined.includes("treino") ||
+    joined.includes("checkin") ||
+    joined.includes("check-in") ||
+    joined.includes("qr")
+  );
+};
+
+const buildGymModerationRecord = (
+  id: string,
+  raw: unknown
+): AdminModerationRecord | null => {
+  const obj = asObject(raw);
+  if (!obj) return null;
+  if (!isGymRelatedSupport(obj)) return null;
+
+  const createdAtMs = asNumber(obj.createdAtMs, toMillis(obj.createdAt));
+  const subject = asString(obj.subject, "Denuncia Gym").trim();
+  const message = asString(obj.message).trim();
+
+  return {
+    id,
+    categoria: "gym",
+    autor: asString(obj.userName, "Usuario"),
+    mensagem: `${subject}${message ? ` - ${message}` : ""}`.slice(0, 5_000),
+    status: normalizeModerationStatus(obj.status),
+    data: createdAtMs ? new Date(createdAtMs).toLocaleString("pt-BR") : "Data desconhecida",
+    createdAtMs,
+    reporterId: asString(obj.userId) || undefined,
+    motivo: subject || undefined,
+  };
+};
+
 export async function fetchBannedAppeals(
   maxResults = 200
 ): Promise<AdminReportRecord[]> {
@@ -363,6 +455,103 @@ export async function fetchSupportReports(
       .filter((item): item is AdminReportRecord => item !== null);
 
     setCachedValue(adminReportsCache, cacheKey, reports);
+    return reports;
+  });
+}
+
+export async function fetchCommunityModerationReports(
+  maxResults = 200
+): Promise<AdminModerationRecord[]> {
+  const safeLimit = boundedLimit(maxResults, MAX_ADMIN_REPORT_RESULTS);
+  const cacheKey = `community:${safeLimit}`;
+  const cached = getCachedValue(adminReportsCache, cacheKey, ADMIN_REPORT_CACHE_TTL_MS);
+  if (cached) return cached as unknown as AdminModerationRecord[];
+
+  return withInFlight(cacheKey, async () => {
+    let rows: Array<Record<string, unknown>> = [];
+
+    try {
+      const q = query(
+        collection(db, "denuncias"),
+        orderBy("timestamp", "desc"),
+        limit(safeLimit)
+      );
+      const snap = await getDocs(q);
+      rows = snap.docs.map((row) => ({
+        id: row.id,
+        ...(row.data() as Record<string, unknown>),
+      }));
+    } catch (error: unknown) {
+      if (!isIndexRequiredError(error)) throw error;
+      const fallbackQuery = query(collection(db, "denuncias"), limit(safeLimit));
+      const snap = await getDocs(fallbackQuery);
+      rows = snap.docs.map((row) => ({
+        id: row.id,
+        ...(row.data() as Record<string, unknown>),
+      }));
+    }
+
+    const reports = rows
+      .map((row) => buildCommunityModerationRecord(asString(row.id), row))
+      .filter((item): item is AdminModerationRecord => item !== null)
+      .sort((left, right) => right.createdAtMs - left.createdAtMs);
+
+    setCachedValue(
+      adminReportsCache,
+      cacheKey,
+      reports as unknown as AdminReportRecord[]
+    );
+    return reports;
+  });
+}
+
+export async function fetchGymModerationReports(
+  maxResults = 200
+): Promise<AdminModerationRecord[]> {
+  const safeLimit = boundedLimit(maxResults, MAX_ADMIN_REPORT_RESULTS);
+  const cacheKey = `gym:${safeLimit}`;
+  const cached = getCachedValue(adminReportsCache, cacheKey, ADMIN_REPORT_CACHE_TTL_MS);
+  if (cached) return cached as unknown as AdminModerationRecord[];
+
+  return withInFlight(cacheKey, async () => {
+    let rows: Array<Record<string, unknown>> = [];
+
+    try {
+      const q = query(
+        collection(db, "support_requests"),
+        where("category", "==", "denuncia"),
+        orderBy("createdAt", "desc"),
+        limit(safeLimit)
+      );
+      const snap = await getDocs(q);
+      rows = snap.docs.map((row) => ({
+        id: row.id,
+        ...(row.data() as Record<string, unknown>),
+      }));
+    } catch (error: unknown) {
+      if (!isIndexRequiredError(error)) throw error;
+      const fallbackQuery = query(
+        collection(db, "support_requests"),
+        where("category", "==", "denuncia"),
+        limit(safeLimit)
+      );
+      const snap = await getDocs(fallbackQuery);
+      rows = snap.docs.map((row) => ({
+        id: row.id,
+        ...(row.data() as Record<string, unknown>),
+      }));
+    }
+
+    const reports = rows
+      .map((row) => buildGymModerationRecord(asString(row.id), row))
+      .filter((item): item is AdminModerationRecord => item !== null)
+      .sort((left, right) => right.createdAtMs - left.createdAtMs);
+
+    setCachedValue(
+      adminReportsCache,
+      cacheKey,
+      reports as unknown as AdminReportRecord[]
+    );
     return reports;
   });
 }

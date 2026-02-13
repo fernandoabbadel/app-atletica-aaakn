@@ -16,6 +16,7 @@ import {
   fetchTreinoRsvps,
   setTreinoRsvp
 } from "../../../lib/treinosService";
+import { getTurmaImage } from "../../../constants/turmaImages";
 
 // --- TIPAGENS (O Escudo do Código) ---
 interface TreinoData {
@@ -53,14 +54,6 @@ interface AlunoLista {
   avatar: string;
   statusVisual: "confirmado" | "presente" | "falta";
 }
-
-// Mapa de Imagens das Turmas
-const TURMA_IMAGENS: Record<string, string> = {
-    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
-    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpg",
-    "Geral": "https://github.com/shadcn.png"
-};
 
 export default function TreinoDetalhesPage() {
   const params = useParams();
@@ -168,7 +161,11 @@ export default function TreinoDetalhesPage() {
       return Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
-          .map(([turma, count]) => ({ turma, count, imagem: TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"] }));
+          .map(([turma, count]) => ({
+            turma,
+            count,
+            imagem: getTurmaImage(turma, "https://github.com/shadcn.png"),
+          }));
   }, [listaFinal]);
 
   // 🦈 4. AÇÃO DE RSVP CORRIGIDA PARA ATUALIZAR PERFIL 🦈

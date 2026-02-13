@@ -17,6 +17,11 @@ import {
   fetchSharkroundPlayersPreview,
   fetchSharkroundTubasRanking,
 } from "../../lib/sharkroundGameService";
+import {
+  fetchSharkroundAppConfig,
+  getDefaultSharkroundAppConfig,
+  type SharkroundAppConfig,
+} from "../../lib/sharkroundConfigService";
 
 // --- TIPAGENS ---
 type TipoCasa = 'LIGA' | 'SORTE' | 'AZAR' | 'PRISAO' | 'INICIO';
@@ -99,8 +104,56 @@ export default function SharkRoundPage() {
     acertos: 0,
     erros: 0,
   });
+  const [gameConfig, setGameConfig] = useState<SharkroundAppConfig>(
+    getDefaultSharkroundAppConfig()
+  );
   
   const [isDebugMode, setIsDebugMode] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadConfig = async () => {
+      try {
+        const config = await fetchSharkroundAppConfig({ forceRefresh: false });
+        if (!mounted) return;
+        setGameConfig(config);
+      } catch (error: unknown) {
+        console.error(error);
+      }
+    };
+
+    void loadConfig();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setJogador((previous) => {
+      const untouchedGuest =
+        previous.id === "guest" &&
+        previous.posicao === 0 &&
+        previous.questoesAcertadasCiclo === 0 &&
+        previous.tubas === 100 &&
+        previous.jogadasRestantes === 5;
+
+      if (untouchedGuest) {
+        return {
+          ...previous,
+          tubas: gameConfig.startingCoins,
+          jogadasRestantes: gameConfig.dailyRollsLimit,
+        };
+      }
+
+      return {
+        ...previous,
+        jogadasRestantes: Math.min(
+          previous.jogadasRestantes,
+          gameConfig.dailyRollsLimit
+        ),
+      };
+    });
+  }, [gameConfig]);
 
   // --- 1. INICIALIZAÃ‡ÃƒO ---
   useEffect(() => {
@@ -239,11 +292,16 @@ export default function SharkRoundPage() {
     if (jogador.jogadasRestantes <= 0) return addToast("Sem jogadas de dado hoje. Volte amanha.", "error");
     
     if (jogador.preso) {
-        if (jogador.coracoes >= 5) {
+        if (jogador.coracoes >= gameConfig.heartTarget) {
             setJogador(p => ({...p, preso: false, coracoes: 0}));
-            addToast("VocÃª conseguiu 5 coraÃ§Ãµes! EstÃ¡ livre!", "success");
+            addToast(`Voce conseguiu ${gameConfig.heartTarget} coracoes e esta livre!`, "success");
         } else {
-            return setModalEvento({ titulo: "Preso na DP", msg: `Voce tem ${jogador.coracoes}/5 coracoes. Pague 50 moedas ou espere ajuda.`, tipo: 'error', isJail: true });
+            return setModalEvento({
+              titulo: "Preso na DP",
+              msg: `Voce tem ${jogador.coracoes}/${gameConfig.heartTarget} coracoes. Pague ${gameConfig.bailCost} moedas ou espere ajuda.`,
+              tipo: 'error',
+              isJail: true
+            });
         }
         return;
     }
@@ -285,7 +343,7 @@ export default function SharkRoundPage() {
             }
         });
         const bonusQuestoes = jogador.questoesAcertadasCiclo * 10;
-        const total = 50 + bonusPredios + bonusQuestoes;
+        const total = gameConfig.cycleBaseReward + bonusPredios + bonusQuestoes;
 
         addToast(`Volta completa! +${total} moedas`, "success"); 
         setJogador(p => ({...p, tubas: p.tubas + total, questoesAcertadasCiclo: 0})); 
@@ -382,9 +440,9 @@ export default function SharkRoundPage() {
 
   const darCoracao = (targetId: string) => {
       setOutrosJogadores(prev => prev.map(p => {
-          if (p.id === targetId && p.coracoes < 5) {
-              addToast(`Voce ajudou ${p.nome}! +5 moedas`, "success");
-              setJogador(j => ({...j, tubas: j.tubas + 5})); 
+          if (p.id === targetId && p.coracoes < gameConfig.heartTarget) {
+              addToast(`Voce ajudou ${p.nome}! +${gameConfig.heartHelpReward} moedas`, "success");
+              setJogador(j => ({...j, tubas: j.tubas + gameConfig.heartHelpReward})); 
               return { ...p, coracoes: p.coracoes + 1 };
           }
           return p;
@@ -418,7 +476,7 @@ export default function SharkRoundPage() {
              <div className="flex flex-col items-end">
                 <span className="text-zinc-500 text-[9px] font-bold uppercase">Moedas</span>
                 <span className="text-blue-400 flex items-center gap-1 font-black"><DollarSign size={12}/> {jogador.tubas}</span>
-                <span className="text-[9px] font-bold text-zinc-500 uppercase">Dado: {jogador.jogadasRestantes}/5</span>
+                <span className="text-[9px] font-bold text-zinc-500 uppercase">Dado: {jogador.jogadasRestantes}/{gameConfig.dailyRollsLimit}</span>
              </div>
          </div>
       </header>
@@ -430,7 +488,7 @@ export default function SharkRoundPage() {
           </button>
           <div className="bg-black/70 border border-zinc-700 rounded-xl px-3 py-1 text-center">
             <p className="text-[10px] uppercase font-black tracking-widest text-zinc-300">Dado</p>
-            <p className="text-[10px] text-zinc-500 font-bold">5 jogadas por dia - faltam {jogador.jogadasRestantes}</p>
+            <p className="text-[10px] text-zinc-500 font-bold">{gameConfig.dailyRollsLimit} jogadas por dia - faltam {jogador.jogadasRestantes}</p>
           </div>
       </div>
 
@@ -507,12 +565,12 @@ export default function SharkRoundPage() {
                               <div key={p.id} className="flex items-center justify-between bg-zinc-950 p-2 rounded-lg border border-zinc-800 mb-2">
                                   <div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-zinc-800 overflow-hidden relative"><Image src={p.avatar} alt={p.nome} fill className="object-cover" unoptimized/></div><span className="text-xs text-white font-bold">{p.nome}</span></div>
                                   <div className="flex gap-1 items-center">
-                                      <div className="flex">{[1,2,3,4,5].map(i => (<Heart key={i} size={10} className={`${i <= (p.coracoes || 0) ? 'fill-red-500 text-red-500' : 'text-zinc-800'}`}/>))}</div>
+                                      <div className="flex">{Array.from({ length: gameConfig.heartTarget }, (_, idx) => idx + 1).map(i => (<Heart key={i} size={10} className={`${i <= (p.coracoes || 0) ? 'fill-red-500 text-red-500' : 'text-zinc-800'}`}/>))}</div>
                                       <button onClick={() => darCoracao(p.id)} className="bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-black p-1 rounded-full ml-1"><Heart size={12}/></button>
                                   </div>
                               </div>
                           ))}
-                          <p className="text-[9px] text-zinc-500 italic mt-2">* Clique no botao verde para dar 1 coracao e ganhar 5 moedas.</p>
+                          <p className="text-[9px] text-zinc-500 italic mt-2">* Clique no botao verde para dar 1 coracao e ganhar {gameConfig.heartHelpReward} moedas.</p>
                       </div>
                   )}
               </div>
@@ -528,11 +586,11 @@ export default function SharkRoundPage() {
                 {modalEvento.isJail ? (
                     <div className="flex flex-col gap-3">
                         <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                            <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Seus CoraÃ§Ãµes ({jogador.coracoes}/5)</p>
-                            <div className="flex justify-center gap-2 mb-3">{[1,2,3,4,5].map(i => (<Heart key={i} size={20} className={`${i <= jogador.coracoes ? 'fill-red-500 text-red-500' : 'text-zinc-700'}`}/>))}</div>
+                            <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Seus Coracoes ({jogador.coracoes}/{gameConfig.heartTarget})</p>
+                            <div className="flex justify-center gap-2 mb-3">{Array.from({ length: gameConfig.heartTarget }, (_, idx) => idx + 1).map(i => (<Heart key={i} size={20} className={`${i <= jogador.coracoes ? 'fill-red-500 text-red-500' : 'text-zinc-700'}`}/>))}</div>
                             <p className="text-xs text-zinc-600">Espere ajuda dos amigos...</p>
                         </div>
-                        <button onClick={() => { if(jogador.tubas>=50){setJogador(p=>({...p, tubas:p.tubas-50, preso:false, coracoes:0})); setModalEvento(null);} else {addToast("Sem moedas!", "error")} }} className="w-full bg-zinc-800 text-zinc-400 hover:text-white py-3 rounded-xl font-bold uppercase text-xs border border-zinc-700">Pagar fianca (50 moedas)</button>
+                        <button onClick={() => { if(jogador.tubas>=gameConfig.bailCost){setJogador(p=>({...p, tubas:p.tubas-gameConfig.bailCost, preso:false, coracoes:0})); setModalEvento(null);} else {addToast("Sem moedas!", "error")} }} className="w-full bg-zinc-800 text-zinc-400 hover:text-white py-3 rounded-xl font-bold uppercase text-xs border border-zinc-700">Pagar fianca ({gameConfig.bailCost} moedas)</button>
                     </div>
                 ) : (
                     <button onClick={() => modalEvento.move ? moverJogador(modalEvento.move) : setModalEvento(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl uppercase text-xs shadow-lg">Continuar</button>
@@ -597,14 +655,14 @@ export default function SharkRoundPage() {
                 <button onClick={() => setModalRegras(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><XCircle/></button>
                 <h3 className="text-xl font-black text-white mb-6 flex items-center gap-2"><HelpCircle className="text-emerald-500"/> Regras do Jogo</h3>
                 <ul className="space-y-4 text-sm text-zinc-400 text-left">
-                    <li><strong className="text-emerald-500">Objetivo:</strong> Dominar as Ligas e juntar moedas.</li>
-                    <li><strong className="text-emerald-500">Evolucao:</strong> Terreno &rarr; Clinica &rarr; Hospital &rarr; Ministerio.</li>
-                    <li><strong className="text-emerald-500">Ciclo:</strong> +50 moedas + bonus por construcoes.</li>
-                    <li><strong className="text-red-500">Prisao:</strong> Saia com 50 moedas ou 5 coracoes.</li>
-                    <li><strong className="text-emerald-500">Dado:</strong> cada atleta tem 5 jogadas por dia.</li>
-                    <li><strong className="text-emerald-500">Perguntas:</strong> acertou conquista/evolui casa; errou perde 1 rodada.</li>
-                    <li><strong className="text-emerald-500">DP Anatomia:</strong> valor para se salvar: 50 moedas.</li>
-                    <li><strong>Aluguel:</strong> o pagamento segue a fila de quem construiu primeiro.</li>
+                    {gameConfig.rules.map((rule, index) => (
+                      <li key={`${rule}-${index}`}>
+                        <strong className="text-emerald-500">Regra {index + 1}:</strong> {rule}
+                      </li>
+                    ))}
+                    <li><strong className="text-emerald-500">DP Anatomia:</strong> valor para se salvar: {gameConfig.bailCost} moedas.</li>
+                    <li><strong className="text-emerald-500">Coracoes:</strong> libertacao em {gameConfig.heartTarget} coracoes.</li>
+                    <li><strong className="text-emerald-500">Dado:</strong> limite diario de {gameConfig.dailyRollsLimit} jogadas.</li>
                 </ul>
                 <button onClick={() => setModalRegras(false)} className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl uppercase text-xs">Entendi</button>
             </div>

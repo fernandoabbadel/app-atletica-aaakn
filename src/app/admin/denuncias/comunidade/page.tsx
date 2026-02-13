@@ -1,14 +1,51 @@
 ﻿"use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, MessageCircle } from "lucide-react";
 
-const MOCK_REPORTS = [
-  { id: "com-1", autor: "Usuario A", mensagem: "Post com ofensa em comentario.", status: "pendente" },
-  { id: "com-2", autor: "Usuario B", mensagem: "Spam repetitivo no feed.", status: "pendente" },
-];
+import {
+  fetchCommunityModerationReports,
+  type AdminModerationRecord,
+} from "../../../../lib/reportsService";
+import { isFirebasePermissionError } from "../../../../lib/firebaseErrors";
+
+const PAGE_SIZE = 20;
 
 export default function AdminDenunciasComunidadePage() {
+  const [rows, setRows] = useState<AdminModerationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const reports = await fetchCommunityModerationReports(240);
+        if (!mounted) return;
+        setRows(reports);
+      } catch (error: unknown) {
+        if (!isFirebasePermissionError(error) && mounted) {
+          setRows([]);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const paged = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [rows, page]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
       <header className="sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 px-6 py-5">
@@ -24,19 +61,71 @@ export default function AdminDenunciasComunidadePage() {
       </header>
 
       <main className="px-6 py-6 max-w-5xl mx-auto space-y-3">
-        {MOCK_REPORTS.map((row) => (
-          <article key={row.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-bold">{row.autor}</p>
-              <span className="text-[10px] text-yellow-400 uppercase font-bold">{row.status}</span>
+        {loading ? (
+          <div className="text-xs text-zinc-500 uppercase font-bold">Carregando...</div>
+        ) : paged.length === 0 ? (
+          <div className="text-sm text-zinc-500 border border-zinc-800 rounded-xl p-5">
+            Sem denuncias de comunidade.
+          </div>
+        ) : (
+          paged.map((row) => (
+            <article key={row.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-bold">{row.autor}</p>
+                <span
+                  className={`text-[10px] uppercase font-bold ${
+                    row.status === "resolvida" ? "text-emerald-400" : "text-yellow-400"
+                  }`}
+                >
+                  {row.status}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400">{row.mensagem}</p>
+              <div className="text-[11px] text-zinc-500 flex items-center justify-between gap-3">
+                <span>{row.data}</span>
+                <div className="inline-flex items-center gap-2">
+                  {row.targetType ? <span className="uppercase">{row.targetType}</span> : null}
+                  {row.reporterId ? (
+                    <Link
+                      href={`/admin/usuarios/${row.reporterId}`}
+                      className="text-emerald-400 hover:underline"
+                    >
+                      Usuario
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            </article>
+          ))
+        )}
+
+        {rows.length > PAGE_SIZE && (
+          <div className="pt-2 flex items-center justify-between text-xs text-zinc-500 font-bold uppercase">
+            <span>
+              Pagina {page} de {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1 rounded border border-zinc-700 disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1 rounded border border-zinc-700 disabled:opacity-40"
+              >
+                Proxima
+              </button>
             </div>
-            <p className="text-xs text-zinc-400 mt-2">{row.mensagem}</p>
-          </article>
-        ))}
+          </div>
+        )}
 
         <div className="text-[11px] text-zinc-600 inline-flex items-center gap-2">
           <MessageCircle size={13} />
-          Integracao completa depende das rotinas de denuncia da comunidade.
+          Leitura paginada e cacheada para reduzir custo.
         </div>
       </main>
     </div>

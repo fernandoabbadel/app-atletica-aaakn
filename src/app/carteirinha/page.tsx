@@ -170,7 +170,8 @@ export default function CarteirinhaPage() {
                     alt="Logo"
                     width={32}
                     height={32}
-                    className="w-8 h-8 object-contain"
+                    className="object-contain"
+                    style={{ width: "auto", height: "auto" }}
                   />
                 </div>
                 <div>
@@ -297,7 +298,8 @@ export default function CarteirinhaPage() {
                           alt="Logo"
                           width={28}
                           height={28}
-                          className="w-7 h-7 object-contain"
+                          className="object-contain"
+                          style={{ width: "auto", height: "auto" }}
                         />
                       </div>
                       <h3 className="text-black font-black text-xl uppercase tracking-tighter">Acesso Atleta</h3>

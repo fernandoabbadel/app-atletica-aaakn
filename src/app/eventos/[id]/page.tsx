@@ -17,6 +17,7 @@ import {
   cancelEventTicketRequest,
   fetchEventDetailsBundle,
 } from "../../../lib/eventsService";
+import { getTurmaImage } from "../../../constants/turmaImages";
 import { 
   doc, collection, runTransaction, serverTimestamp, 
   increment, addDoc, updateDoc, arrayUnion, arrayRemove, deleteDoc,
@@ -135,12 +136,6 @@ const DEFAULT_PATENTES: PatenteConfig[] = [
 const PLAN_COLORS: Record<string, string> = {
     yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
     blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
-};
-
-const TURMA_IMAGENS: Record<string, string> = {
-    "T1": "/turma1.jpeg", "T2": "/turma2.jpeg", "T3": "/turma3.jpeg",
-    "T4": "/turma4.jpeg", "T5": "/turma5.jpeg", "T6": "/turma6.jpeg",
-    "T7": "/turma7.jpeg", "T8": "/turma8.jpg", "Geral": "https://github.com/shadcn.png"
 };
 
 const COMMENT_MAX_CHARS = 280;
@@ -535,7 +530,14 @@ export default function DetalhesEventoPage() {
   const rankingTurmas = useMemo(() => {
       const counts: Record<string, number> = {};
       rsvps.forEach(r => r.status === 'going' && (counts[(r.userTurma || "Geral").toUpperCase()] = (counts[(r.userTurma || "Geral").toUpperCase()] || 0) + 1));
-      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, c]) => ({ turma: t, count: c, imagem: TURMA_IMAGENS[t] || TURMA_IMAGENS["Geral"] }));
+      return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([t, c]) => ({
+          turma: t,
+          count: c,
+          imagem: getTurmaImage(t, "https://github.com/shadcn.png"),
+        }));
   }, [rsvps]);
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
@@ -691,7 +693,7 @@ export default function DetalhesEventoPage() {
                     <div key={turma} className="flex items-center gap-1">
                         <div className="relative w-5 h-5 rounded-full border border-zinc-700 overflow-hidden">
                             <Image 
-                                src={TURMA_IMAGENS[turma] || TURMA_IMAGENS["Geral"]} 
+                                src={getTurmaImage(turma, "https://github.com/shadcn.png")} 
                                 alt={`Turma ${turma}`} 
                                 fill
                                 sizes="20px"
@@ -823,7 +825,7 @@ export default function DetalhesEventoPage() {
                                         {/* ID 653: Foto da Turma + Nome */}
                                        <div className="flex items-center gap-1 mt-0.5 opacity-60">
             <Image 
-                src={TURMA_IMAGENS[c.userTurma] || TURMA_IMAGENS["Geral"]} 
+                src={getTurmaImage(c.userTurma, "https://github.com/shadcn.png")} 
                 alt="Turma"
                 width={12}
                 height={12}

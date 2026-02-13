@@ -19,6 +19,7 @@ type CacheEntry<T> = {
 
 const READ_CACHE_TTL_MS = 30_000;
 const MAX_LEAGUE_RESULTS = 160;
+const SHARKROUND_LEAGUES_COLLECTION = "ligas_config";
 
 const SHARKROUND_TOGGLE_CALLABLE = "sharkroundAdminToggleLeague";
 
@@ -167,7 +168,11 @@ export async function fetchSharkroundLeagues(options?: {
     if (cached) return cached;
   }
 
-  const q = query(collection(db, "ligas"), orderBy("nome", "asc"), limit(maxResults));
+  const q = query(
+    collection(db, SHARKROUND_LEAGUES_COLLECTION),
+    orderBy("nome", "asc"),
+    limit(maxResults)
+  );
   const snap = await getDocs(q);
   const leagues = snap.docs
     .map((row) => normalizeLeague(row.id, row.data()))
@@ -186,10 +191,13 @@ export async function setSharkroundLeagueActive(payload: {
 
   const requestPayload = { leagueId, ativa: payload.ativa };
   await callWithFallback<typeof requestPayload, { ok: boolean }>(
-    SHARKROUND_TOGGLE_CALLABLE,
+      SHARKROUND_TOGGLE_CALLABLE,
     requestPayload,
     async () => {
-      await updateDoc(doc(db, "ligas", leagueId), { ativa: payload.ativa });
+      await updateDoc(
+        doc(db, SHARKROUND_LEAGUES_COLLECTION, leagueId),
+        { ativa: payload.ativa }
+      );
       return { ok: true };
     }
   );
