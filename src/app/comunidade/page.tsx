@@ -254,7 +254,7 @@ export default function ComunidadePage() {
     const loadPosts = async () => {
       setLoading(true);
       try {
-        const rows = await fetchCommunityFeed(120);
+        const rows = await fetchCommunityFeed(40);
         if (!mounted) return;
 
         let data = rows.map(
@@ -343,7 +343,7 @@ export default function ComunidadePage() {
           try {
               const rows = await fetchCommunityComments(commentModal, {
                   order: "asc",
-                  maxResults: 120,
+                  maxResults: 60,
               });
 
               if (!mounted) return;

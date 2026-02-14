@@ -25,22 +25,31 @@ type CacheEntry<T> = {
   value: T;
 };
 
-const READ_CACHE_TTL_MS = 30_000;
+const READ_CACHE_TTL_MS = 120_000;
+const SESSION_CACHE_TTL_MS = 600_000;
+const SESSION_CACHE_PREFIX = "profileService:v1";
 
-const MAX_POST_RESULTS = 16;
-const MAX_EVENT_RESULTS = 14;
-const MAX_TREINO_RESULTS = 14;
-const MAX_LIGA_RESULTS = 14;
+const MAX_POST_RESULTS = 8;
+const MAX_EVENT_RESULTS = 8;
+const MAX_TREINO_RESULTS = 8;
+const MAX_LIGA_RESULTS = 8;
 const MAX_FOLLOW_RESULTS = 260;
 
 const PROFILE_UPDATE_FIELDS_CALLABLE = "profileUserUpdateFields";
 const PROFILE_MARK_COMPLETE_CALLABLE = "profileMarkComplete";
 const PROFILE_TOGGLE_FOLLOW_CALLABLE = "profileToggleFollow";
+const PROFILE_ADMIN_RECOUNT_FOLLOWS_CALLABLE = "profileAdminRecountFollowStats";
 
 const profileCache = new Map<string, CacheEntry<ProfileUserRecord | null>>();
 const ownBundleCache = new Map<string, CacheEntry<OwnProfileBundle | null>>();
 const publicBundleCache = new Map<string, CacheEntry<PublicProfileBundle | null>>();
 const followListCache = new Map<string, CacheEntry<FollowListItem[]>>();
+const followCountsCache = new Map<string, CacheEntry<FollowCounts>>();
+const inflightProfileCache = new Map<string, Promise<ProfileUserRecord | null>>();
+const inflightOwnBundleCache = new Map<string, Promise<OwnProfileBundle | null>>();
+const inflightPublicBundleCache = new Map<string, Promise<PublicProfileBundle | null>>();
+const inflightFollowListCache = new Map<string, Promise<FollowListItem[]>>();
+const inflightFollowCountsCache = new Map<string, Promise<FollowCounts>>();
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -89,6 +98,82 @@ const setCachedValue = <T>(
   cache.set(key, { cachedAt: Date.now(), value });
 };
 
+const runWithInflight = async <T>(
+  inflight: Map<string, Promise<T>>,
+  key: string,
+  fn: () => Promise<T>
+): Promise<T> => {
+  const existing = inflight.get(key);
+  if (existing) return existing;
+
+  const promise = fn();
+  inflight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inflight.delete(key);
+  }
+};
+
+type SessionCacheEnvelope<T> = {
+  cachedAt: number;
+  value: T;
+};
+
+const buildSessionKey = (key: string): string => `${SESSION_CACHE_PREFIX}:${key}`;
+
+const readSessionCache = <T>(key: string): T | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(buildSessionKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SessionCacheEnvelope<T>;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof parsed.cachedAt !== "number"
+    ) {
+      window.sessionStorage.removeItem(buildSessionKey(key));
+      return null;
+    }
+    if (Date.now() - parsed.cachedAt > SESSION_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(buildSessionKey(key));
+      return null;
+    }
+    return parsed.value;
+  } catch {
+    return null;
+  }
+};
+
+const writeSessionCache = <T>(key: string, value: T): void => {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: SessionCacheEnvelope<T> = { cachedAt: Date.now(), value };
+    window.sessionStorage.setItem(buildSessionKey(key), JSON.stringify(payload));
+  } catch {
+    // ignora erro de quota
+  }
+};
+
+const dropSessionCacheIf = (predicate: (cacheKey: string) => boolean): void => {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const storageKey = window.sessionStorage.key(index);
+      if (!storageKey || !storageKey.startsWith(`${SESSION_CACHE_PREFIX}:`)) continue;
+      const cacheKey = storageKey.slice(`${SESSION_CACHE_PREFIX}:`.length);
+      if (predicate(cacheKey)) {
+        keysToRemove.push(storageKey);
+      }
+    }
+    keysToRemove.forEach((storageKey) => window.sessionStorage.removeItem(storageKey));
+  } catch {
+    // ignora erro de storage
+  }
+};
+
 const shouldFallbackToClientWrites = (error: unknown): boolean => {
   const code = getFirebaseErrorCode(error)?.toLowerCase();
   if (!code) return true;
@@ -117,14 +202,16 @@ const isIndexRequiredError = (error: unknown): boolean => {
 async function callWithFallback<TReq, TRes>(
   callableName: string,
   payload: TReq,
-  fallbackFn: () => Promise<TRes>
+  fallbackFn: () => Promise<TRes>,
+  options?: { allowClientFallback?: boolean }
 ): Promise<TRes> {
   try {
     const callable = httpsCallable<TReq, TRes>(functions, callableName);
     const response = await callable(payload);
     return response.data;
   } catch (error: unknown) {
-    if (shouldFallbackToClientWrites(error)) {
+    const allowClientFallback = options?.allowClientFallback ?? true;
+    if (allowClientFallback && shouldFallbackToClientWrites(error)) {
       return fallbackFn();
     }
     throw error;
@@ -151,6 +238,7 @@ const toMillis = (value: unknown): number => {
 const clearProfileCachesForUser = (uid: string): void => {
   profileCache.delete(uid);
   ownBundleCache.delete(uid);
+  followCountsCache.delete(uid);
   for (const key of publicBundleCache.keys()) {
     if (key.startsWith(`${uid}:`) || key.endsWith(`:${uid}`)) {
       publicBundleCache.delete(key);
@@ -161,6 +249,16 @@ const clearProfileCachesForUser = (uid: string): void => {
       followListCache.delete(key);
     }
   }
+
+  dropSessionCacheIf((cacheKey) => {
+    if (cacheKey === `profile:${uid}`) return true;
+    if (cacheKey === `own:${uid}`) return true;
+    if (cacheKey === `counts:${uid}`) return true;
+    if (cacheKey.startsWith(`follow:${uid}:`)) return true;
+    if (cacheKey.startsWith(`public:${uid}:`)) return true;
+    if (cacheKey.endsWith(`:${uid}`) && cacheKey.startsWith("public:")) return true;
+    return false;
+  });
 };
 
 export interface ProfileUserRecord {
@@ -228,6 +326,11 @@ export interface FollowListItem {
   nome: string;
   foto: string;
   turma: string;
+}
+
+export interface FollowCounts {
+  followersCount: number;
+  followingCount: number;
 }
 
 export interface OwnProfileBundle {
@@ -471,21 +574,30 @@ export async function fetchProfileById(
   const uid = uidRaw.trim();
   if (!uid) return null;
 
-  const forceRefresh = options?.forceRefresh ?? false;
-  if (!forceRefresh) {
-    const cached = getCachedValue(profileCache, uid);
-    if (cached) return cached;
-  }
+  return runWithInflight(inflightProfileCache, uid, async () => {
+    const forceRefresh = options?.forceRefresh ?? false;
+    if (!forceRefresh) {
+      const cached = getCachedValue(profileCache, uid);
+      if (cached) return cached;
+      const sessionCached = readSessionCache<ProfileUserRecord | null>(`profile:${uid}`);
+      if (sessionCached) {
+        setCachedValue(profileCache, uid, sessionCached);
+        return sessionCached;
+      }
+    }
 
-  const snap = await getDoc(doc(db, "users", uid));
-  if (!snap.exists()) {
-    setCachedValue(profileCache, uid, null);
-    return null;
-  }
+    const snap = await getDoc(doc(db, "users", uid));
+    if (!snap.exists()) {
+      setCachedValue(profileCache, uid, null);
+      writeSessionCache(`profile:${uid}`, null);
+      return null;
+    }
 
-  const normalized = normalizeUserProfile(uid, snap.data());
-  setCachedValue(profileCache, uid, normalized);
-  return normalized;
+    const normalized = normalizeUserProfile(uid, snap.data());
+    setCachedValue(profileCache, uid, normalized);
+    writeSessionCache(`profile:${uid}`, normalized);
+    return normalized;
+  });
 }
 
 export async function fetchOwnProfileBundle(
@@ -495,44 +607,53 @@ export async function fetchOwnProfileBundle(
   const uid = uidRaw.trim();
   if (!uid) return null;
 
-  const forceRefresh = options?.forceRefresh ?? false;
-  if (!forceRefresh) {
-    const cached = getCachedValue(ownBundleCache, uid);
-    if (cached) return cached;
-  }
+  return runWithInflight(inflightOwnBundleCache, uid, async () => {
+    const forceRefresh = options?.forceRefresh ?? false;
+    if (!forceRefresh) {
+      const cached = getCachedValue(ownBundleCache, uid);
+      if (cached) return cached;
+      const sessionCached = readSessionCache<OwnProfileBundle | null>(`own:${uid}`);
+      if (sessionCached) {
+        setCachedValue(ownBundleCache, uid, sessionCached);
+        return sessionCached;
+      }
+    }
 
-  const profile = await fetchProfileById(uid, { forceRefresh });
-  if (!profile) {
-    setCachedValue(ownBundleCache, uid, null);
-    return null;
-  }
+    const profile = await fetchProfileById(uid, { forceRefresh });
+    if (!profile) {
+      setCachedValue(ownBundleCache, uid, null);
+      writeSessionCache(`own:${uid}`, null);
+      return null;
+    }
 
-  const statsObj = asObject(profile.stats);
-  const followersCountRaw = statsObj?.followersCount;
-  const followingCountRaw = statsObj?.followingCount;
+    const statsObj = asObject(profile.stats);
+    const followersCountRaw = statsObj?.followersCount;
+    const followingCountRaw = statsObj?.followingCount;
 
-  const [followersCount, followingCount, posts, events, treinos, ligas] =
-    await Promise.all([
-      resolveFollowCount(uid, "followers", followersCountRaw),
-      resolveFollowCount(uid, "following", followingCountRaw),
-      fetchProfilePosts(uid),
-      fetchProfileEvents(uid),
-      fetchProfileTreinos(uid),
-      fetchProfileLigas(uid),
-    ]);
+    const [followersCount, followingCount, posts, events, treinos, ligas] =
+      await Promise.all([
+        resolveFollowCount(uid, "followers", followersCountRaw),
+        resolveFollowCount(uid, "following", followingCountRaw),
+        fetchProfilePosts(uid),
+        fetchProfileEvents(uid),
+        fetchProfileTreinos(uid),
+        fetchProfileLigas(uid),
+      ]);
 
-  const bundle: OwnProfileBundle = {
-    profile,
-    followersCount,
-    followingCount,
-    posts,
-    events,
-    treinos,
-    ligas,
-  };
+    const bundle: OwnProfileBundle = {
+      profile,
+      followersCount,
+      followingCount,
+      posts,
+      events,
+      treinos,
+      ligas,
+    };
 
-  setCachedValue(ownBundleCache, uid, bundle);
-  return bundle;
+    setCachedValue(ownBundleCache, uid, bundle);
+    writeSessionCache(`own:${uid}`, bundle);
+    return bundle;
+  });
 }
 
 export async function fetchPublicProfileBundle(
@@ -547,21 +668,30 @@ export async function fetchPublicProfileBundle(
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${targetUid}:${viewerUid || "anon"}`;
 
-  if (!forceRefresh) {
-    const cached = getCachedValue(publicBundleCache, cacheKey);
-    if (cached) return cached;
-  }
+  return runWithInflight(inflightPublicBundleCache, cacheKey, async () => {
+    if (!forceRefresh) {
+      const cached = getCachedValue(publicBundleCache, cacheKey);
+      if (cached) return cached;
+      const sessionCached = readSessionCache<PublicProfileBundle | null>(`public:${cacheKey}`);
+      if (sessionCached) {
+        setCachedValue(publicBundleCache, cacheKey, sessionCached);
+        return sessionCached;
+      }
+    }
 
-  const ownBundle = await fetchOwnProfileBundle(targetUid, { forceRefresh });
-  if (!ownBundle) {
-    setCachedValue(publicBundleCache, cacheKey, null);
-    return null;
-  }
+    const ownBundle = await fetchOwnProfileBundle(targetUid, { forceRefresh });
+    if (!ownBundle) {
+      setCachedValue(publicBundleCache, cacheKey, null);
+      writeSessionCache(`public:${cacheKey}`, null);
+      return null;
+    }
 
-  const isFollowing = viewerUid ? await checkIsFollowing(targetUid, viewerUid) : false;
-  const bundle: PublicProfileBundle = { ...ownBundle, isFollowing };
-  setCachedValue(publicBundleCache, cacheKey, bundle);
-  return bundle;
+    const isFollowing = viewerUid ? await checkIsFollowing(targetUid, viewerUid) : false;
+    const bundle: PublicProfileBundle = { ...ownBundle, isFollowing };
+    setCachedValue(publicBundleCache, cacheKey, bundle);
+    writeSessionCache(`public:${cacheKey}`, bundle);
+    return bundle;
+  });
 }
 
 export async function fetchFollowList(
@@ -576,33 +706,100 @@ export async function fetchFollowList(
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${uid}:${type}:${maxResults}`;
 
-  if (!forceRefresh) {
-    const cached = getCachedValue(followListCache, cacheKey);
-    if (cached) return cached;
-  }
+  return runWithInflight(inflightFollowListCache, cacheKey, async () => {
+    if (!forceRefresh) {
+      const cached = getCachedValue(followListCache, cacheKey);
+      if (cached) return cached;
+      const sessionCached = readSessionCache<FollowListItem[]>(`follow:${cacheKey}`);
+      if (sessionCached) {
+        setCachedValue(followListCache, cacheKey, sessionCached);
+        return sessionCached;
+      }
+    }
 
-  let rows: FollowListItem[] = [];
-  try {
-    const q = query(
-      collection(db, "users", uid, type),
-      orderBy("followedAt", "desc"),
-      limit(maxResults)
-    );
-    const snap = await getDocs(q);
-    rows = snap.docs
-      .map((row) => normalizeFollowListItem(row.data(), row.id))
-      .filter((row): row is FollowListItem => row !== null);
-  } catch (error: unknown) {
-    if (!isIndexRequiredError(error)) throw error;
-    const fallbackQ = query(collection(db, "users", uid, type), limit(maxResults));
-    const fallbackSnap = await getDocs(fallbackQ);
-    rows = fallbackSnap.docs
-      .map((row) => normalizeFollowListItem(row.data(), row.id))
-      .filter((row): row is FollowListItem => row !== null);
-  }
+    let rows: FollowListItem[] = [];
+    try {
+      const q = query(
+        collection(db, "users", uid, type),
+        orderBy("followedAt", "desc"),
+        limit(maxResults)
+      );
+      const snap = await getDocs(q);
+      rows = snap.docs
+        .map((row) => normalizeFollowListItem(row.data(), row.id))
+        .filter((row): row is FollowListItem => row !== null);
+    } catch (error: unknown) {
+      if (!isIndexRequiredError(error)) throw error;
+      const fallbackQ = query(collection(db, "users", uid, type), limit(maxResults));
+      const fallbackSnap = await getDocs(fallbackQ);
+      rows = fallbackSnap.docs
+        .map((row) => normalizeFollowListItem(row.data(), row.id))
+        .filter((row): row is FollowListItem => row !== null);
+    }
 
-  setCachedValue(followListCache, cacheKey, rows);
-  return rows;
+    setCachedValue(followListCache, cacheKey, rows);
+    writeSessionCache(`follow:${cacheKey}`, rows);
+    return rows;
+  });
+}
+
+export async function fetchFollowCounts(
+  uidRaw: string,
+  options?: { forceRefresh?: boolean }
+): Promise<FollowCounts> {
+  const uid = uidRaw.trim();
+  if (!uid) return { followersCount: 0, followingCount: 0 };
+
+  return runWithInflight(inflightFollowCountsCache, uid, async () => {
+    const forceRefresh = options?.forceRefresh ?? false;
+    if (!forceRefresh) {
+      const cached = getCachedValue(followCountsCache, uid);
+      if (cached) return cached;
+      const sessionCached = readSessionCache<FollowCounts>(`counts:${uid}`);
+      if (sessionCached) {
+        setCachedValue(followCountsCache, uid, sessionCached);
+        return sessionCached;
+      }
+    }
+
+    const [followersSnap, followingSnap] = await Promise.all([
+      getCountFromServer(collection(db, "users", uid, "followers")),
+      getCountFromServer(collection(db, "users", uid, "following")),
+    ]);
+
+    const counts: FollowCounts = {
+      followersCount: followersSnap.data().count,
+      followingCount: followingSnap.data().count,
+    };
+
+    setCachedValue(followCountsCache, uid, counts);
+    writeSessionCache(`counts:${uid}`, counts);
+    return counts;
+  });
+}
+
+export interface ProfileAdminRecountBatchResult {
+  scanned: number;
+  updated: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export async function adminRecountFollowStatsBatch(options?: {
+  batchSize?: number;
+  startAfterUid?: string | null;
+}): Promise<ProfileAdminRecountBatchResult> {
+  const callable = httpsCallable<
+    { batchSize?: number; startAfterUid?: string | null },
+    ProfileAdminRecountBatchResult
+  >(functions, PROFILE_ADMIN_RECOUNT_FOLLOWS_CALLABLE);
+
+  const response = await callable({
+    batchSize: options?.batchSize,
+    startAfterUid: options?.startAfterUid || null,
+  });
+
+  return response.data;
 }
 
 export async function updateProfileFields(payload: {
@@ -759,7 +956,10 @@ export async function toggleFollowProfile(payload: {
   const result = await callWithFallback<
     typeof requestPayload,
     { isFollowing: boolean; followersCount: number; followingCount: number }
-  >(PROFILE_TOGGLE_FOLLOW_CALLABLE, requestPayload, async () => {
+  >(
+    PROFILE_TOGGLE_FOLLOW_CALLABLE,
+    requestPayload,
+    async () => {
     const targetFollowerRef = doc(db, "users", targetUid, "followers", viewerUid);
     const viewerFollowingRef = doc(db, "users", viewerUid, "following", targetUid);
     const targetUserRef = doc(db, "users", targetUid);
@@ -836,6 +1036,9 @@ export async function toggleFollowProfile(payload: {
         followingCount,
       };
     });
+  },
+  {
+    allowClientFallback: false,
   });
 
   clearProfileCachesForUser(targetUid);

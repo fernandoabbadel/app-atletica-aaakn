@@ -9,6 +9,7 @@ const MAX_PERMISSION_USER_RESULTS = 500;
 const MAX_ADMIN_REPORT_RESULTS = 300;
 const MAX_USER_SUPPORT_RESULTS = 120;
 const MAX_TREINO_MODALIDADES = 40;
+const MAX_FOLLOW_RECOUNT_BATCH = 220;
 const DEFAULT_TREINO_MODALIDADES = ["Futsal", "Volei"];
 
 const MASTER_ONLY_ROLES = new Set<string>(["master"]);
@@ -23,6 +24,8 @@ const TREINO_ADMIN_ROLES = new Set<string>([
   "admin_gestor",
   "admin_treino",
 ]);
+const ALBUM_DEFAULT_AVATAR_URL = "https://github.com/shadcn.png";
+const ALBUM_SUMMARY_COLLECTION = "album_summary";
 
 type UnknownRecord = Record<string, unknown>;
 type PermissionMatrix = Record<string, string[]>;
@@ -72,6 +75,12 @@ const normalizePositiveInt = (value: unknown, maxAllowed: number): number => {
 
 const clampText = (value: unknown, maxLen: number, fallback = ""): string =>
   asString(value, fallback).trim().slice(0, maxLen);
+
+const normalizeTurmaCode = (value: unknown): string => {
+  const turma = asString(value).trim().toUpperCase();
+  if (!turma) return "OUTROS";
+  return /^T\d{1,2}$/.test(turma) ? turma : "OUTROS";
+};
 
 const toMillis = (value: unknown): number => {
   if (value instanceof Date) return value.getTime();
@@ -236,7 +245,11 @@ export const sanitizarPedido = functions.firestore
 
 export const permissionsAdminGetMatrix = functions.https.onCall(
   async (_data, context) => {
-    await assertMaster(context);
+    await assertRoleAllowed(
+      context,
+      ADMIN_PANEL_ROLES,
+      "Apenas administradores podem acessar a matriz de permissoes."
+    );
 
     const snap = await db.collection("settings").doc("permissions").get();
 
@@ -457,6 +470,515 @@ export const treinoAdminSaveSettings = functions.https.onCall(
       );
 
     return {ok: true, modalidades};
+  }
+);
+
+export const notificationsMarkRead = functions.https.onCall(
+  async (data, context) => {
+    const caller = await getCallerIdentity(context);
+    const payload = asObject(data);
+    const notificationId = asString(payload?.notificationId).trim();
+
+    if (!notificationId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "notificationId obrigatorio."
+      );
+    }
+
+    const notificationRef = db.collection("notifications").doc(notificationId);
+    const snap = await notificationRef.get();
+    if (!snap.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Notificacao nao encontrada."
+      );
+    }
+
+    const notification = asObject(snap.data()) || {};
+    const ownerId = asString(notification.userId).trim();
+    const canModerate = ADMIN_PANEL_ROLES.has(caller.role);
+
+    if (!canModerate && ownerId !== caller.uid) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Sem permissao para alterar essa notificacao."
+      );
+    }
+
+    await notificationRef.update({
+      read: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {ok: true};
+  }
+);
+
+export const albumRegisterCapture = functions.https.onCall(
+  async (data, context) => {
+    const caller = await getCallerIdentity(context);
+    const payload = asObject(data);
+
+    const collectorUid = asString(payload?.collectorUid).trim();
+    const targetUid = asString(payload?.targetUid).trim();
+
+    if (!collectorUid || !targetUid) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "collectorUid e targetUid sao obrigatorios."
+      );
+    }
+
+    if (collectorUid !== caller.uid) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Somente o proprio usuario pode registrar captura."
+      );
+    }
+
+    if (collectorUid === targetUid) {
+      return {status: "invalid-target"};
+    }
+
+    const collectorRef = db.collection("users").doc(collectorUid);
+    const targetRef = db.collection("users").doc(targetUid);
+    const albumRef = db
+      .collection("users")
+      .doc(collectorUid)
+      .collection("albumColado")
+      .doc(targetUid);
+    const rankingRef = db.collection("album_rankings").doc(collectorUid);
+    const summaryRef = db.collection(ALBUM_SUMMARY_COLLECTION).doc(collectorUid);
+    const notificationRef = db.collection("notifications").doc();
+
+    const result = await db.runTransaction(async (tx) => {
+      const [collectorSnap, targetSnap, albumSnap] = await Promise.all([
+        tx.get(collectorRef),
+        tx.get(targetRef),
+        tx.get(albumRef),
+      ]);
+
+      if (!targetSnap.exists) {
+        return {status: "invalid-target"} as const;
+      }
+
+      if (albumSnap.exists) {
+        return {status: "duplicate"} as const;
+      }
+
+      const collectorData = asObject(collectorSnap.data()) || {};
+      const targetData = asObject(targetSnap.data()) || {};
+
+      const collectorName = clampText(collectorData.nome, 120, "Tubarao");
+      const collectorTurma = clampText(collectorData.turma, 30);
+      const collectorFoto = clampText(
+        collectorData.foto,
+        1200,
+        ALBUM_DEFAULT_AVATAR_URL
+      );
+      const targetName = clampText(targetData.nome, 120, "Integrante");
+      const targetTurma = clampText(targetData.turma, 30);
+
+      tx.set(albumRef, {
+        nome: targetName,
+        turma: targetTurma,
+        dataColada: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      tx.set(
+        rankingRef,
+        {
+          userId: collectorUid,
+          nome: collectorName,
+          turma: collectorTurma,
+          foto: collectorFoto,
+          totalColetado: admin.firestore.FieldValue.increment(1),
+          scansT8: admin.firestore.FieldValue.increment(
+            targetTurma.toUpperCase() === "T8" ? 1 : 0
+          ),
+          ultimoScan: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      tx.set(
+        collectorRef,
+        {
+          stats: {
+            albumCollected: admin.firestore.FieldValue.increment(1),
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      const targetTurmaCode = normalizeTurmaCode(targetTurma);
+      tx.set(
+        summaryRef,
+        {
+          userId: collectorUid,
+          totalCollected: admin.firestore.FieldValue.increment(1),
+          [`capturedByTurma.${targetTurmaCode}`]:
+            admin.firestore.FieldValue.arrayUnion(targetUid),
+          lastCaptureId: targetUid,
+          lastCaptureAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      tx.set(notificationRef, {
+        userId: collectorUid,
+        title: "Nova captura no Album",
+        message: `${targetName} entrou para sua colecao.`,
+        link: "/album",
+        read: false,
+        type: "album",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        status: "ok" as const,
+        targetName,
+        targetTurma,
+      };
+    });
+
+    return result;
+  }
+);
+
+export const profileToggleFollow = functions.https.onCall(
+  async (data, context) => {
+    const caller = await getCallerIdentity(context);
+    const payload = asObject(data);
+
+    const viewerUid = asString(payload?.viewerUid).trim();
+    const targetUid = asString(payload?.targetUid).trim();
+    const currentlyFollowing = payload?.currentlyFollowing === true;
+
+    if (!viewerUid || !targetUid) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "viewerUid e targetUid sao obrigatorios."
+      );
+    }
+
+    if (viewerUid !== caller.uid) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Somente o proprio usuario pode alterar follow."
+      );
+    }
+
+    if (viewerUid === targetUid) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Usuario nao pode seguir a si mesmo."
+      );
+    }
+
+    const viewerDataRaw = asObject(payload?.viewerData) || {};
+    const targetDataRaw = asObject(payload?.targetData) || {};
+
+    const targetFollowerRef = db
+      .collection("users")
+      .doc(targetUid)
+      .collection("followers")
+      .doc(viewerUid);
+    const viewerFollowingRef = db
+      .collection("users")
+      .doc(viewerUid)
+      .collection("following")
+      .doc(targetUid);
+    const targetUserRef = db.collection("users").doc(targetUid);
+    const viewerUserRef = db.collection("users").doc(viewerUid);
+    const notificationRef = db.collection("notifications").doc();
+
+    const result = await db.runTransaction(async (tx) => {
+      const [targetUserSnap, viewerUserSnap, followerSnap, followingSnap] =
+        await Promise.all([
+          tx.get(targetUserRef),
+          tx.get(viewerUserRef),
+          tx.get(targetFollowerRef),
+          tx.get(viewerFollowingRef),
+        ]);
+
+      if (!targetUserSnap.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Usuario alvo nao encontrado."
+        );
+      }
+
+      if (!viewerUserSnap.exists) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Perfil do usuario autenticado nao encontrado."
+        );
+      }
+
+      const targetUserData = asObject(targetUserSnap.data()) || {};
+      const viewerUserData = asObject(viewerUserSnap.data()) || {};
+      const targetStats = asObject(targetUserData.stats) || {};
+      const viewerStats = asObject(viewerUserData.stats) || {};
+      const readStatCount = (value: unknown): number =>
+        typeof value === "number" && Number.isFinite(value) && value > 0
+          ? Math.floor(value)
+          : 0;
+
+      let followersCount = readStatCount(targetStats.followersCount);
+      let followingCount = readStatCount(viewerStats.followingCount);
+
+      const isFollowingNow = followerSnap.exists && followingSnap.exists;
+      const shouldUnfollow = currentlyFollowing || isFollowingNow;
+
+      const viewerFollowData = {
+        uid: viewerUid,
+        nome: clampText(
+          viewerDataRaw.nome,
+          120,
+          clampText(viewerUserData.nome, 120, "Atleta")
+        ),
+        foto: clampText(
+          viewerDataRaw.foto,
+          1200,
+          clampText(viewerUserData.foto, 1200, "")
+        ),
+        turma: clampText(
+          viewerDataRaw.turma,
+          40,
+          clampText(viewerUserData.turma, 40, "Geral")
+        ),
+      };
+
+      const targetFollowData = {
+        uid: targetUid,
+        nome: clampText(
+          targetDataRaw.nome,
+          120,
+          clampText(targetUserData.nome, 120, "Atleta")
+        ),
+        foto: clampText(
+          targetDataRaw.foto,
+          1200,
+          clampText(targetUserData.foto, 1200, "")
+        ),
+        turma: clampText(
+          targetDataRaw.turma,
+          40,
+          clampText(targetUserData.turma, 40, "Geral")
+        ),
+      };
+
+      if (shouldUnfollow) {
+        if (followerSnap.exists) tx.delete(targetFollowerRef);
+        if (followingSnap.exists) tx.delete(viewerFollowingRef);
+        followersCount = Math.max(0, followersCount - 1);
+        followingCount = Math.max(0, followingCount - 1);
+      } else {
+        tx.set(targetFollowerRef, {
+          ...viewerFollowData,
+          followedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        tx.set(viewerFollowingRef, {
+          ...targetFollowData,
+          followedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        tx.set(notificationRef, {
+          userId: targetUid,
+          title: "Novo Seguidor!",
+          message: `${viewerFollowData.nome} comecou a te seguir.`,
+          link: `/perfil/${viewerUid}`,
+          read: false,
+          type: "social",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        followersCount += 1;
+        followingCount += 1;
+      }
+
+      tx.set(
+        targetUserRef,
+        {
+          stats: {
+            ...targetStats,
+            followersCount,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      tx.set(
+        viewerUserRef,
+        {
+          stats: {
+            ...viewerStats,
+            followingCount,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      return {
+        isFollowing: !shouldUnfollow,
+        followersCount,
+        followingCount,
+      };
+    });
+
+    const [followersCounterSnap, followingCounterSnap] = await Promise.all([
+      targetUserRef.collection("followers").count().get(),
+      viewerUserRef.collection("following").count().get(),
+    ]);
+
+    const exactFollowersCount = followersCounterSnap.data().count;
+    const exactFollowingCount = followingCounterSnap.data().count;
+
+    if (
+      exactFollowersCount !== result.followersCount ||
+      exactFollowingCount !== result.followingCount
+    ) {
+      await Promise.all([
+        targetUserRef.set(
+          {
+            "stats.followersCount": exactFollowersCount,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        ),
+        viewerUserRef.set(
+          {
+            "stats.followingCount": exactFollowingCount,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        ),
+      ]);
+    }
+
+    return {
+      isFollowing: result.isFollowing,
+      followersCount: exactFollowersCount,
+      followingCount: exactFollowingCount,
+    };
+  }
+);
+
+export const profileAdminRecountFollowStats = functions.https.onCall(
+  async (data, context) => {
+    await assertRoleAllowed(
+      context,
+      ADMIN_PANEL_ROLES,
+      "Apenas administradores podem recontar follows."
+    );
+
+    const payload = asObject(data);
+    const batchSize = normalizePositiveInt(
+      payload?.batchSize,
+      MAX_FOLLOW_RECOUNT_BATCH
+    );
+    const startAfterUid = asString(payload?.startAfterUid).trim();
+
+    let usersQuery = db
+      .collection("users")
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(batchSize);
+
+    if (startAfterUid) {
+      const startAfterSnap = await db.collection("users").doc(startAfterUid).get();
+      if (startAfterSnap.exists) {
+        usersQuery = usersQuery.startAfter(startAfterSnap);
+      }
+    }
+
+    const usersSnap = await usersQuery.get();
+    if (usersSnap.empty) {
+      return {
+        scanned: 0,
+        updated: 0,
+        hasMore: false,
+        nextCursor: null as string | null,
+      };
+    }
+
+    let scanned = 0;
+    let updated = 0;
+    let pendingWrites = 0;
+    let nextCursor: string | null = null;
+    let writeBatch = db.batch();
+
+    const flushBatch = async () => {
+      if (pendingWrites === 0) return;
+      await writeBatch.commit();
+      writeBatch = db.batch();
+      pendingWrites = 0;
+    };
+
+    for (const userDoc of usersSnap.docs) {
+      scanned += 1;
+      nextCursor = userDoc.id;
+
+      const [followersSnap, followingSnap] = await Promise.all([
+        userDoc.ref.collection("followers").count().get(),
+        userDoc.ref.collection("following").count().get(),
+      ]);
+
+      const followersCount = followersSnap.data().count;
+      const followingCount = followingSnap.data().count;
+
+      const userData = asObject(userDoc.data()) || {};
+      const stats = asObject(userData.stats) || {};
+      const currentFollowers =
+        typeof stats.followersCount === "number" &&
+        Number.isFinite(stats.followersCount)
+          ? Math.max(0, Math.floor(stats.followersCount))
+          : 0;
+      const currentFollowing =
+        typeof stats.followingCount === "number" &&
+        Number.isFinite(stats.followingCount)
+          ? Math.max(0, Math.floor(stats.followingCount))
+          : 0;
+
+      if (
+        currentFollowers === followersCount &&
+        currentFollowing === followingCount
+      ) {
+        continue;
+      }
+
+      writeBatch.set(
+        userDoc.ref,
+        {
+          "stats.followersCount": followersCount,
+          "stats.followingCount": followingCount,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+      pendingWrites += 1;
+      updated += 1;
+
+      if (pendingWrites >= 400) {
+        await flushBatch();
+      }
+    }
+
+    await flushBatch();
+
+    return {
+      scanned,
+      updated,
+      hasMore: usersSnap.size >= batchSize,
+      nextCursor: usersSnap.size >= batchSize ? nextCursor : null,
+    };
   }
 );
 

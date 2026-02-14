@@ -65,7 +65,7 @@ export default function LojaPage() {
 
     const loadProducts = async () => {
       try {
-        const rows = await fetchStoreProducts({ maxResults: 260, forceRefresh: false });
+        const rows = await fetchStoreProducts({ maxResults: 80, forceRefresh: false });
         if (!mounted) return;
         setProdutos(rows as unknown as Produto[]);
       } catch (error: unknown) {

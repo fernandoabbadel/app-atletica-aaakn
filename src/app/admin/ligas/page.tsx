@@ -94,7 +94,7 @@ export default function AdminLigasPage() {
       const data = await fetchLeagues({
         orderByField: "nome",
         orderDirection: "asc",
-        maxResults: 120,
+        maxResults: 40,
         forceRefresh,
       });
       setLigas(data);
@@ -117,7 +117,7 @@ export default function AdminLigasPage() {
     let mounted = true;
     const loadUsers = async () => {
       try {
-        const users = await fetchLeagueUsers({ maxResults: 360 });
+        const users = await fetchLeagueUsers({ maxResults: 120 });
         if (!mounted) return;
         setAllUsers(users);
       } catch (error: unknown) {

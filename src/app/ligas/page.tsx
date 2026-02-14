@@ -156,7 +156,7 @@ export default function LigasAdminPage() {
               const leagues = await fetchLeagues({
                   orderByField: "nome",
                   orderDirection: "asc",
-                  maxResults: 120,
+                  maxResults: 40,
               });
               if (!mounted) return;
               setLigasDisponiveis(leagues.map((league) => ({ id: league.id, nome: league.nome })));
@@ -179,7 +179,7 @@ export default function LigasAdminPage() {
       let mounted = true;
       const loadUsers = async () => {
           try {
-              const users = await fetchLeagueUsers({ maxResults: 360 });
+              const users = await fetchLeagueUsers({ maxResults: 120 });
               if (!mounted) return;
               setAllUsers(users as UserSearch[]);
           } catch (error: unknown) {
@@ -202,7 +202,7 @@ export default function LigasAdminPage() {
       let mounted = true;
       const loadPolls = async () => {
           try {
-              const data = await fetchEventPolls(pollModal, { maxResults: 80, forceRefresh: false });
+              const data = await fetchEventPolls(pollModal, { maxResults: 40, forceRefresh: false });
               if (!mounted) return;
               setPolls(data as Poll[]);
           } catch (error: unknown) {

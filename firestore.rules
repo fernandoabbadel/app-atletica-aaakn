@@ -1,0 +1,422 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMe(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function myRole() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : "guest";
+    }
+
+    function isAdmin() {
+      return myRole() in ["master", "admin_geral", "admin_gestor", "admin_treino", "vendas", "admin"];
+    }
+
+    function isMaster() {
+      return myRole() == "master";
+    }
+
+    function isSafeString(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function isOwnerByField(uidField) {
+      return signedIn() && uidField is string && uidField == request.auth.uid;
+    }
+
+    function isValidSharkroundConfig(data) {
+      return data.keys().hasOnly([
+          "dailyRollsLimit", "startingCoins", "bailCost",
+          "heartTarget", "heartHelpReward", "cycleBaseReward",
+          "rules", "createdAt", "updatedAt"
+        ])
+        && data.keys().hasAll([
+          "dailyRollsLimit", "startingCoins", "bailCost",
+          "heartTarget", "heartHelpReward", "cycleBaseReward", "rules"
+        ])
+        && data.dailyRollsLimit is int && data.dailyRollsLimit >= 1 && data.dailyRollsLimit <= 20
+        && data.startingCoins is int && data.startingCoins >= 0 && data.startingCoins <= 10000
+        && data.bailCost is int && data.bailCost >= 0 && data.bailCost <= 10000
+        && data.heartTarget is int && data.heartTarget >= 1 && data.heartTarget <= 20
+        && data.heartHelpReward is int && data.heartHelpReward >= 0 && data.heartHelpReward <= 500
+        && data.cycleBaseReward is int && data.cycleBaseReward >= 0 && data.cycleBaseReward <= 5000
+        && data.rules is list && data.rules.size() >= 1 && data.rules.size() <= 16;
+    }
+
+    function isValidGuideData(data) {
+      return data.keys().hasOnly([
+          "categoria", "ordem", "titulo", "url", "nome",
+          "horario", "detalhe", "descricao", "foto",
+          "numero", "cor", "createdAt", "updatedAt"
+        ])
+        && data.keys().hasAll(["categoria"])
+        && data.categoria in ["academico", "transporte", "turismo", "emergencia", "grupos"]
+        && (!("ordem" in data) || (data.ordem is int && data.ordem >= 1 && data.ordem <= 5000))
+        && (!("titulo" in data) || isSafeString(data.titulo, 1, 160))
+        && (!("url" in data) || isSafeString(data.url, 1, 600))
+        && (!("nome" in data) || isSafeString(data.nome, 1, 160))
+        && (!("horario" in data) || isSafeString(data.horario, 1, 200))
+        && (!("detalhe" in data) || isSafeString(data.detalhe, 1, 300))
+        && (!("descricao" in data) || isSafeString(data.descricao, 1, 800))
+        && (!("foto" in data) || isSafeString(data.foto, 1, 1200))
+        && (!("numero" in data) || isSafeString(data.numero, 1, 30))
+        && (!("cor" in data) || isSafeString(data.cor, 1, 20));
+    }
+
+    function isValidDenunciaCreate(data) {
+      return data.keys().hasOnly([
+          "targetId", "targetType", "postText", "reporterId",
+          "reason", "timestamp", "status", "createdAt", "updatedAt"
+        ])
+        && data.keys().hasAll(["targetId", "targetType", "reporterId", "reason", "status"])
+        && isOwnerByField(data.reporterId)
+        && isSafeString(data.targetId, 1, 160)
+        && isSafeString(data.targetType, 1, 40)
+        && isSafeString(data.reason, 2, 400)
+        && (!("postText" in data) || isSafeString(data.postText, 0, 5000))
+        && data.status in ["pendente", "pending"];
+    }
+
+    function isValidSupportCreate(data) {
+      return data.keys().hasOnly([
+          "userId", "userName", "userEmail", "category", "subject", "message",
+          "status", "readByAdmin", "response", "createdAt", "updatedAt", "resolvedAt", "module"
+        ])
+        && data.keys().hasAll(["userId", "userName", "category", "subject", "message", "status", "readByAdmin"])
+        && isOwnerByField(data.userId)
+        && isSafeString(data.userName, 1, 80)
+        && data.category in ["geral", "financeiro", "conta", "bug", "denuncia", "outro"]
+        && isSafeString(data.subject, 1, 120)
+        && isSafeString(data.message, 1, 5000)
+        && data.status in ["pending", "pendente"]
+        && data.readByAdmin == false
+        && (!("userEmail" in data) || isSafeString(data.userEmail, 0, 120))
+        && (!("module" in data) || isSafeString(data.module, 0, 80));
+    }
+
+    function isValidBannedAppealCreate(data) {
+      return data.keys().hasOnly([
+          "userId", "targetUserId", "userName", "message", "status", "readByAdmin",
+          "response", "createdAt", "updatedAt", "resolvedAt"
+        ])
+        && data.keys().hasAll(["userId", "userName", "message"])
+        && isOwnerByField(data.userId)
+        && isSafeString(data.userName, 1, 120)
+        && isSafeString(data.message, 5, 5000)
+        && (!("status" in data) || data.status in ["pending", "pendente"])
+        && (!("readByAdmin" in data) || data.readByAdmin == false)
+        && (!("targetUserId" in data) || isSafeString(data.targetUserId, 0, 120));
+    }
+
+    function currentLeagueLikes() {
+      return resource.data.likes is int ? resource.data.likes : 0;
+    }
+
+    function isSafeLeagueLikeDelta() {
+      return signedIn()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["likes", "updatedAt"])
+        && request.resource.data.likes is int
+        && request.resource.data.likes >= 0
+        && (
+          request.resource.data.likes == currentLeagueLikes() + 1 ||
+          request.resource.data.likes == currentLeagueLikes() - 1
+        );
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if isMe(userId);
+      allow update: if isMe(userId) || isAdmin();
+      allow delete: if isMaster();
+
+      match /followers/{followerId} {
+        allow read: if signedIn();
+        allow create, delete: if signedIn() && (isMe(followerId) || isMe(userId) || isAdmin());
+        allow update: if false;
+      }
+
+      match /following/{followingId} {
+        allow read: if signedIn();
+        allow create, delete: if signedIn() && (isMe(userId) || isAdmin());
+        allow update: if false;
+      }
+
+      match /quiz_history/{entryId} {
+        allow read, write: if isMe(userId) || isAdmin();
+      }
+
+      match /albumColado/{targetId} {
+        allow read: if signedIn() && (isMe(userId) || isAdmin());
+        allow create, update, delete: if signedIn() && (isMe(userId) || isAdmin());
+      }
+    }
+
+    match /settings/permissions {
+      allow read: if signedIn();
+      allow write: if isMaster();
+    }
+
+    match /notifications/{id} {
+      allow create: if signedIn()
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() >= 1
+        && request.resource.data.userId.size() <= 120
+        && (
+          isAdmin() ||
+          request.resource.data.userId == request.auth.uid ||
+          request.resource.data.userId == "GLOBAL"
+        );
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == "GLOBAL"
+      );
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+    }
+
+    match /banned_appeals/{id} {
+      allow create: if signedIn() && isValidBannedAppealCreate(request.resource.data);
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.targetUserId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /support_requests/{id} {
+      allow create: if signedIn() && isValidSupportCreate(request.resource.data);
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /eventos/{eventId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+
+      match /rsvps/{uid} {
+        allow read: if signedIn();
+        allow create, update, delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+      }
+
+      match /comentarios/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      }
+
+      match /enquetes/{pollId} {
+        allow read: if signedIn();
+        allow create, update, delete: if signedIn();
+      }
+    }
+
+    match /treinos/{treinoId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+
+      match /rsvps/{uid} {
+        allow read: if signedIn();
+        allow create, update, delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+      }
+
+      match /chamada/{id} {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      }
+    }
+
+    match /denuncias/{id} {
+      allow create: if signedIn() && isValidDenunciaCreate(request.resource.data);
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /solicitacoes_ingressos/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+    }
+
+    match /solicitacoes_adesao/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /orders/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /store_orders/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /store_redemptions/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /store_rewards/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /parceiros/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /scans/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /produtos/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /categorias/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+    }
+
+    match /ligas/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /ligas_config/{id} {
+      allow read: if signedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || isSafeLeagueLikeDelta();
+    }
+
+    match /album_rankings/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isMe(id);
+      allow delete: if isAdmin();
+    }
+
+    match /album_summary/{userId} {
+      allow read: if signedIn() && (isMe(userId) || isAdmin());
+      allow create, update: if signedIn() && (isMe(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /album_config/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /achievements_config/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /achievements_logs/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /activity_logs/{id} {
+      allow create: if signedIn();
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /gym_logs/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /assinaturas/{id} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /arena_matches/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /app_config/sharkround {
+      allow read: if signedIn();
+      allow write: if isAdmin() && isValidSharkroundConfig(request.resource.data);
+    }
+
+    match /app_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin() && id != "sharkround";
+    }
+
+    match /site_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /legal_docs/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /guia_data/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin() && isValidGuideData(request.resource.data);
+    }
+
+    match /historic_events/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /patentes_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /planos/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

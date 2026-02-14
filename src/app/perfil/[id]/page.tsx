@@ -15,10 +15,12 @@ import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import { fetchPatentesConfig } from "../../../lib/achievementsService";
 import {
+  fetchFollowCounts,
   fetchFollowList,
   fetchPublicProfileBundle,
   toggleFollowProfile
 } from "../../../lib/profileService";
+import { getFirebaseErrorCode } from "../../../lib/firebaseErrors";
 import Link from "next/link";
 import { getTurmaImage } from "../../../constants/turmaImages";
 
@@ -256,6 +258,15 @@ export default function PerfilPublicoPage() {
                 setFollowersCount(bundle.followersCount);
                 setFollowingCount(bundle.followingCount);
 
+                void fetchFollowCounts(uid, { forceRefresh: true })
+                  .then((counts) => {
+                      setFollowersCount(counts.followersCount);
+                      setFollowingCount(counts.followingCount);
+                  })
+                  .catch(() => {
+                      // Mantem contador do bundle se count falhar.
+                  });
+
                 setIsFollowing(bundle.isFollowing);
 
                 setRecentPosts((bundle.posts as PostItem[]).slice(0, 5));
@@ -303,7 +314,22 @@ export default function PerfilPublicoPage() {
           addToast(result.isFollowing ? "Seguindo!" : "Deixou de seguir.", result.isFollowing ? "success" : "info");
       } catch (error: unknown) {
           console.error(error);
-          addToast("Erro ao seguir.", "error");
+          const code = getFirebaseErrorCode(error)?.toLowerCase() || "";
+          const message = error instanceof Error ? error.message.toLowerCase() : "";
+          if (
+            code.includes("functions/not-found") ||
+            code.includes("functions/unavailable") ||
+            code.includes("functions/internal") ||
+            code.includes("functions/unknown") ||
+            message.includes("cors") ||
+            message.includes("preflight")
+          ) {
+            addToast("Follow indisponivel no backend. Publique as Functions.", "error");
+          } else if (code.includes("permission-denied")) {
+            addToast("Sem permissao para seguir esse perfil.", "error");
+          } else {
+            addToast("Erro ao seguir.", "error");
+          }
       }
   };
 
@@ -312,11 +338,16 @@ export default function PerfilPublicoPage() {
       setActiveModal(type);
       try {
           const list = await fetchFollowList(profile.uid, type, {
-              maxResults: 220,
+              maxResults: 80,
               forceRefresh: false,
           });
-          if (type === 'followers') setFollowersList(list);
-          else setFollowingList(list);
+          if (type === 'followers') {
+              setFollowersList(list);
+              setFollowersCount(list.length);
+          } else {
+              setFollowingList(list);
+              setFollowingCount(list.length);
+          }
       } catch (error: unknown) {
           console.error(error);
           addToast("Erro ao carregar lista.", "error");
@@ -382,6 +413,7 @@ export default function PerfilPublicoPage() {
                 src={turmaImage} 
                 alt="Capa da Turma"
                 fill
+                sizes="100vw"
                 className="object-cover opacity-60 blur-[2px]"
                 priority
             />
@@ -400,6 +432,7 @@ export default function PerfilPublicoPage() {
                             width={128}
                             height={128}
                             className="object-cover w-full h-full"
+                            unoptimized
                         />
                     </div>
                 </div>
@@ -486,7 +519,7 @@ export default function PerfilPublicoPage() {
                     {/* EVENTOS */}
                     {activeTab === 'eventos' && (
                         myEvents.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><Image src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} alt={e.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
+                            <div className="grid grid-cols-2 gap-3 animate-in fade-in">{myEvents.map(e => (<Link href={`/eventos/${e.id}`} key={e.id} className="group flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg hover:shadow-emerald-500/10"><div className="h-28 w-full bg-zinc-800 relative overflow-hidden"><Image src={e.imagem || "https://placehold.co/600x400/111/333?text=Evento"} alt={e.titulo} fill sizes="(max-width: 768px) 50vw, 220px" className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" style={{ objectPosition: `50% ${e.imagePositionY || 50}%` }}/><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent"/><div className="absolute bottom-2 left-2 right-2"><p className="text-[10px] font-black text-white uppercase truncate drop-shadow-md">{e.titulo}</p></div></div><div className="p-2 flex items-center justify-between bg-zinc-950"><div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase"><Calendar size={10} className="text-emerald-500"/><span>{e.data || "Data à definir"}</span></div><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div></div></Link>))}</div>
                         ) : <div className="text-center text-zinc-600 text-xs py-4">Nenhum evento marcado.</div>
                     )}
 
@@ -499,7 +532,7 @@ export default function PerfilPublicoPage() {
                                         <div className="w-24 h-24 rounded-full bg-black border-2 border-zinc-800 p-0.5 group-hover:border-emerald-500 group-hover:scale-105 transition-all shadow-lg">
                                             <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center relative">
                                                 {l.logoBase64 ? (
-                                                    <Image src={l.logoBase64} alt={l.sigla || "Liga"} fill className="object-cover" />
+                                                    <Image src={l.logoBase64} alt={l.sigla || "Liga"} fill sizes="96px" className="object-cover" />
                                                 ) : (
                                                     <Users size={32} className="text-zinc-500"/>
                                                 )}
@@ -519,7 +552,7 @@ export default function PerfilPublicoPage() {
                                 {myTreinos.map(t => (
                                     <Link href={`/treinos/${t.id}`} key={t.id} className="group flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-emerald-500/50 transition-all shadow-lg h-24">
                                             <div className="w-24 h-full bg-zinc-800 relative overflow-hidden shrink-0">
-                                                 <Image src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"} alt={t.modalidade} fill className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"/>
+                                                 <Image src={t.imagem || "https://placehold.co/400x400/111/333?text=Treino"} alt={t.modalidade} fill sizes="96px" className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"/>
                                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-900"/>
                                             </div>
                                             <div className="flex-1 p-3 flex flex-col justify-center">
@@ -563,7 +596,7 @@ export default function PerfilPublicoPage() {
                       <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700 relative"><Image src={f.foto || "https://github.com/shadcn.png"} alt={f.nome} fill className="object-cover"/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700 relative"><Image src={f.foto || "https://github.com/shadcn.png"} alt={f.nome} fill sizes="40px" className="object-cover" unoptimized/></div><div><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div></Link>))}
                   </div>
               </div>
           </div>

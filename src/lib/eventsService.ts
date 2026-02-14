@@ -23,8 +23,8 @@ type CacheEntry<T> = { cachedAt: number; value: T };
 
 type Row = Record<string, unknown>;
 
-const TTL_MS = 20_000;
-const MAX_EVENTS = 120;
+const TTL_MS = 90_000;
+const MAX_EVENTS = 80;
 const MAX_RSVPS = 2000;
 const MAX_POLLS = 200;
 const MAX_COMMENTS = 300;

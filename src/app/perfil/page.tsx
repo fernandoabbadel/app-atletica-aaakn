@@ -14,6 +14,7 @@ import {
 import { useAuth } from "../../context/AuthContext"; 
 import { useToast } from "../../context/ToastContext";
 import {
+  fetchFollowCounts,
   fetchFollowList,
   fetchOwnProfileBundle,
   saveProfileImageUrl,
@@ -267,6 +268,15 @@ export default function MeuPerfilPage() {
                 setFollowersCount(bundle.followersCount);
                 setFollowingCount(bundle.followingCount);
 
+                void fetchFollowCounts(user.uid, { forceRefresh: true })
+                    .then((counts) => {
+                        setFollowersCount(counts.followersCount);
+                        setFollowingCount(counts.followingCount);
+                    })
+                    .catch(() => {
+                        // Mantem contador do bundle se count falhar.
+                    });
+
                 setRecentPosts((bundle.posts as PostPerfil[]).slice(0, 5));
 
                 setMyEvents((bundle.events as EventoPerfil[]).slice(0, 5));
@@ -285,12 +295,22 @@ export default function MeuPerfilPage() {
   const handleOpenList = async (type: 'followers' | 'following') => {
       if (!profile || !user) return;
       setActiveModal(type);
-      const list = await fetchFollowList(user.uid, type, {
-          maxResults: 220,
-          forceRefresh: false,
-      });
-      if(type === 'followers') setFollowersList(list);
-      else setFollowingList(list);
+      try {
+          const list = await fetchFollowList(user.uid, type, {
+              maxResults: 80,
+              forceRefresh: false,
+          });
+          if(type === 'followers') {
+              setFollowersList(list);
+              setFollowersCount(list.length);
+          } else {
+              setFollowingList(list);
+              setFollowingCount(list.length);
+          }
+      } catch (error: unknown) {
+          console.error(error);
+          addToast("Erro ao carregar lista.", "error");
+      }
   };
 
   const handleSaveProfile = async () => {
@@ -715,7 +735,7 @@ export default function MeuPerfilPage() {
                       <button onClick={() => setActiveModal(null)} className="p-1 text-zinc-500 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700 relative"><Image src={f.foto || "https://github.com/shadcn.png"} alt={f.nome} fill className="object-cover" unoptimized/></div><div className="flex-1"><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div><ChevronRight size={14} className="text-zinc-600"/></Link>))}
+                      {(activeModal === 'followers' ? followersList : followingList).length === 0 ? <div className="text-center py-10 text-zinc-600"><Ghost size={32} className="mx-auto mb-2 opacity-50"/><p className="text-xs">Nada por aqui.</p></div> : (activeModal === 'followers' ? followersList : followingList).map(f => (<Link href={`/perfil/${f.uid}`} key={f.uid} onClick={() => setActiveModal(null)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900 transition border border-transparent hover:border-zinc-800"><div className="w-10 h-10 rounded-full bg-black overflow-hidden border border-zinc-700 relative"><Image src={f.foto || "https://github.com/shadcn.png"} alt={f.nome} fill sizes="40px" className="object-cover" unoptimized/></div><div className="flex-1"><p className="text-sm font-bold text-white">{f.nome}</p><p className="text-[10px] text-zinc-500 font-bold uppercase">{f.turma || "Bicho"}</p></div><ChevronRight size={14} className="text-zinc-600"/></Link>))}
                   </div>
               </div>
           </div>

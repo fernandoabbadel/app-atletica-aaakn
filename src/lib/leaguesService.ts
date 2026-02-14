@@ -22,11 +22,11 @@ type CacheEntry<T> = {
   value: T;
 };
 
-const READ_CACHE_TTL_MS = 35_000;
+const READ_CACHE_TTL_MS = 120_000;
 
-const MAX_LEAGUE_RESULTS = 150;
-const MAX_USER_RESULTS = 450;
-const MAX_POLL_RESULTS = 120;
+const MAX_LEAGUE_RESULTS = 80;
+const MAX_USER_RESULTS = 200;
+const MAX_POLL_RESULTS = 60;
 
 const LEAGUE_SAVE_CALLABLE = "leagueAdminSaveConfig";
 const LEAGUE_DELETE_CALLABLE = "leagueAdminDeleteConfig";
@@ -398,7 +398,7 @@ export async function fetchLeagues(options?: {
 }): Promise<LeagueRecord[]> {
   const orderByField = options?.orderByField ?? "nome";
   const orderDirection = options?.orderDirection ?? "asc";
-  const maxResults = boundedLimit(options?.maxResults ?? 120, MAX_LEAGUE_RESULTS);
+  const maxResults = boundedLimit(options?.maxResults ?? 40, MAX_LEAGUE_RESULTS);
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${orderByField}:${orderDirection}:${maxResults}`;
 
@@ -449,7 +449,7 @@ export async function fetchLeagueUsers(options?: {
   maxResults?: number;
   forceRefresh?: boolean;
 }): Promise<LeagueUserRecord[]> {
-  const maxResults = boundedLimit(options?.maxResults ?? 300, MAX_USER_RESULTS);
+  const maxResults = boundedLimit(options?.maxResults ?? 120, MAX_USER_RESULTS);
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${maxResults}`;
 

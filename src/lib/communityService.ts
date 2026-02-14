@@ -17,10 +17,10 @@ type QueryRow<T extends RawData = RawData> = {
   data: T;
 };
 
-const MAX_FEED_RESULTS = 120;
-const MAX_ADMIN_POST_RESULTS = 160;
-const MAX_REPORT_RESULTS = 200;
-const MAX_COMMENT_RESULTS = 180;
+const MAX_FEED_RESULTS = 40;
+const MAX_ADMIN_POST_RESULTS = 80;
+const MAX_REPORT_RESULTS = 80;
+const MAX_COMMENT_RESULTS = 60;
 
 const boundedLimit = (requested: number, maxAllowed: number): number => {
   if (!Number.isFinite(requested)) return maxAllowed;

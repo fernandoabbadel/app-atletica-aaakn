@@ -170,6 +170,7 @@ export default function CarteirinhaPage() {
                     alt="Logo"
                     width={32}
                     height={32}
+                    priority
                     className="object-contain"
                     style={{ width: "auto", height: "auto" }}
                   />
@@ -298,6 +299,7 @@ export default function CarteirinhaPage() {
                           alt="Logo"
                           width={28}
                           height={28}
+                          priority
                           className="object-contain"
                           style={{ width: "auto", height: "auto" }}
                         />

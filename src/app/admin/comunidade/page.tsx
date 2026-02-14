@@ -83,8 +83,8 @@ export default function AdminComunidadePage() {
       try {
         const [configData, postsData, reportsData] = await Promise.all([
           fetchCommunityConfig(),
-          fetchCommunityAdminPosts(120),
-          fetchCommunityReports(180),
+          fetchCommunityAdminPosts(60),
+          fetchCommunityReports(60),
         ]);
 
         if (!mounted) return;
@@ -138,7 +138,7 @@ export default function AdminComunidadePage() {
           try {
               const rows = await fetchCommunityComments(viewCommentsId, {
                   order: "desc",
-                  maxResults: 120,
+                  maxResults: 60,
               });
               if (!mounted) return;
               setAdminComments(

@@ -9,7 +9,7 @@ import {
   ChevronRight, Handshake, Clock, CalendarRange, MessageCircle, MapPin,
   Crown, Medal, Star, ShieldCheck, User, Ghost, LogIn, Layout, Camera,
   Target, GraduationCap, Users, Lock, Bell, Fish, Swords, Zap, Gem,
-  Skull, Rocket, Heart, ThumbsUp, LayoutGrid, UserPlus, Sparkles // 🦈 Adicionado Sparkles
+  Skull, Rocket, Heart, ThumbsUp, LayoutGrid, UserPlus, Sparkles, ScanLine // 🦈 Adicionado Sparkles
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { isFirebasePermissionError } from "../../lib/firebaseErrors";
@@ -45,9 +45,23 @@ interface BannerProps {
 }
 
 // --- CONFIGURAÇÕES VISUAIS ---
+
 const PLAN_COLORS: Record<string, string> = {
-    yellow: "text-yellow-400", emerald: "text-emerald-400", purple: "text-purple-400",
-    blue: "text-blue-400", red: "text-red-500", zinc: "text-zinc-400"
+    yellow: "text-yellow-400",
+    emerald: "text-emerald-400",
+    purple: "text-purple-400",
+    blue: "text-blue-400",
+    red: "text-red-400",
+    orange: "text-orange-400",
+    zinc: "text-zinc-400",
+};
+
+const resolveTurmaSlug = (turmaRaw?: string): string => {
+    if (!turmaRaw) return "t8";
+    const normalized = turmaRaw.trim().toUpperCase();
+    if (normalized.startsWith("T")) return normalized.toLowerCase();
+    const digits = normalized.replace(/\D/g, "");
+    return digits ? `t${digits}` : "t8";
 };
 
 // --- SUB-COMPONENTES OTIMIZADOS ---
@@ -117,6 +131,7 @@ export default function BottomNavbar() {
 
   const isAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin_geral' || currentUser?.role === 'admin_gestor';
   const userUid = user?.uid || "";
+  const currentTurmaSlug = resolveTurmaSlug(currentUser?.turma);
   const isGuestVirtual = userUid.startsWith("guest_virtual_");
   const canLoadNotifications = Boolean(userUid) && !user?.isAnonymous && !isGuestVirtual;
 
@@ -265,7 +280,7 @@ export default function BottomNavbar() {
   const bottomItems: NavItemProps[] = [
       { id: 'home', label: 'Início', icon: <Home size={22}/>, path: '/dashboard' },
       { id: 'eventos', label: 'Eventos', icon: <Calendar size={22}/>, path: '/eventos' },
-      { id: 'gym', label: 'Gym Rats', icon: <Dumbbell size={28}/>, path: '/gym-rats', isMain: true, isComingSoon: true },
+      { id: 'scan', label: 'Scanner', icon: <ScanLine size={28}/>, path: `/album/${currentTurmaSlug}?scan=1`, isMain: true },
       { id: 'carteira', label: 'Carteira', icon: <Wallet size={22}/>, path: '/carteirinha' },
       { id: 'menu', label: 'Menu', icon: <Menu size={22}/>, action: () => setIsSidebarOpen(true) },
   ];
@@ -309,7 +324,7 @@ export default function BottomNavbar() {
         <div className="p-6 pb-4 border-b border-zinc-800 bg-black/40 backdrop-blur-sm flex justify-between items-center">
             <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/20 relative">
-                    <Image src="/logo.png" alt="Logo" fill sizes="32px" className="object-contain p-1" unoptimized/>
+                    <Image src="/logo.png" alt="Logo" fill sizes="32px" className="object-contain p-1" unoptimized priority/>
                 </div>
                 <div>
                     <h2 className="text-lg font-black italic uppercase text-white leading-none">AAAKN</h2>
@@ -476,4 +491,5 @@ export default function BottomNavbar() {
     </>
   );
 }
+
 

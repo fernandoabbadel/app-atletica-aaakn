@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Eye,
   Loader2,
+  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -22,6 +23,7 @@ import {
   setAdminUserStatus,
   type AdminUserListItem,
 } from "@/lib/adminUsersService";
+import { adminRecountFollowStatsBatch } from "@/lib/profileService";
 
 const PAGE_SIZE = 20;
 
@@ -68,6 +70,7 @@ export default function AdminUsuariosPage() {
 
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState<"todos" | AdminUserListItem["plano"]>("todos");
+  const [recountingFollows, setRecountingFollows] = useState(false);
 
   const loadUsers = useCallback(
     async (options?: { reset?: boolean; cursorId?: string | null }) => {
@@ -169,6 +172,49 @@ export default function AdminUsuariosPage() {
     await loadUsers({ reset: false, cursorId: nextCursor });
   };
 
+  const handleRecountFollows = async () => {
+    if (recountingFollows) return;
+    setRecountingFollows(true);
+    try {
+      let cursor: string | null = null;
+      let hasMoreBatches = true;
+      let safetyCounter = 0;
+      let totalScanned = 0;
+      let totalUpdated = 0;
+
+      while (hasMoreBatches && safetyCounter < 40) {
+        safetyCounter += 1;
+        const result = await adminRecountFollowStatsBatch({
+          batchSize: 180,
+          startAfterUid: cursor,
+        });
+        totalScanned += result.scanned;
+        totalUpdated += result.updated;
+        hasMoreBatches = result.hasMore && Boolean(result.nextCursor);
+        cursor = result.nextCursor;
+      }
+
+      if (hasMoreBatches) {
+        addToast(
+          `Recontagem parcial: ${totalUpdated} ajustados de ${totalScanned}. Clique novamente para continuar.`,
+          "info"
+        );
+      } else {
+        addToast(
+          `Recontagem concluida: ${totalUpdated} usuarios ajustados (${totalScanned} verificados).`,
+          "success"
+        );
+      }
+    } catch (error: unknown) {
+      if (!isFirebasePermissionError(error)) {
+        console.error(error);
+      }
+      addToast("Erro ao recontar followers/following.", "error");
+    } finally {
+      setRecountingFollows(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans pb-20">
       <header className="sticky top-0 z-20 bg-[#050505]/90 backdrop-blur-md border-b border-zinc-800 px-6 py-5">
@@ -219,6 +265,18 @@ export default function AdminUsuariosPage() {
           </div>
 
           <div className="flex gap-2">
+            <button
+              onClick={() => void handleRecountFollows()}
+              disabled={recountingFollows}
+              className="px-3 py-2 rounded-lg text-[11px] font-black uppercase border transition bg-zinc-900 text-cyan-300 border-cyan-700/40 hover:bg-zinc-800 disabled:opacity-60 inline-flex items-center gap-2"
+            >
+              {recountingFollows ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Recontar Follows
+            </button>
             {[
               { id: "todos", label: "Todos" },
               { id: "lenda", label: "Lenda" },

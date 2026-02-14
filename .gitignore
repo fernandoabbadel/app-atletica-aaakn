@@ -50,3 +50,4 @@ firebase-admin-key.json
 google-services.json
 serviceAccountKey.json
 *.log
+/.firebase/

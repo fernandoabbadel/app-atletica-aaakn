@@ -183,7 +183,7 @@ export default function SharkLegendsPage() {
 
         try {
             const usersRows = await fetchArenaUsers({
-                maxResults: 120,
+                maxResults: 60,
                 forceRefresh: false,
             });
 

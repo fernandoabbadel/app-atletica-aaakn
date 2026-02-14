@@ -1,0 +1,122 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roleFromToken() {
+      return signedIn() && (request.auth.token.role is string)
+        ? request.auth.token.role
+        : null;
+    }
+
+    function roleFromFirestore() {
+      return signedIn() &&
+          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        ? firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function role() {
+      return roleFromToken() != null ? roleFromToken() : roleFromFirestore();
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && (role() is string)
+        && (
+          role() == "master" ||
+          role() == "admin_geral" ||
+          role() == "admin_gestor" ||
+          role() == "admin_treino" ||
+          role() == "admin" ||
+          role().matches(".*admin.*")
+        );
+    }
+
+    function canManageTreinos() {
+      return isAdmin() || (signedIn() && role() is string && role() == "treinador");
+    }
+
+    function canManageLoja() {
+      return isAdmin() || (signedIn() && role() is string && role() == "vendas");
+    }
+
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.size <= 2 * 1024 * 1024
+        && (
+          request.resource.contentType == "image/jpeg" ||
+          request.resource.contentType == "image/png" ||
+          request.resource.contentType == "image/webp"
+        );
+    }
+
+    function isDelete() {
+      return request.resource == null;
+    }
+
+    match /eventos/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /treinos/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if canManageTreinos() && (isImageUpload() || isDelete());
+    }
+
+    match /produtos/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if canManageLoja() && (isImageUpload() || isDelete());
+    }
+
+    match /ligas/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /carteirinha/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /guia/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /historico/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /config/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin() && (isImageUpload() || isDelete());
+    }
+
+    match /users/{uid}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid && (isImageUpload() || isDelete());
+    }
+
+    match /posts/{fileId} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && (isImageUpload() || isDelete())
+        && fileId.matches("^[0-9]{12,14}_" + request.auth.uid + "$");
+    }
+
+    match /posts/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid && (isImageUpload() || isDelete());
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

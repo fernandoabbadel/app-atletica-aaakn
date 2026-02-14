@@ -24,10 +24,10 @@ import { getFirebaseErrorCode } from "./firebaseErrors";
 type CacheEntry<T> = { cachedAt: number; value: T };
 type Row = Record<string, unknown>;
 
-const TTL_MS = 20_000;
-const MAX_PRODUCTS = 600;
-const MAX_ORDERS = 2000;
-const MAX_REVIEWS = 1200;
+const TTL_MS = 120_000;
+const MAX_PRODUCTS = 240;
+const MAX_ORDERS = 1200;
+const MAX_REVIEWS = 600;
 const MAX_CATEGORIES = 300;
 
 const CALLABLE_TOGGLE_LIKE = "storeToggleLike";
@@ -173,10 +173,10 @@ export async function fetchAdminStoreBundle(options?: {
   reviewsLimit?: number;
   forceRefresh?: boolean;
 }): Promise<StoreAdminBundle> {
-  const productsLimit = boundedLimit(options?.productsLimit ?? 450, MAX_PRODUCTS);
+  const productsLimit = boundedLimit(options?.productsLimit ?? 120, MAX_PRODUCTS);
   const categoriesLimit = boundedLimit(options?.categoriesLimit ?? 160, MAX_CATEGORIES);
-  const ordersLimit = boundedLimit(options?.ordersLimit ?? 1000, MAX_ORDERS);
-  const reviewsLimit = boundedLimit(options?.reviewsLimit ?? 800, MAX_REVIEWS);
+  const ordersLimit = boundedLimit(options?.ordersLimit ?? 200, MAX_ORDERS);
+  const reviewsLimit = boundedLimit(options?.reviewsLimit ?? 120, MAX_REVIEWS);
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${productsLimit}:${categoriesLimit}:${ordersLimit}:${reviewsLimit}`;
 
@@ -201,7 +201,7 @@ export async function fetchStoreProducts(options?: {
   maxResults?: number;
   forceRefresh?: boolean;
 }): Promise<Row[]> {
-  const maxResults = boundedLimit(options?.maxResults ?? 260, MAX_PRODUCTS);
+  const maxResults = boundedLimit(options?.maxResults ?? 80, MAX_PRODUCTS);
   const forceRefresh = options?.forceRefresh ?? false;
   const cacheKey = `${maxResults}`;
 
@@ -232,8 +232,8 @@ export async function fetchStoreProductDetail(options: {
   const userId = options.userId?.trim() || "";
   if (!productId) return { produto: null, reviews: [], userOrders: [] };
 
-  const reviewsLimit = boundedLimit(options.reviewsLimit ?? 120, MAX_REVIEWS);
-  const ordersLimit = boundedLimit(options.ordersLimit ?? 40, MAX_ORDERS);
+  const reviewsLimit = boundedLimit(options.reviewsLimit ?? 40, MAX_REVIEWS);
+  const ordersLimit = boundedLimit(options.ordersLimit ?? 20, MAX_ORDERS);
   const forceRefresh = options.forceRefresh ?? false;
   const cacheKey = `${productId}:${userId}:${reviewsLimit}:${ordersLimit}`;
 

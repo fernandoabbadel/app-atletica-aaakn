@@ -53,9 +53,30 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   const [permissionMatrix, setPermissionMatrix] =
     useState<PermissionMatrix | null>(null);
   const [rulesLoading, setRulesLoading] = useState(true);
+  const hasUser = !!user;
+  const userUid = user?.uid || "";
+  const userRole = (user?.role || "visitante").toLowerCase();
+  const userIsAnonymous = Boolean(user?.isAnonymous);
 
   useEffect(() => {
+    if (authLoading) return;
+
     let isMounted = true;
+    const currentPath = pathname ? pathname.split("?")[0] : "/";
+    const shouldLoadRemoteRules =
+      hasUser &&
+      !userIsAnonymous &&
+      currentPath.startsWith("/admin");
+
+    if (!shouldLoadRemoteRules) {
+      setPermissionMatrix({});
+      setRulesLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setRulesLoading(true);
 
     const fetchRules = async () => {
       let hasCachedRules = false;
@@ -105,7 +126,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [authLoading, hasUser, pathname, userIsAnonymous, userRole]);
 
   useEffect(() => {
     const currentPath = pathname ? pathname.split("?")[0] : "/";
@@ -126,10 +147,10 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
 
     if (authLoading || rulesLoading) return;
 
-    let userRole = "visitante";
+    let currentUserRole = "visitante";
     if (user) {
-      if (user.isAnonymous) userRole = "guest_anon";
-      else userRole = (user.role || "user").toLowerCase();
+      if (userIsAnonymous) currentUserRole = "guest_anon";
+      else currentUserRole = userRole || "user";
     }
 
     if (
@@ -160,7 +181,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       return;
     }
 
-    if (userRole === "guest_anon") {
+    if (currentUserRole === "guest_anon") {
       const isAllowed = GUEST_ALLOWED_PATHS.some(
         (path) => currentPath === path || currentPath.startsWith(`${path}/`)
       );
@@ -183,7 +204,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
       permissionMatrix !== null && Object.keys(permissionMatrix).length > 0;
 
     if (!hasPermissionRules && currentPath.startsWith("/admin")) {
-      if (!ADMIN_FALLBACK_ROLES.has(userRole)) {
+      if (!ADMIN_FALLBACK_ROLES.has(currentUserRole)) {
         setAuthorized(false);
         addToast("Opa! Area restrita da diretoria!", "error");
         router.replace("/sem-permissao");
@@ -206,7 +227,7 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
         const allowedRoles = permissionMatrix[matchedRulePath].map((role) =>
           role.toLowerCase()
         );
-        const isRoleAllowed = allowedRoles.includes(userRole);
+        const isRoleAllowed = allowedRoles.includes(currentUserRole);
 
         if (!isRoleAllowed) {
           setAuthorized(false);
@@ -225,6 +246,9 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
     setAuthorized(true);
   }, [
     user,
+    userUid,
+    userRole,
+    userIsAnonymous,
     authLoading,
     rulesLoading,
     pathname,
